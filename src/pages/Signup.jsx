@@ -40,15 +40,36 @@ const Signup = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
-    const success = await signup(name, email, password);
-    if (success) {
-      navigate('/login');
+    try {
+      await signup(name, email, password);
+      toast({
+        title: "✅ Account created!",
+        description: "Welcome! Please check your email to verify your account.",
+      });
+      navigate('/dashboard');
+    } catch (error) {
+      console.error("Failed to sign up", error);
+      toast({
+        title: "Uh oh! Something went wrong.",
+        description: "There was a problem with your sign-up request.",
+        variant: "destructive",
+      });
     }
     setIsLoading(false);
   };
 
   const handleGoogleSignIn = async () => {
-    await signInWithGoogle();
+    try {
+      await signInWithGoogle();
+      navigate('/dashboard');
+    } catch (error) {
+      console.error("Failed to sign in with Google", error);
+      toast({
+        title: "Uh oh! Something went wrong.",
+        description: "There was a problem with your Google sign-in request.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -74,7 +95,7 @@ const Signup = () => {
           </div>
           <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
             <div className="rounded-md shadow-sm -space-y-px">
-              <div className="relative">
+               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
                   id="name"

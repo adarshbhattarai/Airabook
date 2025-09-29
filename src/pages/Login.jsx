@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Helmet } from 'react-helmet';
@@ -35,26 +35,71 @@ const Login = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
-  const { login, signInWithGoogle } = useAuth();
+  const { user, login, signInWithGoogle, resendVerificationEmail } = useAuth();
 
-  const from = location.state?.from?.pathname || "/";
+  // Redirect to dashboard by default, but respect the 'from' location if it exists
+  const from = location.state?.from?.pathname || "/dashboard";
+
+  useEffect(() => {
+    if (user && !user.emailVerified) {
+      toast({
+        title: "📧 Please verify your email",
+        description: "You must verify your email to access all features.",
+        variant: "warning",
+        action: <Button onClick={handleResendVerification}>Resend</Button>,
+      });
+    }
+  }, [user]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
-    const success = await login(email, password);
-    if (success) {
+    try {
+      await login(email, password);
       toast({
         title: "🎉 Welcome back!",
         description: "You've successfully logged in.",
       });
       navigate(from, { replace: true });
+    } catch (error) {
+      console.error("Failed to log in", error);
+      toast({
+        title: "Uh oh! Something went wrong.",
+        description: "There was a problem with your login request.",
+        variant: "destructive",
+      });
     }
     setIsLoading(false);
   };
 
   const handleGoogleSignIn = async () => {
-    await signInWithGoogle();
+    try {
+      await signInWithGoogle();
+      navigate(from, { replace: true });
+    } catch (error) {
+      console.error("Failed to sign in with Google", error);
+      toast({
+        title: "Uh oh! Something went wrong.",
+        description: "There was a problem with your Google sign-in request.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleResendVerification = async () => {
+    try {
+      await resendVerificationEmail();
+      toast({ 
+        title: '✅ Verification email sent!',
+        description: 'Please check your inbox.'
+      });
+    } catch (error) {
+      toast({
+        title: 'Uh oh! Something went wrong.',
+        description: 'Could not send verification email. Please try again later.',
+        variant: 'destructive'
+      });
+    }
   };
 
   return (
@@ -107,6 +152,14 @@ const Login = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end">
+              <div className="text-sm">
+                <Link to="/forgot-password" className="font-medium text-violet-600 hover:text-violet-500">
+                  Forgot your password?
+                </Link>
               </div>
             </div>
 
