@@ -2,11 +2,11 @@ import React, { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, BookOpen, LogOut } from 'lucide-react';
+import { PlusCircle, BookOpen } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 
 const Dashboard = () => {
-  const { appUser, appLoading, logout } = useAuth();
+  const { appUser, appLoading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -19,15 +19,6 @@ const Dashboard = () => {
       navigate('/create-book');
     }
   }, [appUser, appLoading, navigate, toast]);
-
-  const handleLogout = async () => {
-    try {
-      await logout();
-      navigate('/'); // Redirect to the public home page after logout
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to log out.", variant: "destructive" });
-    }
-  };
 
   if (appLoading || !appUser) {
     return (
@@ -42,16 +33,6 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto">
-        <div className="flex justify-between items-center mb-12">
-            <div>
-                <h1 className="text-4xl font-extrabold text-gray-900">
-                    Welcome, {appUser.displayName}!
-                </h1>
-                <p className="mt-2 text-xl text-gray-600">Your Family Dashboard</p>
-            </div>
-            <Button variant="outline" onClick={handleLogout}><LogOut className="mr-2 h-4 w-4"/> Logout</Button>
-        </div>
-
         <div className="flex justify-center mb-12">
             <Button onClick={() => navigate('/create-book')} className="bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white px-8 py-4 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 text-lg">
                 <PlusCircle className="h-6 w-6 mr-3" />
