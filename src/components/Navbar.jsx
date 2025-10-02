@@ -10,12 +10,12 @@ const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, appUser, logout } = useAuth();
 
   const handleDonate = () => {
     toast({
       title: "💝 Thank you for your kindness!",
-      description: "🚧 This feature isn't implemented yet—but don't worry! You can request it in your next prompt! 🚀",
+      description: "🚧 This feature isn\'t implemented yet—but don\'t worry! You can request it in your next prompt! 🚀",
       duration: 5000,
     });
   };
@@ -24,26 +24,29 @@ const Navbar = () => {
     await logout();
     navigate('/');
     toast({
-      title: "👋 You've been logged out.",
+      title: "👋 You\'ve been logged out.",
       description: "See you again soon!",
     });
   };
 
+  const homePath = user ? '/dashboard' : '/';
+
   const navItems = [
-    { name: 'Home', path: '/', public: true },
+    { name: 'Home', path: homePath, public: true },
     { name: 'Media', path: '/media', public: false },
     { name: 'Notes', path: '/notes', public: false },
   ];
 
   const visibleNavItems = navItems.filter(item => item.public || user);
-  const userName = user?.user_metadata?.full_name || user?.user_metadata?.name || 'User';
-  const avatarUrl = user?.user_metadata?.avatar_url;
+  
+  const userName = appUser?.displayName || user?.displayName || 'User';
+  const avatarUrl = user?.photoURL;
 
   return (
     <nav className="bg-white/80 backdrop-blur-md shadow-lg sticky top-0 z-50 border-b border-violet-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-          <Link to="/" className="flex items-center space-x-2">
+          <Link to={homePath} className="flex items-center space-x-2">
             <motion.div
               whileHover={{ scale: 1.05 }}
               className="flex items-center space-x-2"

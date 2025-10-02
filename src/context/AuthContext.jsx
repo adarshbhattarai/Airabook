@@ -23,17 +23,16 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [appUser, setAppUser] = useState(null);
-  const [loading, setLoading] = useState(true); // This still tracks Firebase auth loading
-  const [appLoading, setAppLoading] = useState(true); // This tracks Firestore user data loading
+  const [loading, setLoading] = useState(true);
+  const [appLoading, setAppLoading] = useState(true);
   const { toast } = useToast();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setUser(user);
-      setLoading(false); // Firebase auth state is now known
+      setLoading(false);
 
       if (user) {
-        // User is logged in, fetch their app-specific data from Firestore
         setAppLoading(true);
         try {
           const userRef = doc(firestore, 'users', user.uid);
@@ -42,17 +41,23 @@ export const AuthProvider = ({ children }) => {
           if (docSnap.exists()) {
             setAppUser({ uid: user.uid, ...docSnap.data() });
           } else {
-            // This is a brand new user who hasn't had their Firestore doc created yet.
-            setAppUser({ uid: user.uid, accessibleBookIds: [] });
+            // This is the key change.
+          // If a user is authenticated but no Firestore doc exists, create it.
+          const newUser = {
+            displayName: user.displayName,
+            email: user.email,
+            accessibleBookIds: [],
+          };
+          await setDoc(userRef, newUser);
+          console.log("Firestore document created for new user via auth listener.");
+          setAppUser({ uid: user.uid, ...newUser });
           }
         } catch (error) {
             console.error("Error fetching user data:", error);
-            // Set a default state even on error to avoid getting stuck
             setAppUser(null);
         }
         setAppLoading(false);
       } else {
-        // User is logged out
         setAppUser(null);
         setAppLoading(false);
       }
@@ -62,28 +67,23 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const signup = async (name, email, password) => {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    await updateProfile(userCredential.user, { displayName: name });
-
-    // Create a corresponding user document in Firestore
-    const userRef = doc(firestore, 'users', userCredential.user.uid);
-    await setDoc(userRef, {
-      displayName: name,
-      email: email,
-      accessibleBookIds: [],
-    });
-    
-    await sendEmailVerification(userCredential.user);
-    await userCredential.user.reload();
-    setUser(userCredential.user);
-
-    // Set app user immediately after signup
-    setAppUser({
-      uid: userCredential.user.uid,
-      displayName: name,
-      email: email,
-      accessibleBookIds: [],
-    });
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      await updateProfile(userCredential.user, { displayName: name });
+  
+      console.log("Signup successful, waiting for auth listener to set doc.");
+      setUser(userCredential.user);
+      
+    } catch (error) {
+      console.log("Error during signup:", error)
+      console.error("Error during signup:", error);
+      toast({
+        title: "Signup Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+      throw error;
+    }
   };
 
   const login = (email, password) => {
@@ -91,25 +91,34 @@ export const AuthProvider = ({ children }) => {
   };
 
   const signInWithGoogle = async () => {
-    const provider = new GoogleAuthProvider();
-    const result = await signInWithPopup(auth, provider);
-    const user = result.user;
+    try {
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
 
-    const userRef = doc(firestore, 'users', user.uid);
-    const docSnap = await getDoc(userRef);
+      const userRef = doc(firestore, 'users', user.uid);
+      const docSnap = await getDoc(userRef);
 
-    if (!docSnap.exists()) {
-      await setDoc(userRef, {
-        displayName: user.displayName,
-        email: user.email,
-        accessibleBookIds: [],
+      if (!docSnap.exists()) {
+        const newUser = {
+          displayName: user.displayName,
+          email: user.email,
+          accessibleBookIds: [],
+        };
+        await setDoc(userRef, newUser);
+        console.log("Firestore document set successfully for new Google user.");
+        setAppUser({ uid: user.uid, ...newUser });
+      } else {
+        setAppUser({ uid: user.uid, ...docSnap.data() });
+      }
+    } catch (error) {
+      console.error("Error during Google sign-in:", error);
+      toast({
+        title: "Google Sign-In Failed",
+        description: error.message,
+        variant: "destructive",
       });
-      setAppUser({
-        uid: user.uid,
-        displayName: user.displayName,
-        email: user.email,
-        accessibleBookIds: [],
-      });
+      throw error;
     }
   };
 
@@ -142,6 +151,5 @@ export const AuthProvider = ({ children }) => {
     resendVerificationEmail,
   };
 
-  // FIX: Always render children. The consuming components are responsible for showing loading states.
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
