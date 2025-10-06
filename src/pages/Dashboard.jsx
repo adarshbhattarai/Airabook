@@ -1,9 +1,10 @@
 import React, { useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, BookOpen } from 'lucide-react';
+import { PlusCircle } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import BookItem from '@/components/BookItem';
 
 const Dashboard = () => {
   const { appUser, appLoading } = useAuth();
@@ -28,8 +29,6 @@ const Dashboard = () => {
     );
   }
 
-  // This view will only be shown to users who have at least one book.
-  // New users are redirected from the useEffect hook.
   return (
     <div className="min-h-screen py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto">
@@ -44,16 +43,7 @@ const Dashboard = () => {
             <div className="space-y-4">
                 <h2 className="text-2xl font-bold text-center text-gray-800 mb-6">Your Books</h2>
                 {appUser.accessibleBookIds.map(bookId => (
-                  <Link to={`/book/${bookId}`} key={bookId} className="block bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-violet-100 hover:shadow-2xl transition-all duration-300">
-                     <div className="flex items-center space-x-4">
-                        <BookOpen className="h-8 w-8 text-purple-500" />
-                        <div>
-                          {/* In a real app, you'd fetch the book name here */}
-                          <h3 className="text-xl font-bold text-gray-800">A Baby Book</h3>
-                          <p className="text-gray-600">Click to view journey</p>
-                        </div>
-                     </div>
-                  </Link>
+                  <BookItem key={bookId} bookId={bookId} />
                 ))}
             </div>
         )}
