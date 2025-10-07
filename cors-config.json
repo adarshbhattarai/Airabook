@@ -1,0 +1,6 @@
+[{
+  "origin": ["https://9000-firebase-airabookgit-1758671855100.cluster-f73ibkkuije66wssuontdtbx6q.cloudworkstations.dev"],
+  "method": ["GET", "POST", "PUT", "DELETE"],
+  "responseHeader": ["Content-Type"],
+  "maxAgeSeconds": 3600
+}]
