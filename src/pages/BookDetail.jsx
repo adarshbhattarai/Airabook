@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import {
@@ -352,7 +351,7 @@ const BookDetail = () => {
                             <Button type="submit" size="icon"><PlusCircle className="h-4 w-4"/></Button>
                         </form>
                         <div className="p-4 bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border flex-grow">
-                            <h2 className="text-xl font-bold text-gray-800 mb-4">Content</h2>
+                            <h2 className="text-xl font-bold text-gray-800 mb-4">Chapters</h2>
                             <div className="space-y-1">
                                 {chapters.map(chapter => (
                                     <div key={chapter.id} className="group">
