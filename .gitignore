@@ -1,6 +1,13 @@
 node_modules
 .env.local
 .env
+.env.development
+.env.qa
+.env.staging
+.env.staging.local
+.env.production
+.env.production.local
 functions/.env
 functions/.env.local
 *.log
+functions/serviceAccountKey.json
