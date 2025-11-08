@@ -1,0 +1,9 @@
+node_modules/
+
+# Service account key (keep local copy for development)
+# serviceAccountKey.json
+
+# Test files
+test.js
+
+.env

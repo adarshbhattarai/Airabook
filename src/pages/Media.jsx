@@ -1,62 +1,110 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Camera, Video, Upload, Heart } from 'lucide-react';
+import { Camera, Video, Upload, BookOpen, Image as ImageIcon } from 'lucide-react';
 import { Helmet } from 'react-helmet';
 import { Button } from '@/components/ui/button';
-import { toast } from '@/components/ui/use-toast';
+import { useToast } from '@/components/ui/use-toast';
+import { useAuth } from '@/context/AuthContext';
+
+/**
+ * Convert storage URL to emulator format if running in emulator mode
+ */
+const convertToEmulatorURL = (url) => {
+  if (!url) return url;
+  
+  const useEmulator = import.meta.env.VITE_USE_EMULATOR === 'true' || import.meta.env.MODE === 'development';
+  
+  if (!useEmulator) {
+    return url;
+  }
+  
+  if (url.includes('127.0.0.1:9199') || url.includes('localhost:9199')) {
+    return url;
+  }
+  
+  if (url.includes('storage.googleapis.com')) {
+    try {
+      const urlObj = new URL(url);
+      const pathParts = urlObj.pathname.split('/').filter(p => p);
+      
+      if (pathParts.length >= 1) {
+        const bucket = pathParts[0];
+        const storagePath = pathParts.slice(1).join('/');
+        
+        let emulatorBucket = bucket;
+        if (bucket.endsWith('.appspot.com')) {
+          emulatorBucket = bucket.replace('.appspot.com', '.firebasestorage.app');
+        }
+        
+        const encodedPath = encodeURIComponent(storagePath);
+        const token = urlObj.searchParams.get('token') || 'emulator-token';
+        return `http://127.0.0.1:9199/v0/b/${emulatorBucket}/o/${encodedPath}?alt=media&token=${token}`;
+      }
+    } catch (error) {
+      console.error('Error converting URL to emulator format:', error, url);
+      return url;
+    }
+  }
+  
+  return url;
+};
 
 const Media = () => {
-  const [activeTab, setActiveTab] = useState('photos');
-  const [photos, setPhotos] = useState([]);
-  const [videos, setVideos] = useState([]);
+  const [albums, setAlbums] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const { user, appUser } = useAuth();
+  const navigate = useNavigate();
+  const { toast } = useToast();
 
   useEffect(() => {
-    // Load media from localStorage
-    const savedPhotos = JSON.parse(localStorage.getItem('babyAiraPhotos') || '[]');
-    const savedVideos = JSON.parse(localStorage.getItem('babyAiraVideos') || '[]');
-    
-    // Add some sample data if empty
-    if (savedPhotos.length === 0) {
-      const samplePhotos = [
-        { id: 1, title: "First Smile", date: "2024-01-15" },
-        { id: 2, title: "Tummy Time", date: "2024-01-20" },
-        { id: 3, title: "Bath Time Fun", date: "2024-01-25" },
-        { id: 4, title: "Sleeping Angel", date: "2024-02-01" },
-        { id: 5, title: "Playing with Toys", date: "2024-02-05" },
-        { id: 6, title: "Family Cuddles", date: "2024-02-10" }
-      ];
-      setPhotos(samplePhotos);
-      localStorage.setItem('babyAiraPhotos', JSON.stringify(samplePhotos));
-    } else {
-      setPhotos(savedPhotos);
-    }
+    const fetchAlbums = async () => {
+      if (!user || !appUser) {
+        setLoading(false);
+        return;
+      }
 
-    if (savedVideos.length === 0) {
-      const sampleVideos = [
-        { id: 1, title: "First Laugh", date: "2024-01-18", duration: "0:15" },
-        { id: 2, title: "Learning to Crawl", date: "2024-02-03", duration: "0:45" },
-        { id: 3, title: "Babbling Sounds", date: "2024-02-08", duration: "0:30" }
-      ];
-      setVideos(sampleVideos);
-      localStorage.setItem('babyAiraVideos', JSON.stringify(sampleVideos));
-    } else {
-      setVideos(savedVideos);
-    }
-  }, []);
+      try {
+        setLoading(true);
+        // Get albums from user's accessibleAlbums array
+        const albumsList = appUser.accessibleAlbums || [];
+        setAlbums(albumsList);
+      } catch (error) {
+        console.error('Error fetching albums:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to load albums. Please try again.',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAlbums();
+  }, [user, appUser, toast]);
 
   const handleUpload = () => {
     toast({
       title: "📸 Upload Feature",
-      description: "🚧 This feature isn't implemented yet—but don't worry! You can request it in your next prompt! 🚀",
+      description: "Navigate to a book page to upload media to that album.",
       duration: 5000,
     });
   };
 
+  if (loading || !appUser) {
+    return (
+      <div className="min-h-screen py-8 px-4 flex justify-center items-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-violet-500"></div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen py-8 px-4">
+    <div className="min-h-screen py-8 px-4 bg-gradient-to-br from-violet-50 via-purple-50 to-indigo-50">
       <Helmet>
         <title>Media Gallery - Baby Aira</title>
-        <meta name="description" content="Browse through Baby Aira's precious photo and video memories. Watch her grow and discover new milestones in our beautiful gallery." />
+        <meta name="description" content="Browse through your photo and video albums. Watch precious moments captured with love." />
       </Helmet>
 
       <div className="max-w-7xl mx-auto">
@@ -68,116 +116,88 @@ const Media = () => {
           className="text-center mb-12"
         >
           <h1 className="text-5xl font-bold mb-4 bg-gradient-to-r from-purple-500 to-indigo-500 bg-clip-text text-transparent">
-            Aira's Gallery
+            Media Gallery
           </h1>
           <p className="text-xl text-gray-700 mb-8">
-            Precious moments captured with love
+            Browse your photo and video albums
           </p>
-          
-          <Button
-            onClick={handleUpload}
-            className="bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white px-6 py-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-200"
-          >
-            <Upload className="h-5 w-5 mr-2" />
-            Upload New Media
-          </Button>
         </motion.div>
 
-        {/* Tabs */}
-        <div className="flex justify-center mb-12">
-          <div className="bg-white/70 backdrop-blur-sm rounded-full p-2 shadow-lg border border-violet-100">
-            <button
-              onClick={() => setActiveTab('photos')}
-              className={`flex items-center space-x-2 px-6 py-3 rounded-full transition-all duration-200 ${
-                activeTab === 'photos'
-                  ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-lg'
-                  : 'text-gray-700 hover:bg-violet-50'
-              }`}
-            >
-              <Camera className="h-5 w-5" />
-              <span className="font-medium">Photos</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('videos')}
-              className={`flex items-center space-x-2 px-6 py-3 rounded-full transition-all duration-200 ${
-                activeTab === 'videos'
-                  ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-lg'
-                  : 'text-gray-700 hover:bg-violet-50'
-              }`}
-            >
-              <Video className="h-5 w-5" />
-              <span className="font-medium">Videos</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Photos Grid */}
-        {activeTab === 'photos' && (
+        {/* Albums Grid */}
+        {albums.length === 0 ? (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5 }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
+            className="text-center py-16"
           >
-            {photos.map((photo, index) => (
-              <motion.div
-                key={photo.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
-                className="bg-white/70 backdrop-blur-sm rounded-3xl overflow-hidden shadow-xl border border-violet-100 hover:shadow-2xl transition-all duration-300"
-              >
-                <div className="relative">
-                  <img 
-                    className="w-full h-64 object-cover"
-                    alt={`Baby Aira - ${photo.title}`}
-                   src="https://images.unsplash.com/photo-1506727955196-38974d930ebf" />
-                  <div className="absolute top-4 right-4 bg-white/80 backdrop-blur-sm rounded-full p-2">
-                    <Heart className="h-5 w-5 text-violet-500" />
-                  </div>
-                </div>
-                <div className="p-6">
-                  <h3 className="text-xl font-bold text-gray-800 mb-2">{photo.title}</h3>
-                  <p className="text-gray-600">{new Date(photo.date).toLocaleDateString()}</p>
-                </div>
-              </motion.div>
-            ))}
+            <BookOpen className="h-16 w-16 mx-auto text-gray-400 mb-4" />
+            <h3 className="text-2xl font-bold text-gray-700 mb-2">No Albums Yet</h3>
+            <p className="text-gray-600 mb-6">
+              Start creating books and adding media to see them here.
+            </p>
+            <Button
+              onClick={() => navigate('/dashboard')}
+              className="bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white"
+            >
+              Go to Dashboard
+            </Button>
           </motion.div>
-        )}
-
-        {/* Videos Grid */}
-        {activeTab === 'videos' && (
+        ) : (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5 }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
           >
-            {videos.map((video, index) => (
+            {albums.map((album, index) => (
               <motion.div
-                key={video.id}
+                key={album.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: index * 0.1 }}
-                className="bg-white/70 backdrop-blur-sm rounded-3xl overflow-hidden shadow-xl border border-indigo-100 hover:shadow-2xl transition-all duration-300"
+                onClick={() => navigate(`/media/album/${album.id}`)}
+                className="bg-white/70 backdrop-blur-sm rounded-3xl overflow-hidden shadow-xl border border-violet-100 hover:shadow-2xl transition-all duration-300 cursor-pointer group"
               >
-                <div className="relative">
-                  <img 
-                    className="w-full h-64 object-cover"
-                    alt={`Baby Aira video - ${video.title}`}
-                   src="https://images.unsplash.com/photo-1676664488037-ee497751808b" />
-                  <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-                    <div className="bg-white/90 backdrop-blur-sm rounded-full p-4">
-                      <Video className="h-8 w-8 text-indigo-600" />
+                <div className="relative aspect-square bg-gradient-to-br from-violet-200 to-purple-300">
+                  {album.coverImage ? (
+                    <img
+                      src={convertToEmulatorURL(album.coverImage)}
+                      alt={album.name || 'Album cover'}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      onError={(e) => {
+                        console.error('Failed to load cover image:', album.coverImage);
+                        e.target.style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <BookOpen className="h-16 w-16 text-violet-400" />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-300 flex items-center justify-center">
+                    <div className="opacity-0 group-hover:opacity-100 transition-opacity text-white font-semibold text-lg">
+                      View Album
                     </div>
                   </div>
-                  <div className="absolute bottom-4 right-4 bg-black/70 text-white px-3 py-1 rounded-full text-sm">
-                    {video.duration}
-                  </div>
+                  {(album.mediaCount || 0) > 0 && (
+                    <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm rounded-full px-3 py-1 flex items-center gap-2 shadow-lg">
+                      <ImageIcon className="h-4 w-4 text-violet-600" />
+                      <span className="text-sm font-semibold text-gray-800">
+                        {album.mediaCount || 0}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="p-6">
-                  <h3 className="text-xl font-bold text-gray-800 mb-2">{video.title}</h3>
-                  <p className="text-gray-600">{new Date(video.date).toLocaleDateString()}</p>
+                  <h3 className="text-xl font-bold text-gray-800 mb-2 truncate">
+                    {album.name || 'Untitled Album'}
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    {(album.mediaCount || 0) === 0
+                      ? 'No media yet'
+                      : `${album.mediaCount || 0} ${(album.mediaCount || 0) === 1 ? 'item' : 'items'}`}
+                  </p>
                 </div>
               </motion.div>
             ))}
