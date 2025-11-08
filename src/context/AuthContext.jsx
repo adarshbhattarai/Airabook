@@ -45,8 +45,10 @@ export const AuthProvider = ({ children }) => {
           // If a user is authenticated but no Firestore doc exists, create it.
           const newUser = {
             displayName: user.displayName,
+            displayNameLower: (user.displayName || '').toLowerCase(),
             email: user.email,
             accessibleBookIds: [],
+            accessibleAlbums: [],
           };
           await setDoc(userRef, newUser);
           console.log("Firestore document created for new user via auth listener.");
@@ -102,8 +104,10 @@ export const AuthProvider = ({ children }) => {
       if (!docSnap.exists()) {
         const newUser = {
           displayName: user.displayName,
+          displayNameLower: (user.displayName || '').toLowerCase(),
           email: user.email,
           accessibleBookIds: [],
+          accessibleAlbums: [],
         };
         await setDoc(userRef, newUser);
         console.log("Firestore document set successfully for new Google user.");

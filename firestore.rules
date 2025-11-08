@@ -1,0 +1,113 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow read/write access to all documents for development
+    match /{document=**} {
+      allow read, write: if true;
+    }
+
+    // Books collection with public/private and co-author support
+    match /books/{bookId} {
+      // Helper function to get book data
+      function bookData() {
+        return get(/databases/$(database)/documents/books/$(bookId)).data;
+      }
+
+      // Helper function to check if user is owner
+      function isOwner() {
+        return request.auth != null && bookData().ownerId == request.auth.uid;
+      }
+
+      // Helper function to check if user is co-author
+      function isCoAuthor() {
+        return request.auth != null && bookData().members != null && 
+               bookData().members[request.auth.uid] == "Co-author";
+      }
+
+      // Helper function to check if user has access
+      function hasAccess() {
+        return isOwner() || isCoAuthor() || 
+               (bookData().isPublic == true && request.auth != null);
+      }
+
+      // Read access: owner, co-authors, or public books
+      allow read: if request.auth != null && hasAccess();
+
+      // Create access: authenticated users (book creation)
+      allow create: if request.auth != null;
+
+      // Update access:
+      // - Owner: full access
+      // - Co-author: can update pages/chapters but not isPublic, members, or delete chapters
+      allow update: if request.auth != null && (
+        isOwner() || 
+        (isCoAuthor() && 
+         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isPublic', 'members', 'ownerId']) &&
+         request.resource.data.isPublic == resource.data.isPublic &&
+         request.resource.data.members == resource.data.members &&
+         request.resource.data.ownerId == resource.data.ownerId)
+      );
+
+      // Delete access: only owner
+      allow delete: if request.auth != null && isOwner();
+
+      // Chapters subcollection
+      match /chapters/{chapterId} {
+        allow read: if request.auth != null && hasAccess();
+        allow create: if request.auth != null && (isOwner() || isCoAuthor());
+        allow update: if request.auth != null && (isOwner() || isCoAuthor());
+        allow delete: if request.auth != null && isOwner(); // Only owner can delete chapters
+
+        // Pages subcollection
+        match /pages/{pageId} {
+          allow read: if request.auth != null && hasAccess();
+          allow create: if request.auth != null && (isOwner() || isCoAuthor());
+          allow update: if request.auth != null && (isOwner() || isCoAuthor());
+          allow delete: if request.auth != null && (isOwner() || isCoAuthor());
+        }
+      }
+    }
+
+    // Invites collection
+    match /invites/{inviteId} {
+      // Helper function to check if user is the inviter (book owner)
+      function isInviter() {
+        return request.auth != null && resource.data.invitedBy == request.auth.uid;
+      }
+
+      // Helper function to check if user is the invitee
+      function isInvitee() {
+        return request.auth != null && request.auth.token.email == resource.data.email;
+      }
+
+      allow read: if request.auth != null && (isInviter() || isInvitee());
+      allow create: if request.auth != null; // Book owner creates invites
+      allow update: if request.auth != null && isInvitee(); // Only invitee can accept
+      allow delete: if request.auth != null && (isInviter() || isInvitee());
+    }
+
+    // Albums collection - single document per album (no subcollections)
+    match /albums/{albumId} {
+      // Helper function to check album access
+      function hasAlbumAccess() {
+        return request.auth != null && (
+          resource.data.accessPermission.ownerId == request.auth.uid ||
+          resource.data.accessPermission.accessType == "public" ||
+          (resource.data.accessPermission.accessType == "shared" &&
+           request.auth.uid in resource.data.accessPermission.sharedWith)
+        );
+      }
+
+      allow read: if request.auth != null && hasAlbumAccess();
+
+      allow create: if request.auth != null && 
+        request.resource.data.accessPermission.ownerId == request.auth.uid;
+
+      allow update: if request.auth != null &&
+        resource.data.accessPermission.ownerId == request.auth.uid;
+
+      allow delete: if request.auth != null &&
+        resource.data.accessPermission.ownerId == request.auth.uid;
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -10,9 +10,12 @@ const Dashboard = () => {
   const { appUser, appLoading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [deletedBooks, setDeletedBooks] = useState(new Set());
 
   useEffect(() => {
-    if (!appLoading && appUser && (!appUser.accessibleBookIds || appUser.accessibleBookIds.length === 0)) {
+    // Check if user has any books (handle both old and new structure)
+    const hasBooks = appUser?.accessibleBookIds && appUser.accessibleBookIds.length > 0;
+    if (!appLoading && appUser && !hasBooks) {
       toast({
         title: "Welcome!",
         description: "Let's create your first baby book to get started.",
@@ -21,6 +24,10 @@ const Dashboard = () => {
     }
   }, [appUser, appLoading, navigate, toast]);
 
+  const handleBookDeleted = (bookId) => {
+    setDeletedBooks(prev => new Set([...prev, bookId]));
+  };
+
   if (appLoading || !appUser) {
     return (
         <div className="flex justify-center items-center min-h-screen">
@@ -28,6 +35,16 @@ const Dashboard = () => {
         </div>
     );
   }
+
+  // Extract bookIds from accessibleBookIds (handle both old string array and new object array)
+  const books = (appUser.accessibleBookIds || []).map(item => {
+    if (typeof item === 'string') {
+      // Old format - return minimal object
+      return { bookId: item, title: 'Untitled Book', coverImage: null };
+    }
+    // New format - return full object
+    return item;
+  }).filter(book => !deletedBooks.has(book.bookId));
 
   return (
     <div className="min-h-screen py-12 px-4 sm:px-6 lg:px-8">
@@ -39,12 +56,18 @@ const Dashboard = () => {
             </Button>
         </div>
 
-        {appUser.accessibleBookIds && appUser.accessibleBookIds.length > 0 && (
+        {books.length > 0 && (
             <div className="space-y-4">
                 <h2 className="text-2xl font-bold text-center text-gray-800 mb-6">Your Books</h2>
-                {appUser.accessibleBookIds.map(bookId => (
-                  <BookItem key={bookId} bookId={bookId} />
-                ))}
+                {books.map(book => (
+                    <BookItem 
+                      key={book.bookId} 
+                      bookId={book.bookId}
+                      bookTitle={book.title}
+                      coverImage={book.coverImage}
+                      onBookDeleted={handleBookDeleted}
+                    />
+                  ))}
             </div>
         )}
 

@@ -1,2 +1,6 @@
 node_modules
 .env.local
+.env
+functions/.env
+functions/.env.local
+*.log

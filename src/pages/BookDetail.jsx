@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
-  doc, getDoc, collection, getDocs, addDoc, deleteDoc, updateDoc, writeBatch, query, orderBy, arrayUnion, arrayRemove
+  doc, getDoc, collection, getDocs, addDoc, deleteDoc, updateDoc, writeBatch, query, orderBy, arrayUnion, arrayRemove, where, limit
 } from 'firebase/firestore';
 import { firestore, storage, functions } from '@/lib/firebase';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
@@ -13,7 +13,7 @@ import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import {
-  Trash2, PlusCircle, ChevronRight, ChevronDown, ArrowLeft, ArrowRight, UploadCloud, GripVertical, MoreVertical, ChevronLeft, Sparkles
+  Trash2, PlusCircle, ChevronRight, ChevronDown, ArrowLeft, ArrowRight, UploadCloud, GripVertical, MoreVertical, ChevronLeft, Sparkles, Globe, Users, UserPlus, X
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
@@ -160,23 +160,27 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description }) =
 // ======================
 // PageEditor (UPDATED)
 // ======================
-const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNavigate, pageIndex, totalPages }) => {
+const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNavigate, pageIndex, totalPages, clearEditor }) => {
   const [note, setNote] = useState(page.note || '');
   const [isSaving, setIsSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({});
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [aiBusy, setAiBusy] = useState(false);
-  const [aiStyle, setAiStyle] = useState('Improve clarity');
+  const [aiStyle, setAiStyle] = useState('');
+  const [showStyleDropdown, setShowStyleDropdown] = useState(false);
 
   // AI preview dialog state
   const [aiPreviewOpen, setAiPreviewOpen] = useState(false);
   const [aiPreviewText, setAiPreviewText] = useState('');
+  const [isAutoSaving, setIsAutoSaving] = useState(false);
+  const [pendingNote, setPendingNote] = useState(null);
 
   const quillRef = useRef(null);
   const { user } = useAuth();
   const { toast } = useToast();
   const fileInputRef = useRef(null);
+  const saveTimeoutRef = useRef(null);
 
   const mediaList = page.media || [];
   const previewItem = mediaList[previewIndex] || null;
@@ -184,6 +188,35 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
   useEffect(() => {
     setNote(page.note || '');
   }, [page]);
+
+  // Clear editor when clearEditor prop is true
+  useEffect(() => {
+    if (clearEditor) {
+      setNote('');
+    }
+  }, [clearEditor]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Close style dropdown when clicking outside
+  useEffect(() => {
+    if (!showStyleDropdown) return;
+    const handleClickOutside = (event) => {
+      const target = event.target;
+      if (!target.closest('.style-dropdown-container')) {
+        setShowStyleDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showStyleDropdown]);
 
   // keyboard arrows for media modal
   useEffect(() => {
@@ -210,6 +243,39 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
       toast({ title: 'Error', description: 'Failed to save page.', variant: 'destructive' });
     }
     setIsSaving(false);
+  };
+
+  const autoSave = async () => {
+    if (!note || note === page.note) return; // Don't save if no changes
+    
+    setIsAutoSaving(true);
+    const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', page.id);
+    const plain = stripHtml(note);
+    const shortNote = plain.substring(0, 40) + (plain.length > 40 ? '...' : '');
+    
+    try {
+      await updateDoc(pageRef, { note });
+      onPageUpdate({ ...page, note, shortNote });
+      console.log('Auto-saved page content');
+    } catch (error) {
+      console.error('Auto-save failed:', error);
+    } finally {
+      setIsAutoSaving(false);
+    }
+  };
+
+  const handleNoteChange = (newNote) => {
+    setNote(newNote);
+    
+    // Clear existing timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    
+    // Set new timeout for auto-save (2 seconds after user stops typing)
+    saveTimeoutRef.current = setTimeout(() => {
+      autoSave();
+    }, 2000);
   };
 
   const handleFileSelect = (event) => {
@@ -327,13 +393,18 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
   const callRewrite = async () => {
     setAiBusy(true);
     try {
-      const call = httpsCallable(functions, 'rewriteNote'); // name must match your deployed callable
+      const call = httpsCallable(functions, 'rewriteNote');
       const { data } = await call({
-        text: stripHtml(note), // or send raw HTML if you prefer
-        style: aiStyle,
+        note: note, // Full note content (HTML or plain text)
+        noteText: stripHtml(note), // Plain text version (fallback)
+        prompt: aiStyle, // User-selected preset or custom prompt (up to 25 characters)
         maxTokens: 512,
+        bookId: bookId, // Book ID for context
+        chapterId: chapterId, // Chapter ID for context
+        pageId: page.id, // Page ID for context
       });
-      const candidate = data?.rewritten ?? '';
+      // Handle both direct response and wrapped response structure
+      const candidate = data?.rewritten ?? data?.result?.rewritten ?? '';
       if (!candidate) {
         toast({ title: 'No rewrite returned', description: 'Try again.', variant: 'destructive' });
         return;
@@ -349,20 +420,29 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
 
   const insertAtCursor = () => {
     const editor = quillRef.current?.getEditor?.();
-    if (!editor) return;
-
     const candidate = aiPreviewText || '';
-    const range = editor.getSelection(true) || { index: editor.getLength(), length: 0 };
 
-    // Insert at selection
-    editor.setSelection(range.index, range.length);
-    if (isLikelyHtml(candidate)) {
-      editor.clipboard.dangerouslyPasteHTML(range.index, candidate);
-    } else {
-      editor.insertText(range.index, candidate);
+    if (!editor) {
+      // Fallback: update state directly
+      const newNote = note + candidate;
+      setPendingNote(newNote);
+      return;
     }
-    editor.setSelection(range.index + (isLikelyHtml(candidate) ? 0 : candidate.length), 0);
-    setAiPreviewOpen(false);
+
+    const range = editor.getSelection(true);
+    const currentIndex = range ? range.index : editor.getLength();
+
+    // Insert at cursor position
+    if (isLikelyHtml(candidate)) {
+      editor.clipboard.dangerouslyPasteHTML(currentIndex, candidate);
+    } else {
+      editor.insertText(currentIndex, candidate);
+    }
+
+    // Get updated content
+    const updatedContent = editor.root.innerHTML;
+    setPendingNote(updatedContent);
+    setNote(updatedContent);
   };
 
   const replaceAll = () => {
@@ -370,20 +450,83 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
     const candidate = aiPreviewText || '';
 
     if (!editor) {
-      setNote(candidate);
-      setAiPreviewOpen(false);
+      // Fallback: update state directly
+      setPendingNote(candidate);
       return;
     }
 
-    editor.setSelection(0, editor.getLength());
-    editor.deleteText(0, editor.getLength());
+    // Replace all content
+    const length = editor.getLength();
+    editor.deleteText(0, length);
 
     if (isLikelyHtml(candidate)) {
       editor.clipboard.dangerouslyPasteHTML(0, candidate);
     } else {
       editor.insertText(0, candidate);
     }
-    editor.setSelection(editor.getLength(), 0);
+
+    // Get updated content
+    const updatedContent = editor.root.innerHTML;
+    setPendingNote(updatedContent);
+    setNote(updatedContent);
+  };
+
+  const handleSaveChanges = async () => {
+    if (!pendingNote) return;
+    
+    setIsSaving(true);
+    const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', page.id);
+    const plain = stripHtml(pendingNote);
+    const shortNote = plain.substring(0, 40) + (plain.length > 40 ? '...' : '');
+    
+    try {
+      await updateDoc(pageRef, { note: pendingNote });
+      
+      // Update editor content
+      const editor = quillRef.current?.getEditor?.();
+      if (editor) {
+        const length = editor.getLength();
+        editor.deleteText(0, length);
+        if (isLikelyHtml(pendingNote)) {
+          editor.clipboard.dangerouslyPasteHTML(0, pendingNote);
+        } else {
+          editor.insertText(0, pendingNote);
+        }
+      }
+      
+      setNote(pendingNote);
+      onPageUpdate({ ...page, note: pendingNote, shortNote });
+      setPendingNote(null);
+      setAiPreviewOpen(false);
+      toast({ title: 'Success', description: 'Changes saved successfully.' });
+    } catch (error) {
+      console.error('Failed to save changes:', error);
+      toast({ 
+        title: 'Error', 
+        description: 'Failed to save changes. Please try again.', 
+        variant: 'destructive' 
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancelChanges = () => {
+    // Restore original content if changes were made
+    if (pendingNote) {
+      const editor = quillRef.current?.getEditor?.();
+      if (editor) {
+        const length = editor.getLength();
+        editor.deleteText(0, length);
+        if (isLikelyHtml(page.note)) {
+          editor.clipboard.dangerouslyPasteHTML(0, page.note || '');
+        } else {
+          editor.insertText(0, page.note || '');
+        }
+      }
+      setNote(page.note || '');
+    }
+    setPendingNote(null);
     setAiPreviewOpen(false);
   };
 
@@ -500,7 +643,7 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
             <ReactQuill
               ref={quillRef}
               value={note}
-              onChange={setNote}
+              onChange={handleNoteChange}
               modules={quillModules}
               formats={quillFormats}
               theme="snow"
@@ -522,22 +665,87 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
             </Button>
           </div>
           <div className="flex items-center space-x-2">
+            {isAutoSaving && (
+              <span className="text-xs text-gray-500 flex items-center">
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500 mr-1"></div>
+                Auto-saving...
+              </span>
+            )}
             <div className="flex items-center gap-2">
-              <select
+              <div className="relative flex items-center style-dropdown-container">
+                <Input
+                  type="text"
                 value={aiStyle}
                 onChange={(e) => setAiStyle(e.target.value)}
-                className="text-sm border rounded-md px-2 py-1"
-              >
-                <option>Improve clarity</option>
-                <option>Warm & supportive</option>
-                <option>Concise summary</option>
-                <option>Fix grammar only</option>
-              </select>
+                  maxLength={25}
+                  placeholder="Custom style or choose preset..."
+                  className="text-sm w-48 h-9 rounded-r-none border-r-0 pr-2"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setShowStyleDropdown(!showStyleDropdown);
+                  }}
+                  className="h-9 rounded-l-none px-2"
+                >
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+                {showStyleDropdown && (
+                  <div className="absolute top-full right-0 mt-1 z-50 bg-white border rounded-md shadow-lg min-w-[200px]">
+                    <div className="py-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAiStyle('Improve clarity');
+                          setShowStyleDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
+                      >
+                        Improve clarity
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAiStyle('Warm & supportive');
+                          setShowStyleDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
+                      >
+                        Warm & supportive
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAiStyle('Concise summary');
+                          setShowStyleDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
+                      >
+                        Concise summary
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAiStyle('Fix grammar only');
+                          setShowStyleDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
+                      >
+                        Fix grammar only
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
               <Button
                 type="button"
                 variant="secondary"
                 size="sm"
-                disabled={aiBusy || !stripHtml(note)?.trim()}
+                disabled={aiBusy || !stripHtml(note)?.trim() || !aiStyle?.trim()}
                 onClick={callRewrite}
                 className="flex items-center gap-1"
               >
@@ -607,15 +815,29 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
       </Dialog>
 
       {/* AI Preview Modal */}
-      <Dialog open={aiPreviewOpen} onOpenChange={(open) => setAiPreviewOpen(open)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>AI suggestion ({aiStyle})</DialogTitle>
-            <DialogDescription>Review the suggested rewrite. Insert at cursor or replace the entire note.</DialogDescription>
+      <Dialog open={aiPreviewOpen} onOpenChange={(open) => !open && handleCancelChanges()}>
+        <DialogContent className="max-w-3xl bg-gradient-to-br from-violet-50 via-rose-50 to-amber-50 border-2 border-violet-200 shadow-2xl">
+          {/* Header with prompt type */}
+          <DialogHeader className="bg-white rounded-t-lg p-6 border-b-2 border-violet-200">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-violet-100 rounded-full">
+                <Sparkles className="h-6 w-6 text-violet-600" />
+              </div>
+              <div className="flex-1">
+                <DialogTitle className="text-2xl font-bold text-violet-900">
+                  Suggestion
+                </DialogTitle>
+                <DialogDescription className="text-base text-violet-700 mt-1">
+                  {aiStyle || 'Custom prompt'}
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
 
-          <div className="mt-2 max-h-[50vh] overflow-auto rounded-md border p-3 bg-white prose prose-sm">
+          {/* Suggested content */}
+          <div className="p-6 bg-white/90 backdrop-blur-sm rounded-lg mx-4 my-4 max-h-[50vh] overflow-auto border border-violet-100 shadow-inner">
             <div
+              className="prose prose-lg max-w-none text-gray-800"
               dangerouslySetInnerHTML={{
                 __html: isLikelyHtml(aiPreviewText)
                   ? aiPreviewText
@@ -624,10 +846,60 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
             />
           </div>
 
-          <div className="mt-4 flex items-center justify-end gap-2">
-            <Button variant="outline" onClick={() => setAiPreviewOpen(false)}>Cancel</Button>
-            <Button variant="secondary" onClick={insertAtCursor}>Insert at cursor</Button>
-            <Button variant="default" onClick={replaceAll}>Replace all</Button>
+          {/* Action buttons */}
+          <div className="px-6 pb-6 space-y-3">
+            <div className="flex items-center justify-center gap-3">
+              <Button 
+                variant="outline" 
+                onClick={insertAtCursor}
+                className="bg-white hover:bg-violet-50 border-violet-300 text-violet-700 hover:text-violet-900"
+              >
+                Insert at cursor
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={replaceAll}
+                className="bg-white hover:bg-rose-50 border-rose-300 text-rose-700 hover:text-rose-900"
+              >
+                Replace all
+              </Button>
+            </div>
+            
+            {pendingNote && (
+              <div className="pt-3 border-t border-violet-200">
+                <p className="text-sm text-center text-gray-600 mb-3">
+                  Changes are ready. Save to update or cancel to discard.
+                </p>
+                <div className="flex items-center justify-center gap-3">
+                  <Button 
+                    variant="outline" 
+                    onClick={handleCancelChanges}
+                    className="bg-white hover:bg-gray-50 border-gray-300"
+                  >
+                    Cancel
+                  </Button>
+                  <Button 
+                    onClick={handleSaveChanges}
+                    disabled={isSaving}
+                    className="bg-gradient-to-r from-violet-500 to-rose-500 hover:from-violet-600 hover:to-rose-600 text-white shadow-lg"
+                  >
+                    {isSaving ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </div>
+              </div>
+            )}
+            
+            {!pendingNote && (
+              <div className="flex items-center justify-center pt-3 border-t border-violet-200">
+                <Button 
+                  variant="outline" 
+                  onClick={handleCancelChanges}
+                  className="bg-white hover:bg-gray-50 border-gray-300"
+                >
+                  Close
+                </Button>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
@@ -639,6 +911,7 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
 
 const BookDetail = () => {
   const { bookId } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [book, setBook] = useState(null);
   const [chapters, setChapters] = useState([]);
@@ -649,13 +922,27 @@ const BookDetail = () => {
   const [selectedPageId, setSelectedPageId] = useState(null);
   const [expandedChapters, setExpandedChapters] = useState(new Set());
   const [modalState, setModalState] = useState({ isOpen: false });
+  const [clearEditor, setClearEditor] = useState(false);
+  const [editingChapterId, setEditingChapterId] = useState(null);
+  const [editingChapterTitle, setEditingChapterTitle] = useState('');
+  const [saveConfirmOpen, setSaveConfirmOpen] = useState(false);
+  const [pendingChapterEdit, setPendingChapterEdit] = useState(null);
+  const [publishModalOpen, setPublishModalOpen] = useState(false);
+  const [coAuthorModalOpen, setCoAuthorModalOpen] = useState(false);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [coAuthorUsers, setCoAuthorUsers] = useState([]);
+  const searchTimeoutRef = useRef(null);
   const { toast } = useToast();
 
   const fetchChapters = useCallback(async () => {
     if (!bookId) return;
     const chaptersRef = collection(firestore, 'books', bookId, 'chapters');
     const qy = query(chaptersRef, orderBy('order'));
+    console.log('chaptersSnap', qy);
     const chaptersSnap = await getDocs(qy);
+    console.log('chaptersSnap', chaptersSnap);
     const chaptersList = chaptersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     setChapters(chaptersList);
     if (chaptersList.length > 0 && !selectedChapterId) {
@@ -694,6 +981,237 @@ const BookDetail = () => {
 
   useEffect(() => { fetchPages(selectedChapterId); }, [selectedChapterId, fetchPages]);
 
+  // Permission checks
+  const isOwner = book?.ownerId === user?.uid;
+  const isCoAuthor = book?.members?.[user?.uid] === 'Co-author';
+  const canEdit = isOwner || isCoAuthor;
+
+  // User search function
+  const searchUsers = useCallback(async (searchTerm) => {
+    if (!searchTerm || searchTerm.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const searchLower = searchTerm.toLowerCase();
+      const usersRef = collection(firestore, 'users');
+      let results = [];
+
+      // Check if search term looks like an email
+      if (searchTerm.includes('@')) {
+        // Search by email
+        const emailQuery = query(
+          usersRef,
+          where('email', '==', searchTerm.toLowerCase()),
+          limit(1)
+        );
+        const emailSnapshot = await getDocs(emailQuery);
+        results = emailSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      } else {
+        // Search by displayNameLower
+        // Note: Firestore requires a composite index for orderBy + where
+        // If index doesn't exist, catch error and try without orderBy
+        try {
+          const q = query(
+            usersRef,
+            orderBy('displayNameLower'),
+            where('displayNameLower', '>=', searchLower),
+            where('displayNameLower', '<=', searchLower + '\uf8ff'),
+            limit(10)
+          );
+          const snapshot = await getDocs(q);
+          results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        } catch (indexError) {
+          // If index doesn't exist, fetch all and filter client-side (less efficient but works)
+          console.warn('Firestore index not found, fetching all users:', indexError);
+          const allUsersSnapshot = await getDocs(usersRef);
+          results = allUsersSnapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(u => {
+              const nameLower = (u.displayNameLower || '').toLowerCase();
+              return nameLower.includes(searchLower);
+            })
+            .slice(0, 10);
+        }
+      }
+      
+      // Filter results
+      results = results.filter(u => {
+        // Filter out current user
+        if (u.id === user?.uid) return false;
+        // Filter out already added co-authors
+        if (book?.members?.[u.id]) return false;
+        return true;
+      });
+      
+      setSearchResults(results);
+    } catch (error) {
+      console.error('Error searching users:', error);
+      toast({
+        title: 'Search Error',
+        description: 'Failed to search users. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSearching(false);
+    }
+  }, [user, book, toast]);
+
+  // Debounced user search
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    if (userSearchQuery && coAuthorModalOpen) {
+      searchTimeoutRef.current = setTimeout(() => {
+        searchUsers(userSearchQuery);
+      }, 500);
+    } else {
+      setSearchResults([]);
+    }
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [userSearchQuery, coAuthorModalOpen, searchUsers]);
+
+  // Handle publish/unpublish
+  const handlePublishToggle = async () => {
+    if (!isOwner) return;
+
+    try {
+      const bookRef = doc(firestore, 'books', bookId);
+      await updateDoc(bookRef, {
+        isPublic: !book.isPublic,
+        updatedAt: new Date(),
+      });
+      
+      setBook(prev => ({ ...prev, isPublic: !prev.isPublic }));
+      toast({
+        title: book.isPublic ? 'Book Unpublished' : 'Book Published',
+        description: book.isPublic 
+          ? 'Your book is now private.' 
+          : 'Your book is now public. Anyone with the link can view it.',
+      });
+      setPublishModalOpen(false);
+    } catch (error) {
+      console.error('Error updating book visibility:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to update book visibility. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Handle invite co-author
+  const handleInviteCoAuthor = async (userToInvite) => {
+    if (!isOwner) return;
+
+    try {
+      const inviteCoAuthorFn = httpsCallable(functions, 'inviteCoAuthor');
+      await inviteCoAuthorFn({
+        bookId,
+        uid: userToInvite.id,
+        email: userToInvite.email,
+        username: userToInvite.displayName,
+      });
+
+      toast({
+        title: 'Invitation Sent',
+        description: `${userToInvite.displayName} has been invited as a co-author.`,
+      });
+
+      // Refresh book data
+      const bookRef = doc(firestore, 'books', bookId);
+      const bookSnap = await getDoc(bookRef);
+      if (bookSnap.exists()) {
+        setBook({ id: bookSnap.id, ...bookSnap.data() });
+      }
+
+      // Clear search
+      setUserSearchQuery('');
+      setSearchResults([]);
+    } catch (error) {
+      console.error('Error inviting co-author:', error);
+      toast({
+        title: 'Invitation Failed',
+        description: error.message || 'Failed to send invitation. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Handle remove co-author
+  const handleRemoveCoAuthor = async (userId) => {
+    if (!isOwner) return;
+
+    try {
+      const bookRef = doc(firestore, 'books', bookId);
+      const updatedMembers = { ...book.members };
+      delete updatedMembers[userId];
+      
+      await updateDoc(bookRef, {
+        members: updatedMembers,
+        updatedAt: new Date(),
+      });
+
+      setBook(prev => ({ ...prev, members: updatedMembers }));
+      toast({
+        title: 'Co-Author Removed',
+        description: 'The co-author has been removed from this book.',
+      });
+    } catch (error) {
+      console.error('Error removing co-author:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to remove co-author. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Get co-authors list (excluding owner)
+  const coAuthors = book?.members 
+    ? Object.entries(book.members)
+        .filter(([uid, role]) => uid !== book.ownerId && role === 'Co-author')
+        .map(([uid]) => uid)
+    : [];
+
+  // Fetch co-author user details
+  useEffect(() => {
+    const fetchCoAuthorDetails = async () => {
+      if (coAuthors.length === 0) {
+        setCoAuthorUsers([]);
+        return;
+      }
+
+      try {
+        const userPromises = coAuthors.map(async (uid) => {
+          const userRef = doc(firestore, 'users', uid);
+          const userSnap = await getDoc(userRef);
+          if (userSnap.exists()) {
+            return { id: uid, ...userSnap.data() };
+          }
+          return { id: uid, displayName: 'Unknown User', email: '' };
+        });
+        const users = await Promise.all(userPromises);
+        setCoAuthorUsers(users);
+      } catch (error) {
+        console.error('Error fetching co-author details:', error);
+      }
+    };
+
+    if (coAuthorModalOpen) {
+      fetchCoAuthorDetails();
+    }
+  }, [coAuthors, coAuthorModalOpen]);
+
   const openDeleteModal = (type, data) => {
     setModalState({
       isOpen: true,
@@ -715,6 +1233,15 @@ const BookDetail = () => {
   };
 
   const handleDeleteChapter = async (chapterId) => {
+    if (!isOwner) {
+      toast({
+        title: 'Permission Denied',
+        description: 'Only the book owner can delete chapters.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     toast({ title: 'Deleting Chapter...', description: 'This may take a moment.' });
     const chapterRef = doc(firestore, 'books', bookId, 'chapters', chapterId);
     await deleteDoc(chapterRef);
@@ -849,6 +1376,14 @@ const BookDetail = () => {
 
   const handleCreateChapter = async (e) => {
     e.preventDefault();
+    if (!canEdit) {
+      toast({
+        title: 'Permission Denied',
+        description: 'You do not have permission to create chapters.',
+        variant: 'destructive',
+      });
+      return;
+    }
     if (!newChapterTitle.trim() || !user) return;
     const newOrder = getMidpointString(chapters[chapters.length - 1]?.order);
     const newChapterData = { title: newChapterTitle, order: newOrder, pagesSummary: [], createdAt: new Date(), ownerId: user.uid };
@@ -858,7 +1393,19 @@ const BookDetail = () => {
   };
 
   const handleAddPage = async () => {
+    if (!canEdit) {
+      toast({
+        title: 'Permission Denied',
+        description: 'You do not have permission to add pages.',
+        variant: 'destructive',
+      });
+      return;
+    }
     if (!selectedChapterId) return;
+    
+    // Clear the editor form content first
+    setClearEditor(true);
+    
     const newOrder = getMidpointString(pages[pages.length - 1]?.order);
     const newPageData = { note: '', media: [], createdAt: new Date(), order: newOrder };
 
@@ -876,10 +1423,13 @@ const BookDetail = () => {
       ...c,
       pagesSummary: [...(c.pagesSummary || []), newPageSummary].sort((a, b) => a.order.localeCompare(b.order))
     } : c));
+    
+    // Reset the clear editor flag
+    setClearEditor(false);
     toast({ title: 'New Page Added' });
   };
 
-  const handlePageUpdate = (update) => {
+  const handlePageUpdate = async (update) => {
     setPages(prevPages => {
       // Figure out the current page being edited
       const current = prevPages.find(p => p.id === selectedPageId);
@@ -890,16 +1440,36 @@ const BookDetail = () => {
       // Update pages array
       const nextPages = prevPages.map(p => p.id === updatedPage.id ? updatedPage : p);
   
-      // If shortNote provided, reflect it in the chapter sidebar
+      // If shortNote provided, reflect it in the chapter sidebar and update Firestore
       if (updatedPage.shortNote) {
         const chapter = chapters.find(c => c.id === selectedChapterId);
         if (chapter) {
-          const updatedPagesSummary = chapter.pagesSummary.map(ps =>
-            ps.pageId === updatedPage.id ? { ...ps, shortNote: updatedPage.shortNote } : ps
-          );
+          console.log(updatedPage.shortNote);
+
+          const updatedPagesSummary = chapter.pagesSummary.map(ps => {
+            console.log(ps.pageId, updatedPage.id);
+            return ps.pageId === updatedPage.id ? { ...ps, shortNote: updatedPage.shortNote } : ps;
+          });
+          
+          // Update local state
           setChapters(chapters.map(c =>
             c.id === selectedChapterId ? { ...c, pagesSummary: updatedPagesSummary } : c
           ));
+          
+          // Update Firestore
+          const chapterRef = doc(firestore, 'books', bookId, 'chapters', selectedChapterId);
+          updateDoc(chapterRef, { pagesSummary: updatedPagesSummary })
+            .then(() => {
+              console.log('Chapter pagesSummary updated in Firestore');
+            })
+            .catch((error) => {
+              console.error('Failed to update chapter in Firestore:', error);
+              toast({ 
+                title: 'Update Error', 
+                description: 'Failed to update chapter summary in database.', 
+                variant: 'destructive' 
+              });
+            });
         }
       }
   
@@ -907,19 +1477,296 @@ const BookDetail = () => {
     });
   };
   
+  // ---------- Chapter Title Editing ----------
+  const handleStartEditChapter = (chapter) => {
+    if (!canEdit) {
+      toast({
+        title: 'Permission Denied',
+        description: 'You do not have permission to edit chapters.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (editingChapterId && editingChapterId !== chapter.id) {
+      // There's an unsaved edit in another chapter
+      setPendingChapterEdit({ chapterId: chapter.id, originalTitle: chapter.title });
+      setSaveConfirmOpen(true);
+      return;
+    }
+    setEditingChapterId(chapter.id);
+    setEditingChapterTitle(chapter.title);
+  };
+
+  const handleSaveChapterTitle = async (chapterId) => {
+    const trimmedTitle = editingChapterTitle.trim();
+    if (!trimmedTitle) {
+      toast({ 
+        title: 'Error', 
+        description: 'Chapter title cannot be empty.', 
+        variant: 'destructive' 
+      });
+      return;
+    }
+
+    if (trimmedTitle === chapters.find(c => c.id === chapterId)?.title) {
+      // No changes, just exit edit mode
+      setEditingChapterId(null);
+      setEditingChapterTitle('');
+      return;
+    }
+
+    try {
+      const chapterRef = doc(firestore, 'books', bookId, 'chapters', chapterId);
+      await updateDoc(chapterRef, { title: trimmedTitle });
+      
+      setChapters(chapters.map(c => 
+        c.id === chapterId ? { ...c, title: trimmedTitle } : c
+      ));
+      
+      setEditingChapterId(null);
+      setEditingChapterTitle('');
+      toast({ title: 'Chapter updated', description: 'Chapter title has been saved.' });
+    } catch (error) {
+      console.error('Failed to update chapter title:', error);
+      toast({ 
+        title: 'Update Error', 
+        description: 'Failed to update chapter title. Please try again.', 
+        variant: 'destructive' 
+      });
+    }
+  };
+
+  const handleCancelChapterEdit = () => {
+    setEditingChapterId(null);
+    setEditingChapterTitle('');
+    setPendingChapterEdit(null);
+  };
+
+  const handleChapterTitleBlur = () => {
+    if (editingChapterId) {
+      const chapter = chapters.find(c => c.id === editingChapterId);
+      const hasChanges = editingChapterTitle.trim() !== chapter?.title;
+      
+      if (hasChanges) {
+        setSaveConfirmOpen(true);
+      } else {
+        handleCancelChapterEdit();
+      }
+    }
+  };
+
+  const handleSaveConfirm = async () => {
+    if (pendingChapterEdit) {
+      // User wants to edit another chapter, save current first
+      await handleSaveChapterTitle(editingChapterId);
+      setEditingChapterId(pendingChapterEdit.chapterId);
+      setEditingChapterTitle(pendingChapterEdit.originalTitle);
+      setPendingChapterEdit(null);
+      setSaveConfirmOpen(false);
+    } else {
+      // User wants to save current edit
+      await handleSaveChapterTitle(editingChapterId);
+      setSaveConfirmOpen(false);
+    }
+  };
+
+  const handleDiscardChanges = () => {
+    if (pendingChapterEdit) {
+      // Switch to the new chapter without saving
+      handleCancelChapterEdit();
+      setEditingChapterId(pendingChapterEdit.chapterId);
+      setEditingChapterTitle(pendingChapterEdit.originalTitle);
+      setPendingChapterEdit(null);
+    } else {
+      // Just discard current edit
+      handleCancelChapterEdit();
+    }
+    setSaveConfirmOpen(false);
+  };
 
   if (loading) return <div className="flex justify-center items-center min-h-screen">Loading book...</div>;
 
   return (
     <DragDropContext onDragEnd={onDragEnd}>
       <ConfirmationModal {...modalState} onClose={closeModal} onConfirm={handleConfirmDelete} />
+      <Dialog open={saveConfirmOpen} onOpenChange={setSaveConfirmOpen}>
+        <DialogContent className="w-full max-w-md p-6 bg-white rounded-2xl shadow-lg text-center">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold text-gray-800">Save changes?</DialogTitle>
+            <DialogDescription className="mt-2 text-gray-600">
+              You have unsaved changes to this chapter title. What would you like to do?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-6 flex justify-center space-x-4">
+            <Button variant="outline" onClick={() => setSaveConfirmOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDiscardChanges}>Discard</Button>
+            <Button onClick={handleSaveConfirm}>Save</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Publish Confirmation Modal */}
+      <Dialog open={publishModalOpen} onOpenChange={setPublishModalOpen}>
+        <DialogContent className="w-full max-w-md p-6 bg-white rounded-2xl shadow-lg">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold text-gray-800">
+              {book?.isPublic ? 'Unpublish this book?' : 'Make this book public?'}
+            </DialogTitle>
+            <DialogDescription className="mt-2 text-gray-600">
+              {book?.isPublic 
+                ? 'Your book will become private. Only you and co-authors will be able to access it.'
+                : 'Making this book public means anyone with the link can view it. Your content will be visible to the public.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-6 flex justify-center space-x-4">
+            <Button variant="outline" onClick={() => setPublishModalOpen(false)}>Cancel</Button>
+            <Button onClick={handlePublishToggle}>
+              {book?.isPublic ? 'Unpublish' : 'Publish'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Co-Author Invitation Modal */}
+      <Dialog open={coAuthorModalOpen} onOpenChange={setCoAuthorModalOpen}>
+        <DialogContent className="w-full max-w-lg p-6 bg-white rounded-2xl shadow-lg">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold text-gray-800">Manage Co-Authors</DialogTitle>
+            <DialogDescription className="mt-2 text-gray-600">
+              Invite users to collaborate on this book. Co-authors can edit pages but cannot delete chapters.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-6 space-y-4">
+            {/* Search Input */}
+            <div>
+              <Input
+                placeholder="Search by username or email..."
+                value={userSearchQuery}
+                onChange={(e) => setUserSearchQuery(e.target.value)}
+                className="w-full"
+              />
+              {isSearching && (
+                <p className="text-sm text-gray-500 mt-2">Searching...</p>
+              )}
+            </div>
+
+            {/* Search Results */}
+            {searchResults.length > 0 && (
+              <div className="border rounded-lg p-2 max-h-48 overflow-y-auto">
+                {searchResults.map((user) => (
+                  <div
+                    key={user.id}
+                    className="flex items-center justify-between p-2 hover:bg-gray-50 rounded"
+                  >
+                    <div>
+                      <p className="font-medium text-gray-800">{user.displayName || 'Unknown User'}</p>
+                      <p className="text-sm text-gray-500">{user.email}</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => handleInviteCoAuthor(user)}
+                      className="flex items-center gap-1"
+                    >
+                      <UserPlus className="h-4 w-4" />
+                      Invite
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Current Co-Authors */}
+            {coAuthorUsers.length > 0 && (
+              <div className="border-t pt-4">
+                <h3 className="font-semibold text-gray-800 mb-2">Current Co-Authors</h3>
+                <div className="space-y-2">
+                  {coAuthorUsers.map((coAuthorUser) => (
+                    <div
+                      key={coAuthorUser.id}
+                      className="flex items-center justify-between p-2 bg-gray-50 rounded"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4 text-gray-500" />
+                        <div>
+                          <p className="text-sm font-medium text-gray-800">{coAuthorUser.displayName || 'Unknown User'}</p>
+                          <p className="text-xs text-gray-500">{coAuthorUser.email}</p>
+                        </div>
+                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">Co-author</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveCoAuthor(coAuthorUser.id)}
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {coAuthorUsers.length === 0 && searchResults.length === 0 && userSearchQuery.length < 2 && (
+              <p className="text-sm text-gray-500 text-center py-4">
+                No co-authors yet. Search for users above to invite them.
+              </p>
+            )}
+          </div>
+
+          <div className="mt-6 flex justify-end">
+            <Button variant="outline" onClick={() => setCoAuthorModalOpen(false)}>Close</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
-        <h1 className="text-4xl font-extrabold text-center text-gray-900 mb-8">{book?.babyName}'s Journey</h1>
+        <div className="flex items-center justify-between mb-6">
+          <Button
+            variant="outline"
+            onClick={() => navigate('/dashboard')}
+            className="flex items-center gap-2"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Books
+          </Button>
+          
+          {isOwner && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant={book?.isPublic ? "default" : "outline"}
+                onClick={() => setPublishModalOpen(true)}
+                className="flex items-center gap-2"
+              >
+                <Globe className="h-4 w-4" />
+                {book?.isPublic ? 'Unpublish' : 'Publish'}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setCoAuthorModalOpen(true)}
+                className="flex items-center gap-2"
+              >
+                <Users className="h-4 w-4" />
+                Co-Authors
+              </Button>
+            </div>
+          )}
+        </div>
+        <h1 className="text-4xl font-extrabold text-center text-gray-900 mb-8">{book?.babyName}</h1>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8" style={{ minHeight: '70vh' }}>
           <div className="lg:col-span-1 flex flex-col space-y-6">
             <form onSubmit={handleCreateChapter} className="flex items-center space-x-2">
-              <Input value={newChapterTitle} onChange={(e) => setNewChapterTitle(e.target.value)} placeholder="New chapter title..." />
-              <Button type="submit" size="icon"><PlusCircle className="h-4 w-4" /></Button>
+              <Input 
+                value={newChapterTitle} 
+                onChange={(e) => setNewChapterTitle(e.target.value)} 
+                placeholder="New chapter title..." 
+                disabled={!canEdit}
+              />
+              <Button type="submit" size="icon" disabled={!canEdit}>
+                <PlusCircle className="h-4 w-4" />
+              </Button>
             </form>
             <div className="p-4 bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border flex-grow">
               <h2 className="text-xl font-bold text-gray-800 mb-4">Content</h2>
@@ -927,17 +1774,58 @@ const BookDetail = () => {
                 {[...chapters].sort((a, b) => a.order.localeCompare(b.order)).map(chapter => (
                   <div key={chapter.id} className="group">
                     <div
-                      onClick={() => { setSelectedChapterId(chapter.id); setExpandedChapters(new Set([chapter.id])); }}
-                      className={`w-full text-left p-3 rounded-lg flex items-center justify-between cursor-pointer ${selectedChapterId === chapter.id ? 'bg-violet-200 text-violet-900' : 'hover:bg-violet-100'}`}
+                      onClick={(e) => {
+                        if (editingChapterId === chapter.id) return; // Don't change selection if editing this chapter
+                        if (editingChapterId && editingChapterId !== chapter.id) {
+                          // There's an unsaved edit in another chapter
+                          const chapterTitle = chapters.find(c => c.id === chapter.id)?.title || '';
+                          setPendingChapterEdit({ chapterId: chapter.id, originalTitle: chapterTitle });
+                          setSaveConfirmOpen(true);
+                          return;
+                        }
+                        setSelectedChapterId(chapter.id);
+                        setExpandedChapters(new Set([chapter.id]));
+                      }}
+                      className={`w-full text-left p-3 rounded-lg flex items-center justify-between ${editingChapterId === chapter.id ? '' : 'cursor-pointer'} ${selectedChapterId === chapter.id ? 'bg-violet-200 text-violet-900' : 'hover:bg-violet-100'}`}
                     >
-                      <div className="flex items-center shrink-0">
-                        <HoverDeleteMenu onDelete={() => openDeleteModal('chapter', chapter)} />
-                        <span className="font-medium truncate pr-2 ml-1">{chapter.title}</span>
+                    <div className="flex items-center flex-1 min-w-0 mr-2">
+                        {isOwner && <HoverDeleteMenu onDelete={() => openDeleteModal('chapter', chapter)} />}
+                        {editingChapterId === chapter.id ? (
+                          <input
+                            value={editingChapterTitle}
+                            onChange={(e) => setEditingChapterTitle(e.target.value)}
+                            onBlur={handleChapterTitleBlur}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleSaveChapterTitle(chapter.id);
+                              }
+                              if (e.key === 'Escape') {
+                                e.preventDefault();
+                                handleCancelChapterEdit();
+                              }
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex-1 ml-1 px-2 py-1 border border-violet-300 rounded text-sm font-medium focus:outline-none focus:ring-2 focus:ring-violet-500"
+                            autoFocus
+                          />
+                        ) : (
+                          <span
+                            className="font-medium truncate pr-2 ml-1"
+                            title={chapter.title}
+                            onDoubleClick={(e) => {
+                              e.stopPropagation();
+                              handleStartEditChapter(chapter);
+                            }}
+                          >
+                            {chapter.title}
+                          </span>
+                        )}
                       </div>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7"
+                        className="h-7 w-7 shrink-0"
                         onClick={(e) => {
                            e.stopPropagation();
                           const s = new Set(expandedChapters);
@@ -976,7 +1864,7 @@ const BookDetail = () => {
                                       <span className="truncate">{pageSummary.shortNote || 'Untitled Page'}</span>
                                     </div>
 
-                                    <HoverDeleteMenu onDelete={() => openDeleteModal('page', { ...pageSummary, chapterId: chapter.id, pageIndex: index })} />
+                                    {canEdit && <HoverDeleteMenu onDelete={() => openDeleteModal('page', { ...pageSummary, chapterId: chapter.id, pageIndex: index })} />}
                                   </div>
                                 )}
                               </Draggable>
@@ -1007,12 +1895,13 @@ const BookDetail = () => {
                 }}
                 pageIndex={pages.findIndex(p => p.id === selectedPageId)}
                 totalPages={pages.length}
+                clearEditor={clearEditor}
               />
             ) : (
               <div className="flex flex-col justify-center items-center text-center h-full p-6 bg-white/80 rounded-2xl shadow-lg">
                 <h2 className="text-xl font-semibold text-gray-700">{selectedChapterId ? 'Select a page or create one' : 'Select a chapter'}</h2>
                 <p className="mt-2 text-gray-500 max-w-xs">{selectedChapterId ? 'Click "Add New Page" to get started.' : 'Select a chapter from the list to view its pages.'}</p>
-                {selectedChapterId && <Button onClick={handleAddPage} className="mt-4"><PlusCircle className="h-4 w-4 mr-2" />Add Page</Button>}
+                {selectedChapterId && canEdit && <Button onClick={handleAddPage} className="mt-4"><PlusCircle className="h-4 w-4 mr-2" />Add Page</Button>}
               </div>
             )}
           </div>

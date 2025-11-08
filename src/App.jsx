@@ -12,6 +12,8 @@ import Media from '@/pages/Media';
 import Notes from '@/pages/Notes';
 import CreateBook from '@/pages/CreateBook';
 import BookDetail from '@/pages/BookDetail';
+import BookView from '@/pages/BookView';
+import AlbumDetail from '@/pages/AlbumDetail';
 
 // A wrapper to protect routes that require authentication
 const PrivateRoute = ({ children }) => {
@@ -48,6 +50,10 @@ function App() {
                 element={<PrivateRoute><Media /></PrivateRoute>}
               />
               <Route 
+                path="/media/album/:bookId" 
+                element={<PrivateRoute><AlbumDetail /></PrivateRoute>}
+              />
+              <Route 
                 path="/notes" 
                 element={<PrivateRoute><Notes /></PrivateRoute>}
               />
@@ -58,6 +64,10 @@ function App() {
               <Route 
                 path="/book/:bookId" 
                 element={<PrivateRoute><BookDetail /></PrivateRoute>}
+              />
+              <Route 
+                path="/book/:bookId/view" 
+                element={<PrivateRoute><BookView /></PrivateRoute>}
               />
             </Routes>
           </main>
