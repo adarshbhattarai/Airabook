@@ -1,4 +1,4 @@
-const functions = require("firebase-functions");
+const { onObjectFinalized, onObjectDeleted } = require("firebase-functions/v2/storage");
 const admin = require("firebase-admin");
 const FieldValue = require("firebase-admin/firestore").FieldValue;
 
@@ -296,10 +296,11 @@ async function updateUserAccessibleAlbums(userId, albumId, albumName, coverImage
  * Storage trigger function that runs when a file is uploaded
  * Updates albums/{albumId} document with URL in images/videos array
  */
-exports.onMediaUpload = functions.storage
-  .object()
-  .onFinalize(async (object) => {
-    const { name: storagePath, bucket } = object;
+exports.onMediaUpload = onObjectFinalized(
+  { region: "us-central1" },
+  async (event) => {
+    const storagePath = event.data.name;
+    const bucket = event.data.bucket;
     
     console.log(`📸 Storage trigger fired for: ${storagePath}`);
 
@@ -358,16 +359,17 @@ exports.onMediaUpload = functions.storage
       // The file is already in Storage, we can fix the document later if needed
       return null;
     }
-  });
+  }
+);
 
 /**
  * Storage trigger function that runs when a file is deleted
  * Removes URL from albums/{albumId} document arrays
  */
-exports.onMediaDelete = functions.storage
-  .object()
-  .onDelete(async (object) => {
-    const { name: storagePath } = object;
+exports.onMediaDelete = onObjectDeleted(
+  { region: "us-central1" },
+  async (event) => {
+    const storagePath = event.data.name;
     
     console.log(`🗑️  Storage delete trigger fired for: ${storagePath}`);
 
@@ -483,4 +485,5 @@ exports.onMediaDelete = functions.storage
       console.error(`❌ Error processing media deletion ${storagePath}:`, error);
       return null;
     }
-  });
+  }
+);
