@@ -79,8 +79,11 @@ function handleBusboyEvents(busboy, uid, res) {
           });
 
           // Save URL record in Firestore
-          return admin
-            .firestore()
+          const app = admin.app();
+          const databaseId = process.env.FIRESTORE_DATABASE_ID || "airabook";
+          console.log(`🔥 Saving media URL to database: ${databaseId}`);
+          const db = admin.firestore(app, databaseId);
+          return db
             .collection("mediaUrls")
             .add({
               url: publicUrl,

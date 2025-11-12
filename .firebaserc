@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "airaproject-f5298"
+    "default": "airaproject-f5298",
+    "dev": "airaproject-f5298"
   }
 }

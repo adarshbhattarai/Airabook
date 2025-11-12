@@ -23,16 +23,38 @@ export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 // Use default Firestore DB locally; avoid passing a databaseId here.
 // If you truly need a named database, use initializeFirestore with a databaseId.
-export const firestore = getFirestore(app);
+// Environment-aware emulator connection
+// NEVER use emulators in production builds - only use real Firebase services
+const currentMode = import.meta.env.MODE;
+const isProduction = currentMode === 'production';
+
+export const firestore = isProduction ? getFirestore(app,"airabook") : getFirestore(app);
+
+
 export const storage = getStorage(app);
 export const functions = getFunctions(app, "us-central1");
 
-// Environment-aware emulator connection
-const useEmulator = import.meta.env.VITE_USE_EMULATOR === 'true' || import.meta.env.MODE === 'development';
-const currentMode = import.meta.env.MODE;
+
+
+// Determine if we should use emulators
+// NEVER use emulators in production mode - always use real Firebase services for deployed apps
+// Only use emulators in development mode, running on localhost, with explicit flag
+let useEmulator = false;
+if (!isProduction) {
+  // Only check for localhost if not in production
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('localhost');
+    // Only use emulators if running locally AND explicitly enabled
+    useEmulator = isLocalhost && import.meta.env.VITE_USE_EMULATOR === 'true';
+  }
+}
+// In production mode, useEmulator is always false - use real Firebase services
 
 console.log("🔧 Firebase config check:");
 console.log("📍 Mode:", currentMode);
+console.log("📍 Is Production:", isProduction);
+console.log("📍 Hostname:", typeof window !== 'undefined' ? window.location.hostname : 'N/A');
 console.log("🔧 VITE_USE_EMULATOR:", import.meta.env.VITE_USE_EMULATOR);
 console.log("🔧 useEmulator:", useEmulator);
 

@@ -6,7 +6,23 @@ if (!admin.apps.length) {
   admin.initializeApp();
 }
 
-const db = admin.firestore();
+// Helper function to get Firestore instance with database name from env or default to "airabook"
+function getFirestoreDB() {
+  const app = admin.app();
+  // Get database name from environment variable, default to "airabook"
+  const databaseId = process.env.FIRESTORE_DATABASE_ID || "airabook";
+  
+  try {
+    const db = admin.firestore(app, databaseId);
+    console.log(`🔥 Firestore instance obtained for database: ${databaseId}`);
+    return db;
+  } catch (error) {
+    console.error(`❌ Error getting Firestore instance for database "${databaseId}":`, error);
+    throw error;
+  }
+}
+
+const db = getFirestoreDB();
 const FieldValue = admin.firestore.FieldValue;
 
 /**

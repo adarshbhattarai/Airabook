@@ -18,6 +18,25 @@ if (!admin.apps.length) {
   }
 }
 
+// Helper function to get Firestore instance with database name from env or default to "airabook"
+// Note: The database existence is checked when we try to use it, not when we get the instance
+function getFirestoreDB() {
+  const app = admin.app();
+  // Get database name from environment variable, default to "airabook"
+  // Use "(default)" or empty string to use default database
+  const databaseId = process.env.FIRESTORE_DATABASE_ID || "airabook";
+  
+  logger.log(`🔍 Getting Firestore instance for database: ${databaseId}`);
+  logger.log(`🔍 Project ID: ${app.options.projectId || 'unknown'}`);
+  
+  // Get the Firestore instance (this doesn't verify if database exists)
+  // Database existence is checked when we try to use it
+  const db = admin.firestore(app, databaseId);
+  logger.log(`✅ Firestore client initialized for database: ${databaseId}`);
+  
+  return { db, databaseId };
+}
+
 // Initialize AI utilities
 try { require("dotenv").config(); } catch (_) {}
 const { callAI } = require("./utils/aiClient");
@@ -149,6 +168,8 @@ exports.createBook = onCall(
       })
     );
 
+    console.log("Trying to make an update")
+
     logger.log("👤 Auth in request:", auth ? auth.uid : "No auth");
 
     // Check authentication
@@ -177,16 +198,93 @@ exports.createBook = onCall(
         `⏰ Function execution started at: ${new Date().toISOString()}`
       );
 
-      const db = admin.firestore();
-      logger.log("🔥 Firestore instance obtained");
+      // Get Firestore instance - try named database first, fall back to default if not found
+      let dbResult = getFirestoreDB();
+      let db = dbResult.db;
+      let databaseId = dbResult.databaseId;
+      logger.log(`🔥 Firestore instance obtained for database: ${databaseId}`);
+      logger.log(`🔍 Attempting to access users collection for userId: ${userId}`);
+      logger.log(`🔍 Database project: ${db.app?.options?.projectId || 'unknown'}`);
 
       const titleNormalized = title.trim();
       const titleLower = titleNormalized.toLowerCase();
 
       // Ensure user doc exists + get current book count
+      logger.log(`📖 Getting user document: users/${userId}`);
       const userRef = db.collection("users").doc(userId);
-      const userDoc = await userRef.get();
-      const userData = userDoc.exists ? userDoc.data() : {};
+      logger.log(`✅ User reference created: ${userRef.path}`);
+      
+      let userDoc;
+      let userData = {};
+      try {
+        logger.log(`🔍 Fetching user document from database "${databaseId}"...`);
+        userDoc = await userRef.get();
+        logger.log(`✅ User document fetched. Exists: ${userDoc.exists}`);
+        
+        if (userDoc.exists) {
+          userData = userDoc.data();
+          logger.log(`📊 User data retrieved:`, {
+            hasDisplayName: !!userData.displayName,
+            hasEmail: !!userData.email,
+            bookCount: userData?.accessibleBookIds?.length || 0
+          });
+        } else {
+          logger.log(`⚠️ User document does not exist. Will be created if needed.`);
+        }
+      } catch (error) {
+        // Check if it's a NOT_FOUND error (database doesn't exist)
+        const isNotFoundError = error.code === 5 || 
+                               error.message?.includes('NOT_FOUND') || 
+                               error.message?.includes('not found') ||
+                               error.details?.includes('NOT_FOUND');
+        
+        if (isNotFoundError && databaseId !== '(default)') {
+          logger.warn(`⚠️ Database "${databaseId}" not found (error code: ${error.code}). Falling back to default database.`);
+          logger.warn(`⚠️ Error message: ${error.message}`);
+          
+          // Fall back to default database
+          try {
+            const app = admin.app();
+            db = admin.firestore(app); // Default database
+            databaseId = '(default)';
+            logger.log(`✅ Switched to default Firestore database`);
+            
+            // Retry the operation with default database
+            const defaultUserRef = db.collection("users").doc(userId);
+            logger.log(`🔍 Retrying user document fetch from default database...`);
+            userDoc = await defaultUserRef.get();
+            logger.log(`✅ User document fetched from default database. Exists: ${userDoc.exists}`);
+            
+            if (userDoc.exists) {
+              userData = userDoc.data();
+              logger.log(`📊 User data retrieved from default database:`, {
+                hasDisplayName: !!userData.displayName,
+                hasEmail: !!userData.email,
+                bookCount: userData?.accessibleBookIds?.length || 0
+              });
+            } else {
+              logger.log(`⚠️ User document does not exist in default database. Will be created if needed.`);
+            }
+          } catch (fallbackError) {
+            logger.error(`❌ Error fetching user document from default database:`, fallbackError);
+            logger.error(`❌ Error code: ${fallbackError.code}`);
+            logger.error(`❌ Error message: ${fallbackError.message}`);
+            throw new HttpsError(
+              "internal",
+              `Failed to access user document: ${fallbackError.message}`
+            );
+          }
+        } else {
+          logger.error(`❌ Error fetching user document:`, error);
+          logger.error(`❌ Error code: ${error.code}`);
+          logger.error(`❌ Error message: ${error.message}`);
+          logger.error(`❌ Error details:`, error.details);
+          throw new HttpsError(
+            "internal",
+            `Failed to access user document in database "${databaseId}": ${error.message}`
+          );
+        }
+      }
 
       const currentBookCount = userData?.accessibleBookIds?.length || 0;
       if (currentBookCount >= 10) {
@@ -197,12 +295,25 @@ exports.createBook = onCall(
       }
 
       // Duplicate title check for this user
-      const dupSnap = await db
-        .collection("books")
-        .where("ownerId", "==", userId)
-        .where("titleLower", "==", titleLower)
-        .limit(1)
-        .get();
+      logger.log(`🔍 Checking for duplicate title: "${titleNormalized}" for user ${userId}`);
+      let dupSnap;
+      try {
+        dupSnap = await db
+          .collection("books")
+          .where("ownerId", "==", userId)
+          .where("titleLower", "==", titleLower)
+          .limit(1)
+          .get();
+        logger.log(`✅ Duplicate check completed. Found ${dupSnap.size} duplicate(s)`);
+      } catch (error) {
+        logger.error(`❌ Error checking for duplicate title:`, error);
+        logger.error(`❌ Error code: ${error.code}`);
+        logger.error(`❌ Error message: ${error.message}`);
+        throw new HttpsError(
+          "internal",
+          `Failed to check for duplicate title in database "${databaseId}": ${error.message}`
+        );
+      }
 
       if (!dupSnap.empty) {
         logger.log(
@@ -241,6 +352,7 @@ exports.createBook = onCall(
       }
 
       // Create book document
+      logger.log(`📝 Creating book document in database: ${databaseId}`);
       const bookData = {
         babyName: titleNormalized,
         titleLower,
@@ -261,9 +373,22 @@ exports.createBook = onCall(
         updatedAt: FieldValue.serverTimestamp(),
       };
 
-      const bookRef = await db.collection("books").add(bookData);
-      logger.log(`✅ Book created with ID: ${bookRef.id}`);
-      logger.log(`📖 Book data saved to Firestore`);
+      logger.log(`🔍 Attempting to add book to collection: books`);
+      let bookRef;
+      try {
+        bookRef = await db.collection("books").add(bookData);
+        logger.log(`✅ Book created with ID: ${bookRef.id}`);
+        logger.log(`📖 Book data saved to Firestore in database: ${databaseId}`);
+      } catch (error) {
+        logger.error(`❌ Error creating book document:`, error);
+        logger.error(`❌ Error code: ${error.code}`);
+        logger.error(`❌ Error message: ${error.message}`);
+        logger.error(`❌ Error details:`, error.details);
+        throw new HttpsError(
+          "internal",
+          `Failed to create book document in database "${databaseId}": ${error.message}`
+        );
+      }
 
       // Create chapter docs
       const chapterPromises = chapters.map(async (chapter) => {
