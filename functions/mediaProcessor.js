@@ -297,7 +297,10 @@ async function updateUserAccessibleAlbums(userId, albumId, albumName, coverImage
  * Updates albums/{albumId} document with URL in images/videos array
  */
 exports.onMediaUpload = onObjectFinalized(
-  { region: "us-central1" },
+  { 
+    region: "us-central1",
+    bucket: "airaproject-f5298.appspot.com"
+  },
   async (event) => {
     const storagePath = event.data.name;
     const bucket = event.data.bucket;
@@ -367,7 +370,10 @@ exports.onMediaUpload = onObjectFinalized(
  * Removes URL from albums/{albumId} document arrays
  */
 exports.onMediaDelete = onObjectDeleted(
-  { region: "us-central1" },
+  { 
+    region: "us-central1",
+    bucket: "airaproject-f5298.appspot.com"
+  },
   async (event) => {
     const storagePath = event.data.name;
     

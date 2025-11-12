@@ -1,4 +1,5 @@
-const functions = require("firebase-functions");
+const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
+const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
 const FieldValue = require("firebase-admin/firestore").FieldValue;
 
@@ -25,27 +26,28 @@ const getMidpointString = (prev = '', next = '') => {
 const getNewOrderBetween = (prevOrder = '', nextOrder = '') =>
   getMidpointString(prevOrder, nextOrder);
 
-// Initialize Firebase Admin
-// Use plain initializeApp on emulator; use service account only in production deploys
-const runningInEmulator = process.env.FUNCTIONS_EMULATOR === 'true' || process.env.FIREBASE_AUTH_EMULATOR_HOST;
-if (runningInEmulator) {
-  admin.initializeApp({
-    storageBucket: "airaproject-f5298.appspot.com",
-  });
-  console.log("🔥 Firebase Admin initialized for emulator environment");
-} else {
-  try {
-    const serviceAccount = require("./serviceAccountKey.json");
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-      storageBucket: "airaproject-f5298.appspot.com",
-    });
-    console.log("🔥 Firebase Admin initialized with service account");
-  } catch (e) {
+// Initialize Firebase Admin (only if not already initialized)
+if (!admin.apps.length) {
+  const runningInEmulator = process.env.FUNCTIONS_EMULATOR === 'true' || process.env.FIREBASE_AUTH_EMULATOR_HOST;
+  if (runningInEmulator) {
     admin.initializeApp({
       storageBucket: "airaproject-f5298.appspot.com",
     });
-    console.log("🔥 Firebase Admin initialized with default credentials");
+    console.log("🔥 Firebase Admin initialized for emulator environment");
+  } else {
+    try {
+      const serviceAccount = require("./serviceAccountKey.json");
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+        storageBucket: "airaproject-f5298.appspot.com",
+      });
+      console.log("🔥 Firebase Admin initialized with service account");
+    } catch (e) {
+      admin.initializeApp({
+        storageBucket: "airaproject-f5298.appspot.com",
+      });
+      console.log("🔥 Firebase Admin initialized with default credentials");
+    }
   }
 }
 
@@ -55,8 +57,8 @@ const {createBook} = require("./createBook");
 const {onMediaUpload, onMediaDelete} = require("./mediaProcessor");
 const {inviteCoAuthor} = require("./inviteCoAuthor");
 
-exports.helloWorld = functions.https.onRequest((request, response) => {
-  functions.logger.info("Hello logs!", {structuredData: true});
+exports.helloWorld = onRequest({ region: "us-central1" }, (request, response) => {
+  logger.info("Hello logs!", {structuredData: true});
   response.send("Hello from Firebase!");
 });
 
@@ -68,24 +70,25 @@ exports.onMediaDelete = onMediaDelete;
 exports.inviteCoAuthor = inviteCoAuthor;
 
 // Function to get chapters for a book (hot reload test)
-exports.getBookChapters = functions.https.onCall(async (data, context) => {
-  console.log("📚 getBookChapters function called at:", new Date().toISOString());
-  console.log("📊 Received data:", JSON.stringify(data, null, 2));
+exports.getBookChapters = onCall({ region: "us-central1" }, async (request) => {
+  const { data, auth } = request;
+  
+  logger.log("📚 getBookChapters function called at:", new Date().toISOString());
+  logger.log("📊 Received data:", JSON.stringify(data, null, 2));
   
   // Check authentication
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated to view chapters.');
+  if (!auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated to view chapters.');
   }
 
   const { bookId } = data;
-  const userId = context.auth.uid;
+  const userId = auth.uid;
 
   if (!bookId) {
-    throw new functions.https.HttpsError('invalid-argument', 'Book ID is required.');
+    throw new HttpsError('invalid-argument', 'Book ID is required.');
   }
 
   try {
-    const admin = require("firebase-admin");
     const db = admin.firestore();
 
     // Verify user has access to this book
@@ -93,7 +96,7 @@ exports.getBookChapters = functions.https.onCall(async (data, context) => {
     const bookDoc = await bookRef.get();
     
     if (!bookDoc.exists) {
-      throw new functions.https.HttpsError('not-found', 'Book not found.');
+      throw new HttpsError('not-found', 'Book not found.');
     }
 
     const bookData = bookDoc.data();
@@ -102,7 +105,7 @@ exports.getBookChapters = functions.https.onCall(async (data, context) => {
     const isMember = bookData.members && bookData.members[userId];
     
     if (!isOwner && !isMember) {
-      throw new functions.https.HttpsError('permission-denied', 'You do not have access to this book.');
+      throw new HttpsError('permission-denied', 'You do not have access to this book.');
     }
 
     // Get chapters from the book's subcollection
@@ -121,7 +124,7 @@ exports.getBookChapters = functions.https.onCall(async (data, context) => {
       });
     });
 
-    console.log(`📚 Found ${chapters.length} chapters for book ${bookId}`);
+    logger.log(`📚 Found ${chapters.length} chapters for book ${bookId}`);
 
     return {
       success: true,
@@ -131,30 +134,34 @@ exports.getBookChapters = functions.https.onCall(async (data, context) => {
     };
 
   } catch (error) {
-    console.error('Error fetching chapters:', error);
-    throw new functions.https.HttpsError('internal', 'Failed to fetch chapters. Please try again.');
+    logger.error('Error fetching chapters:', error);
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+    throw new HttpsError('internal', 'Failed to fetch chapters. Please try again.');
   }
 });
 
 // Function to add a new chapter to a book
-exports.addChapter = functions.https.onCall(async (data, context) => {
-  console.log("📄 addChapter function called at:", new Date().toISOString());
-  console.log("📊 Received data:", JSON.stringify(data, null, 2));
+exports.addChapter = onCall({ region: "us-central1" }, async (request) => {
+  const { data, auth } = request;
+  
+  logger.log("📄 addChapter function called at:", new Date().toISOString());
+  logger.log("📊 Received data:", JSON.stringify(data, null, 2));
   
   // Check authentication
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated to add chapters.');
+  if (!auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated to add chapters.');
   }
 
   const { bookId, title, order } = data;
-  const userId = context.auth.uid;
+  const userId = auth.uid;
 
   if (!bookId || !title) {
-    throw new functions.https.HttpsError('invalid-argument', 'Book ID and title are required.');
+    throw new HttpsError('invalid-argument', 'Book ID and title are required.');
   }
 
   try {
-    const admin = require("firebase-admin");
     const db = admin.firestore();
 
     // Verify user has access to this book
@@ -162,7 +169,7 @@ exports.addChapter = functions.https.onCall(async (data, context) => {
     const bookDoc = await bookRef.get();
     
     if (!bookDoc.exists) {
-      throw new functions.https.HttpsError('not-found', 'Book not found.');
+      throw new HttpsError('not-found', 'Book not found.');
     }
 
     const bookData = bookDoc.data();
@@ -171,7 +178,7 @@ exports.addChapter = functions.https.onCall(async (data, context) => {
     const isMember = bookData.members && bookData.members[userId];
     
     if (!isOwner && !isMember) {
-      throw new functions.https.HttpsError('permission-denied', 'You do not have access to this book.');
+      throw new HttpsError('permission-denied', 'You do not have access to this book.');
     }
 
     // Get existing chapters to calculate proper order
@@ -209,7 +216,7 @@ exports.addChapter = functions.https.onCall(async (data, context) => {
       updatedAt: FieldValue.serverTimestamp()
     });
 
-    console.log(`📄 Chapter "${title}" created with ID: ${chapterRef.id} in book ${bookId}`);
+    logger.log(`📄 Chapter "${title}" created with ID: ${chapterRef.id} in book ${bookId}`);
 
     return {
       success: true,
@@ -221,30 +228,34 @@ exports.addChapter = functions.https.onCall(async (data, context) => {
     };
 
   } catch (error) {
-    console.error('Error adding chapter:', error);
-    throw new functions.https.HttpsError('internal', 'Failed to add chapter. Please try again.');
+    logger.error('Error adding chapter:', error);
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+    throw new HttpsError('internal', 'Failed to add chapter. Please try again.');
   }
 });
 
 // Function to add a page summary to a chapter
-exports.addPageSummary = functions.https.onCall(async (data, context) => {
-  console.log("📄 addPageSummary function called at:", new Date().toISOString());
-  console.log("📊 Received data:", JSON.stringify(data, null, 2));
+exports.addPageSummary = onCall({ region: "us-central1" }, async (request) => {
+  const { data, auth } = request;
+  
+  logger.log("📄 addPageSummary function called at:", new Date().toISOString());
+  logger.log("📊 Received data:", JSON.stringify(data, null, 2));
   
   // Check authentication
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated to add page summaries.');
+  if (!auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated to add page summaries.');
   }
 
   const { bookId, chapterId, pageNumber, summary } = data;
-  const userId = context.auth.uid;
+  const userId = auth.uid;
 
   if (!bookId || !chapterId || !pageNumber || !summary) {
-    throw new functions.https.HttpsError('invalid-argument', 'Book ID, chapter ID, page number, and summary are required.');
+    throw new HttpsError('invalid-argument', 'Book ID, chapter ID, page number, and summary are required.');
   }
 
   try {
-    const admin = require("firebase-admin");
     const db = admin.firestore();
 
     // Verify user has access to this book
@@ -252,7 +263,7 @@ exports.addPageSummary = functions.https.onCall(async (data, context) => {
     const bookDoc = await bookRef.get();
     
     if (!bookDoc.exists) {
-      throw new functions.https.HttpsError('not-found', 'Book not found.');
+      throw new HttpsError('not-found', 'Book not found.');
     }
 
     const bookData = bookDoc.data();
@@ -260,7 +271,7 @@ exports.addPageSummary = functions.https.onCall(async (data, context) => {
     const isMember = bookData.members && bookData.members[userId];
     
     if (!isOwner && !isMember) {
-      throw new functions.https.HttpsError('permission-denied', 'You do not have access to this book.');
+      throw new HttpsError('permission-denied', 'You do not have access to this book.');
     }
 
     // Get the chapter
@@ -272,7 +283,7 @@ exports.addPageSummary = functions.https.onCall(async (data, context) => {
     
     const chapterDoc = await chapterRef.get();
     if (!chapterDoc.exists) {
-      throw new functions.https.HttpsError('not-found', 'Chapter not found.');
+      throw new HttpsError('not-found', 'Chapter not found.');
     }
 
     // Get existing pages to calculate proper order
@@ -303,7 +314,7 @@ exports.addPageSummary = functions.https.onCall(async (data, context) => {
       updatedAt: FieldValue.serverTimestamp()
     });
 
-    console.log(`📄 Page summary added to chapter ${chapterId} in book ${bookId}`);
+    logger.log(`📄 Page summary added to chapter ${chapterId} in book ${bookId}`);
 
     return {
       success: true,
@@ -314,7 +325,10 @@ exports.addPageSummary = functions.https.onCall(async (data, context) => {
     };
 
   } catch (error) {
-    console.error('Error adding page summary:', error);
-    throw new functions.https.HttpsError('internal', 'Failed to add page summary. Please try again.');
+    logger.error('Error adding page summary:', error);
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+    throw new HttpsError('internal', 'Failed to add page summary. Please try again.');
   }
 });

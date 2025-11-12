@@ -4,9 +4,18 @@ const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
 const FieldValue = require("firebase-admin/firestore").FieldValue;
 
-// Initialize Firebase Admin once
+// Firebase Admin should be initialized by index.js
+// If not initialized, initialize with default settings (with console.log since logger might not be ready)
 if (!admin.apps.length) {
-  admin.initializeApp();
+  try {
+    admin.initializeApp({
+      storageBucket: "airaproject-f5298.appspot.com",
+    });
+    console.log("🔥 Firebase Admin initialized in createBook.js");
+  } catch (error) {
+    // Admin might already be initialized, ignore error
+    console.warn("⚠️ Admin initialization skipped:", error?.message || "Unknown error");
+  }
 }
 
 // Initialize AI utilities
@@ -121,9 +130,8 @@ function validateCreateBookRequest(data) {
  * Called from CreateBook.jsx via httpsCallable(functions, "createBook")
  */
 exports.createBook = onCall(
-  { region: "us-central1" }, // match your deployed region
   async (request) => {
-    const { data, auth, rawRequest } = request; // v2 shape
+    const { data, auth } = request; // v2 shape
 
     logger.log("🚀 createBook function called at:", new Date().toISOString());
 
@@ -157,10 +165,11 @@ exports.createBook = onCall(
     const { title, creationType, promptMode, prompt } = data;
     const userId = auth.uid;
 
-    // Validate input
-    validateCreateBookRequest(data);
+    
 
     try {
+      // Validate input
+      validateCreateBookRequest(data);
       logger.log(
         `📚 Creating book "${title}" for user ${userId} with type: ${creationType}`
       );
@@ -374,13 +383,14 @@ exports.createBook = onCall(
       };
     } catch (error) {
       logger.error("Error creating book:", error);
-      // Re-throw HttpsError as-is if it’s already one
+      logger.error("Error stack:", error.stack);
+      // Re-throw HttpsError as-is if it's already one
       if (error instanceof HttpsError) {
         throw error;
       }
       throw new HttpsError(
         "internal",
-        "Failed to create book. Please try again."
+        `Failed to create book: ${error.message || "Unknown error"}`
       );
     }
   }

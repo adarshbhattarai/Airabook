@@ -2,23 +2,44 @@
 // Centralized AI client initialization and utilities
 
 const OpenAI = (() => { try { return require('openai'); } catch (e) { return null; } })();
-const { VertexAI } = require('@google-cloud/vertexai');
+const VertexAI = (() => {
+  try {
+    return require('@google-cloud/vertexai').VertexAI;
+  } catch (e) {
+    console.warn('⚠️ @google-cloud/vertexai not available:', e?.message);
+    return null;
+  }
+})();
 
 const PROJECT_ID = 'airaproject-f5298';
 const LOCATION = 'us-central1';
 const MODEL_NAME = 'gemini-2.5-flash';
 
-// Initialize Vertex AI
-const vertex = new VertexAI({ project: PROJECT_ID, location: LOCATION });
-const generativeModel = vertex.getGenerativeModel({
-  model: MODEL_NAME,
-  generationConfig: {
-    maxOutputTokens: 2048,
-    temperature: 0.7,
-    topP: 0.9,
-    topK: 40,
-  },
-});
+// Initialize Vertex AI (wrap in try-catch to prevent module load errors)
+let vertex = null;
+let generativeModel = null;
+
+if (VertexAI) {
+  try {
+    vertex = new VertexAI({ project: PROJECT_ID, location: LOCATION });
+    generativeModel = vertex.getGenerativeModel({
+      model: MODEL_NAME,
+      generationConfig: {
+        maxOutputTokens: 2048,
+        temperature: 0.7,
+        topP: 0.9,
+        topK: 40,
+      },
+    });
+    console.log('✅ Vertex AI initialized');
+  } catch (e) {
+    console.warn('⚠️ Vertex AI initialization failed:', e?.message);
+    vertex = null;
+    generativeModel = null;
+  }
+} else {
+  console.warn('⚠️ Vertex AI not available - @google-cloud/vertexai package not found');
+}
 
 // Initialize OpenAI client if key is present
 let openai = null;
@@ -81,6 +102,10 @@ async function callOpenAI(prompt, options = {}) {
  * @returns {Promise<string>} The generated text
  */
 async function callVertexAI(prompt, options = {}) {
+  if (!generativeModel) {
+    throw new Error('Vertex AI not initialized');
+  }
+
   const maxTokens = options.maxTokens || 1024;
   const temperature = options.temperature || 0.7;
 
@@ -105,9 +130,11 @@ async function callAI(prompt, options = {}) {
   if (openai) {
     console.log('🤖 Using OpenAI');
     return await callOpenAI(prompt, options);
-  } else {
+  } else if (generativeModel) {
     console.log('🤖 Using Vertex AI');
     return await callVertexAI(prompt, options);
+  } else {
+    throw new Error('No AI client available. Please configure OpenAI API key or Vertex AI credentials.');
   }
 }
 
