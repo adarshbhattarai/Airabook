@@ -20,20 +20,98 @@ if (!admin.apps.length) {
 
 // Helper function to get Firestore instance with database name from env or default to "airabook"
 // Note: The database existence is checked when we try to use it, not when we get the instance
+function parseFirebaseConfig() {
+  try {
+    if (process.env.FIREBASE_CONFIG) {
+      // The Firebase CLI injects this JSON blob (mirroring .runtimeconfig.json)
+      // whenever functions run locally or in the cloud. It contains the
+      // projectId that we rely on for environment detection.
+      return JSON.parse(process.env.FIREBASE_CONFIG);
+    }
+    return {};
+  } catch (error) {
+    logger.warn("⚠️ Failed to parse FIREBASE_CONFIG:", error?.message);
+    return {};
+  }
+}
+
+function getProjectId(app) {
+  const firebaseConfig = parseFirebaseConfig();
+  const sources = [];
+
+  if (app?.options?.projectId) {
+    sources.push("admin.app().options.projectId");
+  }
+  if (firebaseConfig.projectId) {
+    sources.push("process.env.FIREBASE_CONFIG");
+  }
+  if (process.env.GCLOUD_PROJECT) {
+    sources.push("process.env.GCLOUD_PROJECT");
+  }
+  if (process.env.GOOGLE_CLOUD_PROJECT) {
+    sources.push("process.env.GOOGLE_CLOUD_PROJECT");
+  }
+
+  const projectId =
+    app?.options?.projectId ||
+    firebaseConfig.projectId ||
+    process.env.GCLOUD_PROJECT ||
+    process.env.GOOGLE_CLOUD_PROJECT ||
+    "";
+
+  logger.log(
+    `🔎 Project ID resolved as "${projectId || "unknown"}" from: ${
+      sources.length ? sources.join(", ") : "no available sources"
+    }`
+  );
+
+  return projectId;
+}
+
+function isDevEnvironment(projectId) {
+  const normalizedProjectId = (projectId || "").toLowerCase();
+  const runningInEmulator = process.env.FUNCTIONS_EMULATOR === "true";
+
+  if (runningInEmulator) {
+    return true;
+  }
+
+  // Consider anything explicitly marked dev, or with -dev suffix, as development
+  const explicitDevIds = new Set([
+    "airaproject-f5298",
+    "airabook-dev",
+    "airaproject-f2",
+    "f-airaproject-f2",
+  ]);
+
+  if (explicitDevIds.has(normalizedProjectId)) {
+    return true;
+  }
+
+  return normalizedProjectId.endsWith("-dev");
+}
+
 function getFirestoreDB() {
   const app = admin.app();
-  // Get database name from environment variable, default to "airabook"
-  // Use "(default)" or empty string to use default database
-  const databaseId = process.env.FIRESTORE_DATABASE_ID || "airabook";
-  
+
+  const projectId = getProjectId(app);
+  const envDatabaseId = process.env.FIRESTORE_DATABASE_ID;
+
+  let databaseId;
+  if (envDatabaseId) {
+    databaseId = envDatabaseId;
+  } else {
+    databaseId = isDevEnvironment(projectId) ? "airabook" : "(default)";
+  }
+
   logger.log(`🔍 Getting Firestore instance for database: ${databaseId}`);
-  logger.log(`🔍 Project ID: ${app.options.projectId || 'unknown'}`);
-  
-  // Get the Firestore instance (this doesn't verify if database exists)
-  // Database existence is checked when we try to use it
-  const db = admin.firestore(app, databaseId);
+  logger.log(`🔍 Project ID: ${projectId || 'unknown'}`);
+
+  const db =
+    databaseId === "(default)" ? admin.firestore(app) : admin.firestore(app, databaseId);
+
   logger.log(`✅ Firestore client initialized for database: ${databaseId}`);
-  
+
   return { db, databaseId };
 }
 
