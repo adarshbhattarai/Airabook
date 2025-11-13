@@ -321,7 +321,7 @@ npm run test:auth
 ```bash
 VITE_USE_EMULATOR=true
 VITE_FIREBASE_PROJECT_ID=demo-project
-VITE_FIREBASE_API_KEY=AIzaSyCz1b-k_pslC7ozEyQB-bCvChi7huOCTww
+VITE_FIREBASE_API_KEY=your-firebase-api-key
 VITE_FIREBASE_AUTH_DOMAIN=demo-project.firebaseapp.com
 VITE_FIREBASE_STORAGE_BUCKET=demo-project.appspot.com
 VITE_FIREBASE_MESSAGING_SENDER_ID=877560373455
