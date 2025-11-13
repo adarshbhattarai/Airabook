@@ -34,7 +34,7 @@ const Navbar = () => {
   const navItems = [
     { name: 'Home', path: homePath, public: true },
     { name: 'Media', path: '/media', public: false },
-    { name: 'Notes', path: '/notes', public: false },
+    // { name: 'Notes', path: '/notes', public: false },
   ];
 
   const visibleNavItems = navItems.filter(item => item.public || user);
@@ -53,7 +53,7 @@ const Navbar = () => {
             >
               <Heart className="h-8 w-8 text-violet-500 fill-current" />
               <span className="text-2xl font-bold bg-gradient-to-r from-purple-500 to-indigo-500 bg-clip-text text-transparent">
-                Baby Aira
+                AirABook
               </span>
             </motion.div>
           </Link>

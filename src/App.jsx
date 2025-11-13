@@ -53,10 +53,10 @@ function App() {
                 path="/media/album/:bookId" 
                 element={<PrivateRoute><AlbumDetail /></PrivateRoute>}
               />
-              <Route 
+              {/* <Route 
                 path="/notes" 
                 element={<PrivateRoute><Notes /></PrivateRoute>}
-              />
+              /> */}
               <Route 
                 path="/create-book" 
                 element={<PrivateRoute><CreateBook /></PrivateRoute>}

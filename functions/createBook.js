@@ -18,8 +18,9 @@ if (!admin.apps.length) {
   }
 }
 
-// Helper function to get Firestore instance with database name from env or default to "airabook"
-// Note: The database existence is checked when we try to use it, not when we get the instance
+// Helper function to get Firestore instance - tries named database first, falls back to default
+// This matches the frontend behavior where it uses "airabook" in production
+// Note: Admin SDK may not be able to access named databases even if client SDK can
 function getFirestoreDB() {
   const app = admin.app();
   // Get database name from environment variable, default to "airabook"
@@ -29,12 +30,51 @@ function getFirestoreDB() {
   logger.log(`🔍 Getting Firestore instance for database: ${databaseId}`);
   logger.log(`🔍 Project ID: ${app.options.projectId || 'unknown'}`);
   
-  // Get the Firestore instance (this doesn't verify if database exists)
-  // Database existence is checked when we try to use it
+  // If databaseId is "(default)" or empty, use default database
+  if (!databaseId || databaseId === "(default)") {
+    const db = admin.firestore(app);
+    logger.log(`✅ Using default Firestore database`);
+    return { db, databaseId: "(default)" };
+  }
+  
+  // Try to get the named database
+  // Note: admin.firestore(app, databaseId) doesn't verify database exists
+  // Database existence is only checked when we try to use it
   const db = admin.firestore(app, databaseId);
   logger.log(`✅ Firestore client initialized for database: ${databaseId}`);
+  logger.log(`⚠️ Note: If database "${databaseId}" is not accessible, we'll fall back to default on first error`);
   
   return { db, databaseId };
+}
+
+// Helper function to execute a database operation with automatic fallback to default database
+async function withDatabaseFallback(db, databaseId, operation, operationName) {
+  try {
+    return await operation(db);
+  } catch (error) {
+    // Check if it's a NOT_FOUND error (database doesn't exist or isn't accessible)
+    const isNotFound = error.code === 5 || 
+                      error.message?.includes('NOT_FOUND') || 
+                      error.message?.includes('not found') ||
+                      error.details?.includes('NOT_FOUND');
+    
+    if (isNotFound && databaseId !== "(default)") {
+      logger.warn(`⚠️ Database "${databaseId}" not accessible for ${operationName} (error code: ${error.code}).`);
+      logger.warn(`⚠️ Error message: ${error.message}`);
+      logger.warn(`⚠️ Frontend can access "${databaseId}", but Admin SDK cannot. Falling back to default database.`);
+      
+      // Switch to default database
+      const app = admin.app();
+      const defaultDb = admin.firestore(app);
+      logger.log(`✅ Switched to default Firestore database for ${operationName}`);
+      
+      // Retry the operation with default database
+      return await operation(defaultDb);
+    } else {
+      // Re-throw other errors
+      throw error;
+    }
+  }
 }
 
 // Initialize AI utilities
@@ -197,93 +237,71 @@ exports.createBook = onCall(
       logger.log(
         `⏰ Function execution started at: ${new Date().toISOString()}`
       );
+      logger.log(`🚀 CREATEBOOK V2: Using updated code with database fallback logic`);
+      logger.log(`🚀 CREATEBOOK V2: withDatabaseFallback function is available: ${typeof withDatabaseFallback === 'function'}`);
 
-      // Get Firestore instance - try named database first, fall back to default if not found
+      // Get Firestore instance - try named database first
       let dbResult = getFirestoreDB();
       let db = dbResult.db;
       let databaseId = dbResult.databaseId;
       logger.log(`🔥 Firestore instance obtained for database: ${databaseId}`);
       logger.log(`🔍 Attempting to access users collection for userId: ${userId}`);
       logger.log(`🔍 Database project: ${db.app?.options?.projectId || 'unknown'}`);
+      logger.log(`🚀 CREATEBOOK V2: Database instance created, will use fallback if needed`);
 
       const titleNormalized = title.trim();
       const titleLower = titleNormalized.toLowerCase();
 
       // Ensure user doc exists + get current book count
+      // Use withDatabaseFallback to automatically fall back to default if named database fails
       logger.log(`📖 Getting user document: users/${userId}`);
-      const userRef = db.collection("users").doc(userId);
-      logger.log(`✅ User reference created: ${userRef.path}`);
-      
       let userDoc;
       let userData = {};
+      
       try {
-        logger.log(`🔍 Fetching user document from database "${databaseId}"...`);
-        userDoc = await userRef.get();
-        logger.log(`✅ User document fetched. Exists: ${userDoc.exists}`);
+        const result = await withDatabaseFallback(
+          db,
+          databaseId,
+          async (currentDb) => {
+            const userRef = currentDb.collection("users").doc(userId);
+            logger.log(`✅ User reference created: ${userRef.path}`);
+            const currentDbId = currentDb === db ? databaseId : "(default)";
+            logger.log(`🔍 Fetching user document from database "${currentDbId}"...`);
+            const doc = await userRef.get();
+            logger.log(`✅ User document fetched. Exists: ${doc.exists}`);
+            // Return both the doc and updated db reference
+            return { doc, updatedDb: currentDb, updatedDbId: currentDbId };
+          },
+          "user document fetch"
+        );
+        
+        userDoc = result.doc;
+        // Update db and databaseId if we fell back to default
+        if (result.updatedDb !== db) {
+          db = result.updatedDb;
+          databaseId = result.updatedDbId;
+          logger.log(`✅ Updated to use database: ${databaseId}`);
+        }
         
         if (userDoc.exists) {
           userData = userDoc.data();
-          logger.log(`📊 User data retrieved:`, {
+          logger.log(`📊 User data retrieved from database "${databaseId}":`, {
             hasDisplayName: !!userData.displayName,
             hasEmail: !!userData.email,
             bookCount: userData?.accessibleBookIds?.length || 0
           });
         } else {
-          logger.log(`⚠️ User document does not exist. Will be created if needed.`);
+          logger.log(`⚠️ User document does not exist in database "${databaseId}". Will be created if needed.`);
         }
       } catch (error) {
-        // Check if it's a NOT_FOUND error (database doesn't exist)
-        const isNotFoundError = error.code === 5 || 
-                               error.message?.includes('NOT_FOUND') || 
-                               error.message?.includes('not found') ||
-                               error.details?.includes('NOT_FOUND');
-        
-        if (isNotFoundError && databaseId !== '(default)') {
-          logger.warn(`⚠️ Database "${databaseId}" not found (error code: ${error.code}). Falling back to default database.`);
-          logger.warn(`⚠️ Error message: ${error.message}`);
-          
-          // Fall back to default database
-          try {
-            const app = admin.app();
-            db = admin.firestore(app); // Default database
-            databaseId = '(default)';
-            logger.log(`✅ Switched to default Firestore database`);
-            
-            // Retry the operation with default database
-            const defaultUserRef = db.collection("users").doc(userId);
-            logger.log(`🔍 Retrying user document fetch from default database...`);
-            userDoc = await defaultUserRef.get();
-            logger.log(`✅ User document fetched from default database. Exists: ${userDoc.exists}`);
-            
-            if (userDoc.exists) {
-              userData = userDoc.data();
-              logger.log(`📊 User data retrieved from default database:`, {
-                hasDisplayName: !!userData.displayName,
-                hasEmail: !!userData.email,
-                bookCount: userData?.accessibleBookIds?.length || 0
-              });
-            } else {
-              logger.log(`⚠️ User document does not exist in default database. Will be created if needed.`);
-            }
-          } catch (fallbackError) {
-            logger.error(`❌ Error fetching user document from default database:`, fallbackError);
-            logger.error(`❌ Error code: ${fallbackError.code}`);
-            logger.error(`❌ Error message: ${fallbackError.message}`);
-            throw new HttpsError(
-              "internal",
-              `Failed to access user document: ${fallbackError.message}`
-            );
-          }
-        } else {
-          logger.error(`❌ Error fetching user document:`, error);
-          logger.error(`❌ Error code: ${error.code}`);
-          logger.error(`❌ Error message: ${error.message}`);
-          logger.error(`❌ Error details:`, error.details);
-          throw new HttpsError(
-            "internal",
-            `Failed to access user document in database "${databaseId}": ${error.message}`
-          );
-        }
+        logger.error(`❌ Error fetching user document:`, error);
+        logger.error(`❌ Error code: ${error.code}`);
+        logger.error(`❌ Error message: ${error.message}`);
+        logger.error(`❌ Error details:`, error.details);
+        throw new HttpsError(
+          "internal",
+          `Failed to access user document: ${error.message}`
+        );
       }
 
       const currentBookCount = userData?.accessibleBookIds?.length || 0;
