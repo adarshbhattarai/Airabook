@@ -1,7 +1,7 @@
 const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
-const FieldValue = require("firebase-admin/firestore").FieldValue;
+const { getFirestore, FieldValue } = require("./utils/firestore");
 
 // --- UTILITY FOR FRACTIONAL INDEXING ---
 const getMidpointString = (prev = '', next = '') => {
@@ -51,22 +51,6 @@ if (!admin.apps.length) {
   }
 }
 
-// Helper function to get Firestore instance with database name from env or default to "airabook"
-function getFirestoreDB() {
-  const app = admin.app();
-  // Get database name from environment variable, default to "airabook"
-  const databaseId = process.env.FIRESTORE_DATABASE_ID || "airabook";
-  
-  try {
-    const db = admin.firestore(app, databaseId);
-    logger.log(`🔥 Firestore instance obtained for database: ${databaseId}`);
-    return db;
-  } catch (error) {
-    logger.error(`❌ Error getting Firestore instance for database "${databaseId}":`, error);
-    throw error;
-  }
-}
-
 const {uploadMedia} = require("./imageProcessor");
 const {rewriteNote} = require("./textGenerator");
 const {createBook} = require("./createBook");
@@ -105,7 +89,7 @@ exports.getBookChapters = onCall({ region: "us-central1" }, async (request) => {
   }
 
   try {
-    const db = getFirestoreDB();
+    const { db } = getFirestore();
 
     // Verify user has access to this book
     const bookRef = db.collection('books').doc(bookId);
@@ -178,7 +162,7 @@ exports.addChapter = onCall({ region: "us-central1" }, async (request) => {
   }
 
   try {
-    const db = getFirestoreDB();
+    const { db } = getFirestore();
 
     // Verify user has access to this book
     const bookRef = db.collection('books').doc(bookId);
@@ -272,7 +256,7 @@ exports.addPageSummary = onCall({ region: "us-central1" }, async (request) => {
   }
 
   try {
-    const db = getFirestoreDB();
+    const { db } = getFirestore();
 
     // Verify user has access to this book
     const bookRef = db.collection('books').doc(bookId);
