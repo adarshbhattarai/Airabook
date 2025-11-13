@@ -23,7 +23,6 @@
     "emulators:export": "firebase emulators:export ./emulator-data",
     "emulators:import": "firebase emulators:start --import=./emulator-data",
     "emulators:local": "firebase emulators:start --project local --inspect-functions",
-    "emulators:dev": "firebase emulators:start --project dev",
 
     "deploy:dev": "npm run build:dev && firebase deploy --project dev",
     "deploy:qa": "npm run build:qa && firebase deploy --project qa",
