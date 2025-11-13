@@ -22,9 +22,13 @@ if (!admin.apps.length) {
 // Note: The database existence is checked when we try to use it, not when we get the instance
 function parseFirebaseConfig() {
   try {
-    return process.env.FIREBASE_CONFIG
-      ? JSON.parse(process.env.FIREBASE_CONFIG)
-      : {};
+    if (process.env.FIREBASE_CONFIG) {
+      // The Firebase CLI injects this JSON blob (mirroring .runtimeconfig.json)
+      // whenever functions run locally or in the cloud. It contains the
+      // projectId that we rely on for environment detection.
+      return JSON.parse(process.env.FIREBASE_CONFIG);
+    }
+    return {};
   } catch (error) {
     logger.warn("⚠️ Failed to parse FIREBASE_CONFIG:", error?.message);
     return {};
@@ -33,13 +37,35 @@ function parseFirebaseConfig() {
 
 function getProjectId(app) {
   const firebaseConfig = parseFirebaseConfig();
-  return (
+  const sources = [];
+
+  if (app?.options?.projectId) {
+    sources.push("admin.app().options.projectId");
+  }
+  if (firebaseConfig.projectId) {
+    sources.push("process.env.FIREBASE_CONFIG");
+  }
+  if (process.env.GCLOUD_PROJECT) {
+    sources.push("process.env.GCLOUD_PROJECT");
+  }
+  if (process.env.GOOGLE_CLOUD_PROJECT) {
+    sources.push("process.env.GOOGLE_CLOUD_PROJECT");
+  }
+
+  const projectId =
     app?.options?.projectId ||
     firebaseConfig.projectId ||
     process.env.GCLOUD_PROJECT ||
     process.env.GOOGLE_CLOUD_PROJECT ||
-    ""
+    "";
+
+  logger.log(
+    `🔎 Project ID resolved as "${projectId || "unknown"}" from: ${
+      sources.length ? sources.join(", ") : "no available sources"
+    }`
   );
+
+  return projectId;
 }
 
 function isDevEnvironment(projectId) {
@@ -54,6 +80,8 @@ function isDevEnvironment(projectId) {
   const explicitDevIds = new Set([
     "airaproject-f5298",
     "airabook-dev",
+    "airaproject-f2",
+    "f-airaproject-f2",
   ]);
 
   if (explicitDevIds.has(normalizedProjectId)) {
