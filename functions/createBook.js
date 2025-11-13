@@ -2,7 +2,7 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
 
 const admin = require("firebase-admin");
-const FieldValue = require("firebase-admin/firestore").FieldValue;
+const { getFirestore, FieldValue } = require("./utils/firestore");
 
 // Firebase Admin should be initialized by index.js
 // If not initialized, initialize with default settings (with console.log since logger might not be ready)
@@ -16,25 +16,6 @@ if (!admin.apps.length) {
     // Admin might already be initialized, ignore error
     console.warn("⚠️ Admin initialization skipped:", error?.message || "Unknown error");
   }
-}
-
-// Helper function to get Firestore instance with database name from env or default to "airabook"
-// Note: The database existence is checked when we try to use it, not when we get the instance
-function getFirestoreDB() {
-  const app = admin.app();
-  // Get database name from environment variable, default to "airabook"
-  // Use "(default)" or empty string to use default database
-  const databaseId = process.env.FIRESTORE_DATABASE_ID || "airabook";
-  
-  logger.log(`🔍 Getting Firestore instance for database: ${databaseId}`);
-  logger.log(`🔍 Project ID: ${app.options.projectId || 'unknown'}`);
-  
-  // Get the Firestore instance (this doesn't verify if database exists)
-  // Database existence is checked when we try to use it
-  const db = admin.firestore(app, databaseId);
-  logger.log(`✅ Firestore client initialized for database: ${databaseId}`);
-  
-  return { db, databaseId };
 }
 
 // Initialize AI utilities
@@ -199,9 +180,7 @@ exports.createBook = onCall(
       );
 
       // Get Firestore instance - try named database first, fall back to default if not found
-      let dbResult = getFirestoreDB();
-      let db = dbResult.db;
-      let databaseId = dbResult.databaseId;
+      let { db, databaseId } = getFirestore();
       logger.log(`🔥 Firestore instance obtained for database: ${databaseId}`);
       logger.log(`🔍 Attempting to access users collection for userId: ${userId}`);
       logger.log(`🔍 Database project: ${db.app?.options?.projectId || 'unknown'}`);
@@ -244,9 +223,13 @@ exports.createBook = onCall(
           
           // Fall back to default database
           try {
-            const app = admin.app();
-            db = admin.firestore(app); // Default database
-            databaseId = '(default)';
+            const defaultDbInfo = getFirestore({
+              databaseId: '(default)',
+              forceRefresh: true,
+              remember: true,
+            });
+            db = defaultDbInfo.db;
+            databaseId = defaultDbInfo.databaseId;
             logger.log(`✅ Switched to default Firestore database`);
             
             // Retry the operation with default database

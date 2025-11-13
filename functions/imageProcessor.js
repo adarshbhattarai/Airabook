@@ -4,6 +4,7 @@ const path = require("path");
 const os = require("os");
 const fs = require("fs");
 const BusBoy = require("busboy");
+const { getFirestore, FieldValue } = require("./utils/firestore");
 
 // Make sure Admin SDK is initialized (safe even if done elsewhere)
 if (!admin.apps.length) {
@@ -64,6 +65,8 @@ function handleBusboyEvents(busboy, uid, res) {
       await Promise.all(writePromises);
 
       const bucket = admin.storage().bucket();
+      const { db, databaseId } = getFirestore();
+      console.log(`🔥 Saving media URL to database: ${databaseId}`);
       const uploadTasks = Object.entries(uploads).map(
         async ([filename, { filepath, mimetype }]) => {
           // Upload to Storage
@@ -79,16 +82,12 @@ function handleBusboyEvents(busboy, uid, res) {
           });
 
           // Save URL record in Firestore
-          const app = admin.app();
-          const databaseId = process.env.FIRESTORE_DATABASE_ID || "airabook";
-          console.log(`🔥 Saving media URL to database: ${databaseId}`);
-          const db = admin.firestore(app, databaseId);
           return db
             .collection("mediaUrls")
             .add({
               url: publicUrl,
               userId: uid,
-              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              createdAt: FieldValue.serverTimestamp(),
             });
         }
       );
