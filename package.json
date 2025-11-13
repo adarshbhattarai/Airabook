@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "local": "vite",
+    "local": "vite --mode localemulator",
     "dev": "vite --mode development",
     "start": "npm run local",
 
