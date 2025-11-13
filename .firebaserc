@@ -1,9 +1,10 @@
 {
   "projects": {
     "default": "airabook-dev",
+    "local": "demo-project",
     "dev": "airabook-dev",
     "qa": "airabook-qa",
     "go": "airabook-21bf5",
-    "prod": "airabook-prod",
+    "prod": "airabook-prod"
   }
 }
