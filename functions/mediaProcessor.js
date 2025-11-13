@@ -15,21 +15,8 @@ if (!admin.apps.length) {
   }
 }
 
-// Helper function to get Firestore instance with database name from env or default to "airabook"
-function getFirestoreDB() {
-  const app = admin.app();
-  // Get database name from environment variable, default to "airabook"
-  const databaseId = process.env.FIRESTORE_DATABASE_ID || "airabook";
-  
-  try {
-    const db = admin.firestore(app, databaseId);
-    console.log(`🔥 Firestore instance obtained for database: ${databaseId}`);
-    return db;
-  } catch (error) {
-    console.error(`❌ Error getting Firestore instance for database "${databaseId}":`, error);
-    throw error;
-  }
-}
+// Get default Firestore instance
+const db = admin.firestore();
 
 /**
  * Parse Storage path to extract metadata
@@ -69,7 +56,6 @@ function parseStoragePath(storagePath) {
  * Validate that user has access to upload media for this book
  */
 async function validateBookAccess(userId, bookId) {
-  const db = getFirestoreDB();
   const bookRef = db.collection('books').doc(bookId);
   const bookDoc = await bookRef.get();
 
@@ -96,7 +82,6 @@ async function validateBookAccess(userId, bookId) {
  * Get or create album document for a book
  */
 async function getOrCreateAlbum(bookId, userId) {
-  const db = getFirestoreDB();
   const albumRef = db.collection('albums').doc(bookId);
   const albumDoc = await albumRef.get();
 
@@ -180,7 +165,6 @@ async function getDownloadURL(bucket, storagePath) {
  * Update album document with new media URL
  */
 async function updateAlbumWithMedia(albumId, downloadURL, mediaType, storagePath) {
-  const db = getFirestoreDB();
   const albumRef = db.collection('albums').doc(albumId);
   const albumDoc = await albumRef.get();
 
@@ -230,7 +214,6 @@ async function updateAlbumWithMedia(albumId, downloadURL, mediaType, storagePath
  * Update user's accessibleBookIds with cover image
  */
 async function updateUserAccessibleBookIds(userId, bookId, coverImage) {
-  const db = getFirestoreDB();
   const userRef = db.collection('users').doc(userId);
   const userDoc = await userRef.get();
 
@@ -285,7 +268,6 @@ async function updateUserAccessibleBookIds(userId, bookId, coverImage) {
  * Update user's accessibleAlbums
  */
 async function updateUserAccessibleAlbums(userId, albumId, albumName, coverImage, mediaCount) {
-  const db = getFirestoreDB();
   const userRef = db.collection('users').doc(userId);
   const userDoc = await userRef.get();
 
@@ -366,7 +348,6 @@ exports.onMediaUpload = onObjectFinalized(
       await updateUserAccessibleBookIds(metadata.userId, metadata.bookId, albumUpdate.coverImage);
 
       // Get album name for accessibleAlbums
-      const db = getFirestoreDB();
       const albumRef = db.collection('albums').doc(albumId);
       const albumDoc = await albumRef.get();
       const albumName = albumDoc.exists ? albumDoc.data().name : 'Untitled Album';
@@ -418,7 +399,6 @@ exports.onMediaDelete = onObjectDeleted(
       
       console.log(`📋 Parsed deletion metadata:`, metadata);
 
-      const db = getFirestoreDB();
       const albumRef = db.collection('albums').doc(metadata.bookId);
       const albumDoc = await albumRef.get();
 

@@ -138,10 +138,10 @@ functions/
 - Verify `request.auth` exists
 - Check emulator connection
 
-### Firestore Database Not Found
-**Problem:** "Database 'airabook' not found"
+### Firestore Database Configuration
+**Note:** This project uses the **default Firestore database**.
 
-**Solution:** Already configured! Uses `db.settings({databaseId: 'airabook'})` in index.js
+All functions use `admin.firestore()` without specifying a database ID, which automatically uses the default database in both development (emulators) and production environments.
 
 ---
 

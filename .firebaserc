@@ -1,6 +1,9 @@
 {
   "projects": {
-    "default": "airaproject-f5298",
-    "dev": "airaproject-f5298"
+    "default": "airabook-dev",
+    "dev": "airabook-dev",
+    "qa": "airabook-qa",
+    "go": "airabook-21bf5",
+    "prod": "airabook-prod",
   }
 }

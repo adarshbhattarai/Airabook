@@ -33,7 +33,7 @@ if (!admin.apps.length) {
     admin.initializeApp({
       storageBucket: "airaproject-f5298.appspot.com",
     });
-    console.log("🔥 Firebase Admin initialized for emulator environment");
+    console.log("Firebase Admin initialized for emulator environment");
   } else {
     try {
       const serviceAccount = require("./serviceAccountKey.json");
@@ -41,31 +41,18 @@ if (!admin.apps.length) {
         credential: admin.credential.cert(serviceAccount),
         storageBucket: "airaproject-f5298.appspot.com",
       });
-      console.log("🔥 Firebase Admin initialized with service account");
+      console.log("Firebase Admin initialized with service account");
     } catch (e) {
       admin.initializeApp({
         storageBucket: "airaproject-f5298.appspot.com",
       });
-      console.log("🔥 Firebase Admin initialized with default credentials");
+      console.log("Firebase Admin initialized with default credentials");
     }
   }
 }
 
-// Helper function to get Firestore instance with database name from env or default to "airabook"
-function getFirestoreDB() {
-  const app = admin.app();
-  // Get database name from environment variable, default to "airabook"
-  const databaseId = process.env.FIRESTORE_DATABASE_ID || "airabook";
-  
-  try {
-    const db = admin.firestore(app, databaseId);
-    logger.log(`🔥 Firestore instance obtained for database: ${databaseId}`);
-    return db;
-  } catch (error) {
-    logger.error(`❌ Error getting Firestore instance for database "${databaseId}":`, error);
-    throw error;
-  }
-}
+// Get default Firestore instance
+const db = admin.firestore();
 
 const {uploadMedia} = require("./imageProcessor");
 const {rewriteNote} = require("./textGenerator");
@@ -89,8 +76,8 @@ exports.inviteCoAuthor = inviteCoAuthor;
 exports.getBookChapters = onCall({ region: "us-central1" }, async (request) => {
   const { data, auth } = request;
   
-  logger.log("📚 getBookChapters function called at:", new Date().toISOString());
-  logger.log("📊 Received data:", JSON.stringify(data, null, 2));
+  logger.log("getBookChapters called at:", new Date().toISOString());
+  logger.log("Received data:", JSON.stringify(data, null, 2));
   
   // Check authentication
   if (!auth) {
@@ -105,7 +92,6 @@ exports.getBookChapters = onCall({ region: "us-central1" }, async (request) => {
   }
 
   try {
-    const db = getFirestoreDB();
 
     // Verify user has access to this book
     const bookRef = db.collection('books').doc(bookId);
@@ -162,8 +148,8 @@ exports.getBookChapters = onCall({ region: "us-central1" }, async (request) => {
 exports.addChapter = onCall({ region: "us-central1" }, async (request) => {
   const { data, auth } = request;
   
-  logger.log("📄 addChapter function called at:", new Date().toISOString());
-  logger.log("📊 Received data:", JSON.stringify(data, null, 2));
+  logger.log("addChapter called at:", new Date().toISOString());
+  logger.log("Received data:", JSON.stringify(data, null, 2));
   
   // Check authentication
   if (!auth) {
@@ -178,7 +164,6 @@ exports.addChapter = onCall({ region: "us-central1" }, async (request) => {
   }
 
   try {
-    const db = getFirestoreDB();
 
     // Verify user has access to this book
     const bookRef = db.collection('books').doc(bookId);
@@ -256,8 +241,8 @@ exports.addChapter = onCall({ region: "us-central1" }, async (request) => {
 exports.addPageSummary = onCall({ region: "us-central1" }, async (request) => {
   const { data, auth } = request;
   
-  logger.log("📄 addPageSummary function called at:", new Date().toISOString());
-  logger.log("📊 Received data:", JSON.stringify(data, null, 2));
+  logger.log("addPageSummary called at:", new Date().toISOString());
+  logger.log("Received data:", JSON.stringify(data, null, 2));
   
   // Check authentication
   if (!auth) {
@@ -272,7 +257,6 @@ exports.addPageSummary = onCall({ region: "us-central1" }, async (request) => {
   }
 
   try {
-    const db = getFirestoreDB();
 
     // Verify user has access to this book
     const bookRef = db.collection('books').doc(bookId);
@@ -348,3 +332,4 @@ exports.addPageSummary = onCall({ region: "us-central1" }, async (request) => {
     throw new HttpsError('internal', 'Failed to add page summary. Please try again.');
   }
 });
+
