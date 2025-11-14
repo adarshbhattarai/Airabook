@@ -5,10 +5,16 @@ process.env.FIREBASE_AUTH_EMULATOR_HOST = "localhost:9099";
 process.env.FIRESTORE_EMULATOR_HOST = "localhost:8080";
 process.env.GOOGLE_CLOUD_PROJECT = "demo-project";
 
+// Get current project ID dynamically from environment (defaults to demo-project for emulator)
+const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'demo-project';
+const STORAGE_BUCKET = `${PROJECT_ID}.appspot.com`;
+
+console.log(`🔧 Using emulator with project: ${PROJECT_ID}`);
+
 // Initialize Firebase Admin for emulator only
 admin.initializeApp({
-  projectId: "demo-project",
-  storageBucket: "airaproject-f5298.appspot.com",
+  projectId: PROJECT_ID,
+  storageBucket: STORAGE_BUCKET,
 });
 
 // Connect to Firestore emulator

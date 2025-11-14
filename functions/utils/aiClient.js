@@ -11,9 +11,12 @@ const VertexAI = (() => {
   }
 })();
 
-const PROJECT_ID = 'airaproject-f5298';
+// Get current project ID dynamically from environment
+const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'airabook-dev';
 const LOCATION = 'us-central1';
 const MODEL_NAME = 'gemini-2.5-flash';
+
+console.log(`🤖 AI Client initialized for project: ${PROJECT_ID}`);
 
 // Initialize Vertex AI (wrap in try-catch to prevent module load errors)
 let vertex = null;

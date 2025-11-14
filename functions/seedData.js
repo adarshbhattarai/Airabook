@@ -1,16 +1,22 @@
 const admin = require("firebase-admin");
 
+// Get current project ID dynamically from environment
+const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'airabook-dev';
+const STORAGE_BUCKET = `${PROJECT_ID}.appspot.com`;
+
+console.log(`🔧 Using project: ${PROJECT_ID}`);
+
 // Initialize Firebase Admin
 try {
   const serviceAccount = require("./serviceAccountKey.json");
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
-    storageBucket: "airaproject-f5298.appspot.com",
+    storageBucket: STORAGE_BUCKET,
   });
   console.log("🔥 Firebase Admin initialized with service account");
 } catch (e) {
   admin.initializeApp({
-    storageBucket: "airaproject-f5298.appspot.com",
+    storageBucket: STORAGE_BUCKET,
   });
   console.log("🔥 Firebase Admin initialized for local development");
 }

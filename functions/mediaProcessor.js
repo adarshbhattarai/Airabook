@@ -5,10 +5,14 @@ const FieldValue = require("firebase-admin/firestore").FieldValue;
 // Ensure Firebase Admin is initialized (may be initialized by index.js)
 if (!admin.apps.length) {
   try {
+    // Get current project ID dynamically from environment
+    const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'airabook-dev';
+    const STORAGE_BUCKET = `${PROJECT_ID}.appspot.com`;
+    
     admin.initializeApp({
-      storageBucket: "airaproject-f5298.appspot.com",
+      storageBucket: STORAGE_BUCKET,
     });
-    console.log("🔥 Firebase Admin initialized in mediaProcessor.js");
+    console.log(`🔥 Firebase Admin initialized in mediaProcessor.js for project: ${PROJECT_ID}`);
   } catch (error) {
     // Admin might already be initialized, ignore error
     console.warn("⚠️ Admin initialization skipped in mediaProcessor.js:", error?.message || "Unknown error");

@@ -8,10 +8,14 @@ const FieldValue = require("firebase-admin/firestore").FieldValue;
 // If not initialized, initialize with default settings (with console.log since logger might not be ready)
 if (!admin.apps.length) {
   try {
+    // Get current project ID dynamically from environment
+    const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'airabook-dev';
+    const STORAGE_BUCKET = `${PROJECT_ID}.appspot.com`;
+    
     admin.initializeApp({
-      storageBucket: "airaproject-f5298.appspot.com",
+      storageBucket: STORAGE_BUCKET,
     });
-    console.log("🔥 Firebase Admin initialized in createBook.js");
+    console.log(`🔥 Firebase Admin initialized in createBook.js for project: ${PROJECT_ID}`);
   } catch (error) {
     // Admin might already be initialized, ignore error
     console.warn("⚠️ Admin initialization skipped:", error?.message || "Unknown error");
@@ -130,10 +134,26 @@ function validateCreateBookRequest(data) {
  * Called from CreateBook.jsx via httpsCallable(functions, "createBook")
  */
 exports.createBook = onCall(
+  { region: "us-central1" },
   async (request) => {
-    const { data, auth } = request; // v2 shape
-
-    logger.log("🚀 createBook function called at:", new Date().toISOString());
+    console.log("=".repeat(80));
+    console.log("🔥 createBook function called at:", new Date().toISOString());
+    console.log("=".repeat(80));
+    
+    const { data, auth, rawRequest } = request; // v2 shape
+    
+    // Log request details
+    console.log("📦 Request data:", safeStringify(data));
+    console.log("🔐 Auth context:", safeStringify(auth));
+    console.log("🌐 Raw request available:", !!rawRequest);
+    
+    // Log auth token details if present
+    if (rawRequest?.headers) {
+      console.log("📋 Request headers:");
+      console.log("  - Authorization:", rawRequest.headers.authorization ? "Present" : "Missing");
+      console.log("  - Origin:", rawRequest.headers.origin);
+      console.log("  - User-Agent:", rawRequest.headers['user-agent']);
+    }
 
     logger.log(
       "📊 Received data:",
@@ -149,13 +169,21 @@ exports.createBook = onCall(
       })
     );
 
-    console.log("Trying to make an update")
-
-    logger.log("👤 Auth in request:", auth ? auth.uid : "No auth");
+    logger.log("👤 Auth context:", auth ? safeStringify(auth) : "No auth");
+    
+    // Detailed auth logging
+    if (auth) {
+      console.log("✅ Auth object found:");
+      console.log("  - UID:", auth.uid);
+      console.log("  - Token:", auth.token ? safeStringify(auth.token) : "No token");
+    } else {
+      console.log("❌ No auth object in request");
+    }
 
     // Check authentication
     if (!auth) {
       logger.error("❌ Authentication failed - no user context");
+      console.log("❌ Request was unauthenticated - rejecting");
       throw new HttpsError(
         "unauthenticated",
         "User must be authenticated to create a book."

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { functions } from '@/lib/firebase';
+import { functions, auth } from '@/lib/firebase';
 import { httpsCallable } from 'firebase/functions';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -55,6 +55,16 @@ const CreateBook = () => {
       console.log("📞 CreateBook: Calling Firebase function...");
       console.log("🔧 Functions instance:", functions);
       console.log("🌐 Functions region:", functions.app.options.region);
+      
+      // Debug: Check current user and token
+      console.log("🔐 Current Firebase User:", auth.currentUser);
+      console.log("🔐 User UID:", auth.currentUser?.uid);
+      console.log("🔐 User Email:", auth.currentUser?.email);
+      
+      // Force refresh the ID token
+      const idToken = await auth.currentUser.getIdToken(true);
+      console.log("🎫 Fresh ID Token obtained:", idToken ? "Token exists" : "No token");
+      console.log("🎫 Token length:", idToken?.length);
       
       const createBookFunction = httpsCallable(functions, 'createBook');
       console.log("✅ CreateBook: Function reference created");

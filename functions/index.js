@@ -26,27 +26,52 @@ const getMidpointString = (prev = '', next = '') => {
 const getNewOrderBetween = (prevOrder = '', nextOrder = '') =>
   getMidpointString(prevOrder, nextOrder);
 
+// Get current project ID dynamically from environment
+const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'airabook-dev';
+const STORAGE_BUCKET = `${PROJECT_ID}.appspot.com`;
+
+console.log(`🔧 Initializing Firebase Admin for project: ${PROJECT_ID}`);
+console.log(`📦 Storage bucket: ${STORAGE_BUCKET}`);
+
 // Initialize Firebase Admin (only if not already initialized)
 if (!admin.apps.length) {
   const runningInEmulator = process.env.FUNCTIONS_EMULATOR === 'true' || process.env.FIREBASE_AUTH_EMULATOR_HOST;
+  const isDeployed = !!process.env.GCLOUD_PROJECT; // Cloud Functions set this automatically
+  
   if (runningInEmulator) {
+    // Emulator mode - use default initialization
     admin.initializeApp({
-      storageBucket: "airaproject-f5298.appspot.com",
+      storageBucket: STORAGE_BUCKET,
     });
-    console.log("Firebase Admin initialized for emulator environment");
+    console.log("🧪 Firebase Admin initialized for emulator environment");
+  } else if (isDeployed) {
+    // Deployed to Cloud Functions - use Application Default Credentials (ADC)
+    // ADC automatically uses the correct service account for the deployed environment
+    admin.initializeApp({
+      storageBucket: STORAGE_BUCKET,
+    });
+    console.log("☁️  Firebase Admin initialized with Application Default Credentials (deployed)");
+    console.log(`   Project: ${PROJECT_ID}`);
   } else {
+    // Local development - try to use service account key
     try {
       const serviceAccount = require("./serviceAccountKey.json");
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
-        storageBucket: "airaproject-f5298.appspot.com",
+        storageBucket: STORAGE_BUCKET,
       });
-      console.log("Firebase Admin initialized with service account");
+      console.log("🔑 Firebase Admin initialized with service account key (local development)");
+      console.log(`   Project from key: ${serviceAccount.project_id}`);
+      if (serviceAccount.project_id !== PROJECT_ID) {
+        console.warn(`⚠️  WARNING: Service account project (${serviceAccount.project_id}) doesn't match target project (${PROJECT_ID})`);
+      }
     } catch (e) {
+      // Fallback to default credentials
       admin.initializeApp({
-        storageBucket: "airaproject-f5298.appspot.com",
+        storageBucket: STORAGE_BUCKET,
       });
-      console.log("Firebase Admin initialized with default credentials");
+      console.log("🔧 Firebase Admin initialized with default credentials");
+      console.warn("⚠️  No serviceAccountKey.json found - using default credentials");
     }
   }
 }
