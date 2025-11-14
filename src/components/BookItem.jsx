@@ -15,7 +15,7 @@ import { useAuth } from '@/context/AuthContext';
 const convertToEmulatorURL = (url) => {
   if (!url) return url;
   
-  const useEmulator = import.meta.env.VITE_USE_EMULATOR === 'true' || import.meta.env.MODE === 'development';
+  const useEmulator = import.meta.env.VITE_USE_EMULATOR === 'true';
   
   if (!useEmulator) {
     return url;
