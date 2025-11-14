@@ -6,9 +6,8 @@ try {
 } catch (_) {}
 
 // AI utilities
-//const { callAI } = require("./utils/aiClient");
+const { callAI } = require("./utils/aiClient");
 const { buildRewritePrompt } = require("./utils/prompts");
-const callAI = async (prompt, options) => "Mock AI response for: " + prompt; // Add this line
 const LOCATION = "us-central1";
 
 /**

@@ -128,18 +128,12 @@ async function getDownloadURL(bucket, storagePath) {
 
   if (isEmulator) {
     // Generate emulator URL format: http://127.0.0.1:9199/v0/b/{bucket}/o/{encodedPath}?alt=media&token={token}
-    // Transform bucket name from .appspot.com to .firebasestorage.app if needed
-    let emulatorBucket = bucket;
-    if (bucket.endsWith('.appspot.com')) {
-      emulatorBucket = bucket.replace('.appspot.com', '.firebasestorage.app');
-    }
-    
     // URL encode the storage path (keep slashes as %2F)
     const encodedPath = encodeURIComponent(storagePath);
     const token = require('crypto').randomUUID();
     const emulatorHost = process.env.FIREBASE_STORAGE_EMULATOR_HOST || '127.0.0.1:9199';
     const protocol = emulatorHost.startsWith('http') ? '' : 'http://';
-    const downloadURL = `${protocol}${emulatorHost}/v0/b/${emulatorBucket}/o/${encodedPath}?alt=media&token=${token}`;
+    const downloadURL = `${protocol}${emulatorHost}/v0/b/${bucket}/o/${encodedPath}?alt=media&token=${token}`;
     console.log(`🔗 Generated emulator URL: ${downloadURL}`);
     return downloadURL;
   }
