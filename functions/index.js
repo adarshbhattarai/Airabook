@@ -54,13 +54,17 @@ if (!admin.apps.length) {
     console.log(`   Project: ${PROJECT_ID}`);
   } else {
     // Local development - try to use service account key
+    // Check for key in custom location via environment variable, or in default location
+    const keyPath = process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.SERVICE_ACCOUNT_KEY_PATH || "./serviceAccountKey.json";
+    
     try {
-      const serviceAccount = require("./serviceAccountKey.json");
+      const serviceAccount = require(keyPath);
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
         storageBucket: STORAGE_BUCKET,
       });
       console.log("🔑 Firebase Admin initialized with service account key (local development)");
+      console.log(`   Key location: ${keyPath}`);
       console.log(`   Project from key: ${serviceAccount.project_id}`);
       if (serviceAccount.project_id !== PROJECT_ID) {
         console.warn(`⚠️  WARNING: Service account project (${serviceAccount.project_id}) doesn't match target project (${PROJECT_ID})`);
@@ -71,7 +75,8 @@ if (!admin.apps.length) {
         storageBucket: STORAGE_BUCKET,
       });
       console.log("🔧 Firebase Admin initialized with default credentials");
-      console.warn("⚠️  No serviceAccountKey.json found - using default credentials");
+      console.warn(`⚠️  No service account key found at: ${keyPath}`);
+      console.log("   This is fine for emulators or if using Application Default Credentials");
     }
   }
 }
