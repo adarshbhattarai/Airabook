@@ -8,3 +8,6 @@ functions/.env
 functions/.env.local
 *.log
 functions/serviceAccountKey.json
+.firebase/
+dist/
+.vscode/

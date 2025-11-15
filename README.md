@@ -473,21 +473,43 @@ To see which env file is loaded:
 
 ## Stripe Donations & Plans
 
+This integration enables users to make donations and subscribe to plans, securely collecting payment details and processing charges through Stripe.
+
+### Features
+
+- **Create Stripe customers** when users sign up (handled automatically via Firebase Auth triggers)
+- **Securely collect payment details** using Stripe Hosted Checkout Sessions (PCI-compliant, handles 3D Secure/SCA automatically)
+- **Create payments** when checkout sessions are completed via Stripe webhooks
+- **Handle 3D Secure authentication** automatically through Stripe's Hosted Checkout (required by card issuers for Strong Customer Authentication)
+
+**Note**: This implementation uses Stripe Hosted Checkout Sessions, which handles PCI compliance, tax collection, wallet payments, and localization automatically. In a production application, ensure price validation occurs in your Cloud Functions based on product information stored in Firestore.
+
 ### Environment Variables
 
-Frontend (`.env.*`):
+#### Frontend (`.env.*`)
 
-```
-VITE_STRIPE_PUBLISHABLE_KEY=pk_live_or_test_value
+Add your Stripe publishable key to your environment files:
+
+```bash
+VITE_STRIPE_PUBLISHABLE_KEY=pk_test_xxx  # or pk_live_xxx for production
 ```
 
-Functions runtime config:
+The publishable key is loaded in `src/lib/stripe.js` and used to initialize Stripe.js.
 
-```
+#### Functions Configuration
+
+Configure Stripe secrets using Firebase Functions config:
+
+```bash
 firebase functions:config:set \
   stripe.secret_key=sk_test_xxx \
   stripe.webhook_secret=whsec_xxx \
   app.public_url=https://airabook-dev.web.app
+```
+
+**Note**: For production, consider using Firebase Functions secrets instead:
+```bash
+firebase functions:secrets:set STRIPE_SECRET
 ```
 
 ### Firestore Schema
@@ -513,14 +535,87 @@ payments/{paymentId}
 - Use `IDGenerator.generateId('pay')` when inserting into `payments`.
 - Plan checks are O(1) by reading `users/{uid}.billing`.
 
+### Deploy and Test
+
+1. **Enable billing** on your Firebase project by switching to the Blaze plan. This is required to make requests to non-Google services like Stripe.
+
+2. **Install dependencies**:
+   ```bash
+   cd functions
+   npm install
+   cd -
+   ```
+
+3. **Add your Stripe API Secret Key** to Firebase config:
+   ```bash
+   firebase functions:config:set stripe.secret_key=sk_test_xxx
+   ```
+
+4. **Set your Stripe publishable key** in your environment files (`.env.development`, `.env.production`, etc.):
+   ```bash
+   VITE_STRIPE_PUBLISHABLE_KEY=pk_test_xxx
+   ```
+
+5. **Deploy your project**:
+   ```bash
+   firebase deploy
+   ```
+
+6. **Test your Stripe integration** by visiting your deployed site or running locally.
+
 ### Local Testing
 
-1. Run frontend + functions emulators.
-2. Start Stripe CLI forwarding:
+1. **Run frontend + functions emulators**:
+   ```bash
+   npm run emulators:local
+   npm start  # in another terminal
    ```
+
+2. **Start Stripe CLI forwarding** (in a third terminal):
+   ```bash
    stripe listen --forward-to localhost:5001/demo-project/us-central1/stripeWebhook
    ```
-3. Start a donation from `/donate`. The webhook updates Firestore in seconds.
+
+3. **Start a donation** from `/donate`. The webhook updates Firestore in seconds.
+
+**Note**: Since this project uses Firebase Auth triggers, the functions need to be deployed for full functionality. However, when making changes to your client application, you can serve it locally to quickly preview changes:
+
+```bash
+# Deploy functions (only needed when you make changes to functions)
+firebase deploy --only functions
+
+# Serve hosting locally
+firebase serve --only hosting
+```
+
+### Going Live
+
+Once you're ready to go live, you will need to exchange your test keys for your live keys. See the [Stripe docs](https://stripe.com/docs/keys) for further details.
+
+1. **Update your Stripe secret config**:
+   ```bash
+   firebase functions:secrets:set STRIPE_SECRET
+   ```
+   Or if using config:
+   ```bash
+   firebase functions:config:set stripe.secret_key=sk_live_xxx
+   ```
+
+2. **Set your live publishable key** in your production environment file (`.env.production`):
+   ```bash
+   VITE_STRIPE_PUBLISHABLE_KEY=pk_live_xxx
+   ```
+
+3. **Redeploy both functions and hosting** for the changes to take effect:
+   ```bash
+   firebase deploy
+   ```
+
+### Further Reading
+
+- [Stripe Documentation: Save and Reuse Payment Methods](https://stripe.com/docs/payments/save-and-reuse)
+- [3D Secure and SCA Regulation](https://stripe.com/payments/strong-customer-authentication)
+- [Firebase Cloud Functions Documentation](https://firebase.google.com/docs/functions)
 
 ## Additional Resources
 

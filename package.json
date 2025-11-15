@@ -15,11 +15,12 @@
     "preview": "vite preview",
     "preview:qa": "vite preview --mode qa",
     "preview:go": "vite preview --mode go",
-    "emulators": "firebase emulators:start --project local --inspect-functions",
+    "emulators": "bash scripts/start-emulators-with-stripe.sh",
     "emulators:debug": "firebase emulators:start  --project local --inspect-functions",
     "emulators:export": "firebase emulators:export ./emulator-data",
     "emulators:import": "firebase emulators:start --import=./emulator-data",
-    "emulators:local": "firebase emulators:start --project local --inspect-functions",
+    "emulators:local": "bash scripts/start-emulators-with-stripe.sh",
+    "emulators:only": "firebase emulators:start --project local --inspect-functions",
     "deploy:dev": "npm run build:dev && firebase deploy --project dev",
     "deploy:qa": "npm run build:qa && firebase deploy --project qa",
     "deploy:go": "npm run build:go && firebase deploy --project go",
@@ -27,7 +28,9 @@
     "emulators:with-data": "node scripts/start-with-data.js",
     "seed:data": "node functions/seedData.js",
     "test:auth": "cd functions && node test-auth.cjs",
-    "create:emulator-user": "cd functions && node create-emulator-user.cjs"
+    "create:emulator-user": "cd functions && node create-emulator-user.cjs",
+    "stripe:setup": "bash scripts/setup-stripe-webhook.sh",
+    "stripe:update-secret": "bash scripts/update-stripe-secret.sh"
   },
   "dependencies": {
     "@emotion/is-prop-valid": "^1.2.1",
