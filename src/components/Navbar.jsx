@@ -13,11 +13,8 @@ const Navbar = () => {
   const { user, appUser, logout } = useAuth();
 
   const handleDonate = () => {
-    toast({
-      title: "💝 Thank you for your kindness!",
-      description: "🚧 This feature isn\'t implemented yet—but don\'t worry! You can request it in your next prompt! 🚀",
-      duration: 5000,
-    });
+    navigate('/donate');
+    setIsOpen(false);
   };
 
   const handleLogout = async () => {

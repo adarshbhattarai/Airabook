@@ -89,6 +89,8 @@ const {rewriteNote} = require("./textGenerator");
 const {createBook} = require("./createBook");
 const {onMediaUpload, onMediaDelete} = require("./mediaProcessor");
 const {inviteCoAuthor} = require("./inviteCoAuthor");
+const {createCheckoutSession} = require("./payments/createCheckoutSession");
+const {stripeWebhook} = require("./payments/stripeWebhook");
 
 exports.helloWorld = onRequest({ region: "us-central1" }, (request, response) => {
   logger.info("Hello logs!", {structuredData: true});
@@ -101,6 +103,8 @@ exports.createBook = createBook;
 exports.onMediaUpload = onMediaUpload;
 exports.onMediaDelete = onMediaDelete;
 exports.inviteCoAuthor = inviteCoAuthor;
+exports.createCheckoutSession = createCheckoutSession;
+exports.stripeWebhook = stripeWebhook;
 
 // Function to get chapters for a book (hot reload test)
 exports.getBookChapters = onCall({ region: "us-central1" }, async (request) => {

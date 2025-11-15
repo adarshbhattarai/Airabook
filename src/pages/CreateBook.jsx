@@ -17,9 +17,10 @@ const CreateBook = () => {
   const [promptMode, setPromptMode] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
-  const { user } = useAuth();
+  const { user, entitlements } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const canWriteBooks = entitlements?.canWriteBooks;
 
   const handleCreateBook = async (e) => {
     e.preventDefault();
@@ -30,6 +31,15 @@ const CreateBook = () => {
     
     if (!babyName.trim()) {
       toast({ title: "Error", description: "Book title cannot be empty.", variant: "destructive" });
+      return;
+    }
+
+    if (!canWriteBooks) {
+      toast({
+        title: "Upgrade required",
+        description: "Writing tools are unlocked on supporter plans. Visit the Donate page to upgrade.",
+        variant: "destructive",
+      });
       return;
     }
     
@@ -120,7 +130,18 @@ const CreateBook = () => {
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10 space-y-6">
+          {!canWriteBooks && (
+            <div className="p-4 rounded-lg border border-yellow-200 bg-yellow-50 text-sm text-yellow-800 space-y-3">
+              <p className="font-semibold">Writing is unlocked on paid plans.</p>
+              <p>
+                Browse every book for free, but to create new stories you need at least the supporter plan. Your contribution keeps the service running.
+              </p>
+              <Button type="button" className="bg-[#3498db] hover:bg-[#2c82c9]" onClick={() => navigate('/donate')}>
+                View plans
+              </Button>
+            </div>
+          )}
           <form className="space-y-6" onSubmit={handleCreateBook}>
             <div>
               <label htmlFor="baby-name" className="block text-sm font-medium text-gray-700">

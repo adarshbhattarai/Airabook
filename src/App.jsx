@@ -11,6 +11,8 @@ import Dashboard from '@/pages/Dashboard';
 import Media from '@/pages/Media';
 import Notes from '@/pages/Notes';
 import CreateBook from '@/pages/CreateBook';
+import Donate from '@/pages/Donate';
+import DonateSuccess from '@/pages/DonateSuccess';
 import BookDetail from '@/pages/BookDetail';
 import BookView from '@/pages/BookView';
 import AlbumDetail from '@/pages/AlbumDetail';
@@ -39,6 +41,8 @@ function App() {
               <Route path="/signup" element={<Signup />} />
               <Route path="/login" element={<Login />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/donate" element={<Donate />} />
+              <Route path="/donate/success" element={<DonateSuccess />} />
 
               {/* Private Routes */}
               <Route 

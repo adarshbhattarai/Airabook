@@ -14,6 +14,22 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, firestore } from '@/lib/firebase';
 import { useToast } from '@/components/ui/use-toast';
 
+const defaultEntitlements = {
+  canReadBooks: true,
+  canWriteBooks: false,
+  canInviteTeam: false,
+};
+
+const createDefaultBilling = () => ({
+  planTier: 'free',
+  planLabel: 'Free Explorer',
+  planState: 'inactive',
+  entitlements: { ...defaultEntitlements },
+  latestPaymentId: null,
+});
+
+const defaultBilling = createDefaultBilling();
+
 const AuthContext = createContext();
 
 export const useAuth = () => {
@@ -39,7 +55,12 @@ export const AuthProvider = ({ children }) => {
           const docSnap = await getDoc(userRef);
 
           if (docSnap.exists()) {
-            setAppUser({ uid: user.uid, ...docSnap.data() });
+            const userData = docSnap.data();
+            setAppUser({
+              uid: user.uid,
+              ...userData,
+              billing: userData.billing || createDefaultBilling(),
+            });
           } else {
             // This is the key change.
           // If a user is authenticated but no Firestore doc exists, create it.
@@ -49,6 +70,7 @@ export const AuthProvider = ({ children }) => {
             email: user.email,
             accessibleBookIds: [],
             accessibleAlbums: [],
+            billing: createDefaultBilling(),
           };
           await setDoc(userRef, newUser);
           console.log("Firestore document created for new user via auth listener.");
@@ -108,12 +130,14 @@ export const AuthProvider = ({ children }) => {
           email: user.email,
           accessibleBookIds: [],
           accessibleAlbums: [],
+          billing: createDefaultBilling(),
         };
         await setDoc(userRef, newUser);
         console.log("Firestore document set successfully for new Google user.");
         setAppUser({ uid: user.uid, ...newUser });
       } else {
-        setAppUser({ uid: user.uid, ...docSnap.data() });
+        const data = docSnap.data();
+        setAppUser({ uid: user.uid, ...data, billing: data.billing || createDefaultBilling() });
       }
     } catch (error) {
       console.error("Error during Google sign-in:", error);
@@ -142,9 +166,12 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const billing = appUser?.billing || createDefaultBilling();
   const value = {
     user,
     appUser,
+    billing,
+    entitlements: billing.entitlements || defaultBilling.entitlements,
     loading,
     appLoading,
     signup,

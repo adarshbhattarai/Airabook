@@ -106,6 +106,70 @@ const Home = () => {
         </div>
       </section>
 
+      {/* Donation Plans */}
+      <section className="py-20 px-4 bg-[#ecf0f1]">
+        <div className="max-w-6xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 40 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+            viewport={{ once: true }}
+            className="text-center mb-12"
+          >
+            <p className="text-sm uppercase tracking-[0.4em] text-[#3498db]">Support the mission</p>
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">Pick a plan that fits</h2>
+            <p className="text-gray-600">
+              Free readers keep the memories alive. Supporters keep the servers and AI online.
+            </p>
+          </motion.div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            {[
+              {
+                title: 'Free Explorer',
+                price: '$0',
+                description: 'Read unlimited books, but writing is locked.',
+                accent: 'from-gray-100 to-gray-50',
+              },
+              {
+                title: 'Supporter',
+                price: 'Choose any amount',
+                description: 'Unlock writing and keep the project alive.',
+                accent: 'from-[#3498db] to-[#2c82c9]',
+              },
+              {
+                title: 'Enterprise Studio',
+                price: 'Starts at $99',
+                description: 'Team spaces, custom onboarding, and support.',
+                accent: 'from-[#2ecc71] to-[#27ae60]',
+              },
+            ].map((plan) => (
+              <motion.div
+                key={plan.title}
+                whileHover={{ y: -6 }}
+                className="bg-white rounded-3xl shadow-xl border border-white overflow-hidden"
+              >
+                <div className={`h-2 bg-gradient-to-r ${plan.accent}`} />
+                <div className="p-8 space-y-4">
+                  <h3 className="text-2xl font-semibold text-gray-900">{plan.title}</h3>
+                  <p className="text-xl font-bold text-[#3498db]">{plan.price}</p>
+                  <p className="text-gray-600 text-sm">{plan.description}</p>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+
+          <div className="text-center mt-10">
+            <Link
+              to="/donate"
+              className="inline-flex items-center gap-2 bg-[#3498db] text-white px-8 py-4 rounded-full shadow-lg hover:bg-[#2c82c9] transition"
+            >
+              Donate & unlock writing
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* Call to Action */}
       <section className="py-20 px-4 bg-gradient-to-r from-violet-100 to-indigo-100">
         <div className="max-w-4xl mx-auto text-center">

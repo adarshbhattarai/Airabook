@@ -471,6 +471,57 @@ To see which env file is loaded:
    - Vite loads env files in order (later files override earlier ones)
    - Mode-specific files only load when that mode is active
 
+## Stripe Donations & Plans
+
+### Environment Variables
+
+Frontend (`.env.*`):
+
+```
+VITE_STRIPE_PUBLISHABLE_KEY=pk_live_or_test_value
+```
+
+Functions runtime config:
+
+```
+firebase functions:config:set \
+  stripe.secret_key=sk_test_xxx \
+  stripe.webhook_secret=whsec_xxx \
+  app.public_url=https://airabook-dev.web.app
+```
+
+### Firestore Schema
+
+```
+users/{uid}.billing
+  planTier        // "free" | "supporter" | "pro" | "enterprise"
+  planLabel
+  planState       // "inactive" | "active"
+  entitlements    // { canWriteBooks: bool, ... }
+  latestPaymentId
+  lastPaymentAt
+
+payments/{paymentId}
+  userId
+  planTier
+  amount          // cents
+  currency
+  status          // pending/completed/failed/expired
+  sessionId       // Stripe checkout session
+```
+
+- Use `IDGenerator.generateId('pay')` when inserting into `payments`.
+- Plan checks are O(1) by reading `users/{uid}.billing`.
+
+### Local Testing
+
+1. Run frontend + functions emulators.
+2. Start Stripe CLI forwarding:
+   ```
+   stripe listen --forward-to localhost:5001/demo-project/us-central1/stripeWebhook
+   ```
+3. Start a donation from `/donate`. The webhook updates Firestore in seconds.
+
 ## Additional Resources
 
 - [Firebase Documentation](https://firebase.google.com/docs)
