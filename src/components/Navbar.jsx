@@ -53,7 +53,7 @@ const Navbar = () => {
             >
               <Heart className="h-8 w-8 text-violet-500 fill-current" />
               <span className="text-2xl font-bold bg-gradient-to-r from-purple-500 to-indigo-500 bg-clip-text text-transparent">
-                AirABook
+              Airäbook
               </span>
             </motion.div>
           </Link>
