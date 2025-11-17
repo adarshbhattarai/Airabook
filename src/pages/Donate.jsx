@@ -75,29 +75,97 @@ const Donate = () => {
 
     setLoading(true);
     try {
+      console.log('🛒 Starting checkout...', { amount: resolvedAmount, planTier });
       const callable = httpsCallable(functions, 'createCheckoutSession');
       const amountInCents = Math.round(resolvedAmount * 100);
-      const response = await callable({
-        amount: amountInCents,
-        currency: 'usd',
+      
+      console.log('📞 Calling createCheckoutSession...', { 
+        amountInCents, 
         planTier,
-        note,
-        successUrl: `${window.location.origin}/donate/success`,
-        cancelUrl: `${window.location.origin}/donate`,
+        user: user?.uid 
       });
+      
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Function call timed out after 30 seconds')), 30000)
+      );
+      
+      const response = await Promise.race([
+        callable({
+          amount: amountInCents,
+          currency: 'usd',
+          planTier,
+          note,
+          successUrl: `${window.location.origin}/donate/success`,
+          cancelUrl: `${window.location.origin}/donate`,
+        }),
+        timeoutPromise
+      ]);
 
+      console.log('✅ Function response received:', response);
+      console.log('✅ Response data:', response.data);
+      
+      if (!response || !response.data) {
+        throw new Error('No response from server');
+      }
+      
+      if (!response.data?.sessionId) {
+        console.error('❌ No sessionId in response:', response.data);
+        throw new Error('No session ID returned from server. Response: ' + JSON.stringify(response.data));
+      }
+
+      console.log('🔑 Session ID:', response.data.sessionId);
+      
+      // Use the checkout URL directly for reliable redirect
+      // Stripe.js redirectToCheckout sometimes hangs in local development
+      if (response.data.checkoutUrl) {
+        console.log('🔄 Redirecting to Stripe checkout:', response.data.checkoutUrl);
+        window.location.href = response.data.checkoutUrl;
+        // Don't set loading to false - we're redirecting
+        return;
+      }
+      
+      // Fallback: try Stripe.js method if URL not available
+      console.log('⚠️ No checkout URL, trying Stripe.js redirect...');
       const stripe = await getStripe();
-      await stripe.redirectToCheckout({
+      console.log('✅ Stripe instance loaded');
+      
+      // Add timeout to prevent hanging
+      const redirectPromise = stripe.redirectToCheckout({
         sessionId: response.data.sessionId,
       });
+      
+      const redirectTimeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Stripe redirect timed out')), 5000)
+      );
+      
+      const { error: stripeError } = await Promise.race([redirectPromise, redirectTimeout]);
+      
+      if (stripeError) {
+        console.error('❌ Stripe redirect failed:', stripeError);
+        throw new Error(stripeError.message || 'Failed to redirect to checkout');
+      }
     } catch (error) {
-      console.error('Stripe checkout error', error);
+      console.error('❌ Stripe checkout error:', error);
+      console.error('Error details:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        stack: error.stack,
+        name: error.name
+      });
+      
+      // Don't set loading to false if we're redirecting
+      if (error.message?.includes('redirect') || error.code === 'redirect') {
+        console.log('Redirect in progress, not resetting loading state');
+        return;
+      }
+      
       toast({
         title: 'Unable to start checkout',
-        description: error.message || 'Please try again.',
+        description: error.message || error.details || 'Please try again.',
         variant: 'destructive',
       });
-    } finally {
       setLoading(false);
     }
   };
