@@ -5,22 +5,66 @@ const Stripe = require('stripe');
 const { paymentService, PaymentStatus } = require('./paymentService');
 
 const stripeSecret = functionsConfig.stripe?.secret_key;
-const webhookSecret = functionsConfig.stripe?.webhook_secret;
+// Trim webhook secret to remove any whitespace/newlines
+const webhookSecret = functionsConfig.stripe?.webhook_secret?.trim();
 
 const stripe = stripeSecret ? new Stripe(stripeSecret, { apiVersion: '2024-06-20' }) : null;
 
-exports.stripeWebhook = onRequest({ region: 'us-central1' }, async (req, res) => {
+exports.stripeWebhook = onRequest({ 
+  region: 'us-central1',
+}, async (req, res) => {
   if (!stripe || !webhookSecret) {
-    logger.error('Stripe webhook secrets missing');
+    logger.error('Stripe webhook secrets missing', { 
+      hasStripe: !!stripe, 
+      hasWebhookSecret: !!webhookSecret 
+    });
     res.status(500).send('Stripe not configured');
     return;
   }
 
   const signature = req.headers['stripe-signature'];
+  if (!signature) {
+    logger.error('Missing stripe-signature header');
+    res.status(400).send('Missing stripe-signature header');
+    return;
+  }
+
   let event;
 
   try {
-    event = stripe.webhooks.constructEvent(req.rawBody, signature, webhookSecret);
+    // Get raw body - in Firebase Functions v2, req.rawBody should be available
+    // If not available, we need to reconstruct from req.body (less reliable)
+    let body;
+    if (req.rawBody) {
+      // rawBody is available - use it directly
+      body = Buffer.isBuffer(req.rawBody) ? req.rawBody : Buffer.from(req.rawBody, 'utf8');
+    } else if (req.body) {
+      // Fallback: try to use req.body if it's a Buffer
+      if (Buffer.isBuffer(req.body)) {
+        body = req.body;
+      } else {
+        // If body is already parsed, we can't get exact raw bytes
+        // This will likely fail signature verification
+        logger.warn('rawBody not available and body is parsed JSON. Signature verification may fail.');
+        body = Buffer.from(JSON.stringify(req.body), 'utf8');
+      }
+    } else {
+      logger.error('No request body available');
+      res.status(400).send('No request body');
+      return;
+    }
+    
+    // Log webhook secret info (first 10 chars only for security) for debugging
+    logger.debug('Webhook verification attempt', {
+      secretLength: webhookSecret?.length,
+      secretPrefix: webhookSecret?.substring(0, 10),
+      bodyType: body?.constructor?.name,
+      bodyLength: body?.length,
+      hasSignature: !!signature,
+      hasRawBody: !!req.rawBody,
+    });
+    
+    event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
   } catch (err) {
     logger.error('Stripe signature verification failed', { message: err.message });
     res.status(400).send(`Webhook Error: ${err.message}`);

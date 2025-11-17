@@ -11,3 +11,4 @@ functions/serviceAccountKey.json
 .firebase/
 dist/
 .vscode/
+.logs/
