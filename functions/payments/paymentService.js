@@ -8,7 +8,7 @@ const PLAN_CONFIG = {
     label: 'Free Explorer',
     entitlements: {
       canReadBooks: true,
-      canWriteBooks: false,
+      canWriteBooks: true, // Everyone gets full access!
       canInviteTeam: false,
     },
     suggestedAmountCents: 0,
@@ -20,7 +20,7 @@ const PLAN_CONFIG = {
       canWriteBooks: true,
       canInviteTeam: false,
     },
-    suggestedAmountCents: 500,
+    suggestedAmountCents: 300, // $3 default donation
   },
   pro: {
     label: 'Pro Writer',

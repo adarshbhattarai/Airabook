@@ -5,7 +5,7 @@ import {
   BookOpen,
   Image as ImageIcon,
   StickyNote,
-  Wallet,
+  Heart,
   Receipt,
   Settings,
   User,
@@ -24,9 +24,9 @@ const sections = [
     ],
   },
   {
-    label: 'Money',
+    label: 'Support',
     items: [
-      { name: 'Donate', icon: Wallet, to: '/donate' },
+      { name: '💝 Support Us', icon: Heart, to: '/donate' },
       { name: 'Transactions', icon: Receipt, to: '/donate/success' },
     ],
   },

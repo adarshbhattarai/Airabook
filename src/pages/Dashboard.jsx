@@ -8,7 +8,7 @@ import BookItem from '@/components/BookItem';
 import StatCard from '@/components/app/StatCard';
 
 const Dashboard = () => {
-  const { appUser, appLoading, billing, entitlements } = useAuth();
+  const { appUser, appLoading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [deletedBooks, setDeletedBooks] = useState(new Set());
@@ -47,8 +47,6 @@ const Dashboard = () => {
     return item;
   }).filter(book => !deletedBooks.has(book.bookId));
 
-  const planLabel = billing?.planLabel || 'Free reader';
-  const canWrite = !!entitlements?.canWriteBooks;
   const totalBooks = books.length;
 
   return (
@@ -68,32 +66,25 @@ const Dashboard = () => {
               onClick={() => navigate('/create-book')}
               variant="appPrimary"
               className="inline-flex items-center gap-2 text-sm"
-              disabled={!canWrite}
             >
               <PlusCircle className="h-4 w-4" />
-              {canWrite ? 'Create new book' : 'Unlock writing'}
+              Create new book
             </Button>
           </div>
         </header>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          <StatCard
-            label="Active plan"
-            value={planLabel}
-            helper={canWrite ? 'Writing tools unlocked' : 'Read-only, upgrade to write'}
-            icon={Sparkles}
-          />
+        <div className="grid gap-4 md:grid-cols-2">
           <StatCard
             label="Books"
             value={totalBooks}
-            helper={totalBooks === 0 ? 'Let’s create your first story' : 'Books in your library'}
+            helper={totalBooks === 0 ? "Let's create your first story" : 'Books in your library'}
             icon={BookOpen}
           />
           <StatCard
-            label="Writing status"
-            value={canWrite ? 'Enabled' : 'Locked'}
-            helper={canWrite ? 'You can create and edit books' : 'Donate to enable writing'}
-            icon={PenSquare}
+            label="Stories created"
+            value={totalBooks}
+            helper="Free for everyone, forever"
+            icon={Sparkles}
           />
         </div>
 

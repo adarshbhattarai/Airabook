@@ -21,10 +21,9 @@ const CreateBook = () => {
   const [promptMode, setPromptMode] = useState(false); // false = baby journal, true = custom prompt
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
-  const { user, entitlements } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const canWriteBooks = entitlements?.canWriteBooks;
 
   const handleCreateBook = async (e) => {
     e.preventDefault();
@@ -35,15 +34,6 @@ const CreateBook = () => {
     
     if (!title.trim()) {
       toast({ title: "Error", description: "Book title cannot be empty.", variant: "destructive" });
-      return;
-    }
-
-    if (!canWriteBooks) {
-      toast({
-        title: "Upgrade required",
-        description: "Writing tools are unlocked on supporter plans. Visit the Donate page to upgrade.",
-        variant: "destructive",
-      });
       return;
     }
 
@@ -137,24 +127,6 @@ const CreateBook = () => {
             </div>
 
             <InfoCard>
-              {!canWriteBooks && (
-                <div className="mb-6 p-4 rounded-2xl border border-amber-200 bg-amber-50 text-xs text-amber-900 space-y-3">
-                  <p className="font-semibold">Writing is unlocked on supporter plans.</p>
-                  <p>
-                    Browse every book for free, but to create new stories you&apos;ll need at least the supporter plan.
-                    Your contribution keeps Airäbook running.
-                  </p>
-                  <Button
-                    type="button"
-                    variant="appOutline"
-                    className="mt-1"
-                    onClick={() => navigate('/donate')}
-                  >
-                    View plans
-                  </Button>
-                </div>
-              )}
-
               <form className="space-y-6" onSubmit={handleCreateBook}>
                 <div className="space-y-4">
                   <div>

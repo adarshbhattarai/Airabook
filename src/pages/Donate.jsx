@@ -1,6 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { httpsCallable } from 'firebase/functions';
-import { motion } from 'framer-motion';
 import { functions } from '@/lib/firebase';
 import { getStripe } from '@/lib/stripe';
 import { useAuth } from '@/context/AuthContext';
@@ -8,57 +7,25 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
+import { Heart, Coffee } from 'lucide-react';
 
-const presetAmounts = [1, 5, 10];
-
-const planOptions = {
-  supporter: {
-    label: 'Supporter',
-    description: 'Unlock writing, help keep Airabook alive, and choose any amount you like.',
-    amount: null,
-    highlight: 'Most flexible',
-    features: ['Read every book', 'Write unlimited books', 'Support indie dev'],
-  },
-  pro: {
-    label: 'Pro Writer',
-    description: 'Serious writers who want more storage and faster AI tools.',
-    amount: 15,
-    highlight: 'Popular',
-    features: ['All supporter perks', 'Priority chapter generation', 'Early access to AI tools'],
-  },
-  enterprise: {
-    label: 'Enterprise Studio',
-    description: 'Studios or teachers who collaborate as a team.',
-    amount: 99,
-    highlight: 'Team ready',
-    features: ['All pro perks', 'Team workspaces', 'Priority support channel'],
-  },
-};
+const presetAmounts = [3, 5, 10];
 
 const Donate = () => {
   const { user, appUser } = useAuth();
   const { toast } = useToast();
   const [selectedAmount, setSelectedAmount] = useState(presetAmounts[1]);
   const [customAmount, setCustomAmount] = useState('');
-  const [planTier, setPlanTier] = useState('supporter');
-  const [note, setNote] = useState('Helping keep Airabook running <3');
+  const [note, setNote] = useState('Thanks for creating Airäbook! ☕');
   const [loading, setLoading] = useState(false);
 
-  const resolvedAmount = useMemo(() => {
-    if (planTier !== 'supporter') {
-      return planOptions[planTier].amount;
-    }
-    if (customAmount) {
-      return Number(customAmount);
-    }
-    return selectedAmount;
-  }, [customAmount, planTier, selectedAmount]);
+  const resolvedAmount = customAmount ? Number(customAmount) : selectedAmount;
 
   const handleCheckout = async () => {
     if (!user) {
       toast({
         title: 'Please sign in',
-        description: 'You need an account so we know which plan to unlock.',
+        description: 'We need to know where to send your thank-you note!',
         variant: 'destructive',
       });
       return;
@@ -75,13 +42,12 @@ const Donate = () => {
 
     setLoading(true);
     try {
-      console.log('🛒 Starting checkout...', { amount: resolvedAmount, planTier });
+      console.log('🛒 Starting donation checkout...', { amount: resolvedAmount });
       const callable = httpsCallable(functions, 'createCheckoutSession');
       const amountInCents = Math.round(resolvedAmount * 100);
       
       console.log('📞 Calling createCheckoutSession...', { 
         amountInCents, 
-        planTier,
         user: user?.uid 
       });
       
@@ -94,7 +60,6 @@ const Donate = () => {
         callable({
           amount: amountInCents,
           currency: 'usd',
-          planTier,
           note,
           successUrl: `${window.location.origin}/donate/success`,
           cancelUrl: `${window.location.origin}/donate`,
@@ -170,137 +135,107 @@ const Donate = () => {
     }
   };
 
+  const hasDonated = appUser?.billing?.planTier;
+
   return (
-    <div className="py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-5xl mx-auto space-y-10">
-        <section className="space-y-4">
-          <motion.p initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="text-sm uppercase tracking-[0.3em] text-[#3498db]">
-            Powered by our community
-          </motion.p>
-          <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="text-[28px] sm:text-4xl font-semibold text-app-gray-900 leading-tight">
-            Keep Airabook free for every reader
-          </motion.h1>
-          <p className="text-sm text-app-gray-600 max-w-3xl">
-            Hosting, AI, and storage bills add up quickly. Your donation keeps the service active and
-            unlocks creation tools for your account.
+    <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-12">
+      <div className="max-w-3xl mx-auto space-y-8">
+        <section className="text-center space-y-4">
+          <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-app-iris to-app-violet text-white mb-4">
+            <Heart className="h-8 w-8" />
+          </div>
+          <h1 className="text-[32px] font-semibold text-app-gray-900 leading-tight">
+            Support Airäbook
+          </h1>
+          <p className="text-base text-app-gray-600 leading-relaxed max-w-2xl mx-auto">
+            Airäbook is <strong>free for everyone, forever</strong>. If you find it useful, consider buying us a coffee 
+            to help cover hosting and AI costs. Every bit helps keep the service running! ☕
           </p>
-          {appUser?.billing?.planTier === 'supporter' && (
-            <p className="text-sm text-[#2ecc71] font-medium">
-              Thank you! You already have writing privileges. Extra support keeps the lights on.
-            </p>
+          {hasDonated && (
+            <div className="inline-flex items-center gap-2 rounded-pill bg-app-mint/10 px-4 py-2 text-sm font-medium text-app-mint border border-app-mint/20">
+              <Heart className="h-4 w-4 fill-current" />
+              Thank you for your support! You're amazing.
+            </div>
           )}
         </section>
 
-        <section className="grid lg:grid-cols-2 gap-8">
-          <div className="bg-white rounded-2xl shadow-appSoft p-6 border border-app-gray-100">
-            <p className="text-sm font-semibold text-[#3498db] mb-3">Choose an amount</p>
-            <div className="flex flex-wrap gap-3 mb-6">
+        <div className="bg-white rounded-2xl shadow-appSoft border border-app-gray-100 p-6 sm:p-8 space-y-6">
+          <div>
+            <label className="text-xs font-semibold text-app-gray-600 uppercase tracking-wide mb-3 block">
+              Choose an amount
+            </label>
+            <div className="flex flex-wrap gap-3">
               {presetAmounts.map((amount) => (
                 <button
                   key={amount}
                   type="button"
                   onClick={() => {
-                    setPlanTier('supporter');
                     setSelectedAmount(amount);
                     setCustomAmount('');
                   }}
-                  className={`px-4 py-2 rounded-full border transition ${
-                    planTier === 'supporter' && selectedAmount === amount && !customAmount
-                      ? 'bg-[#3498db] text-white border-transparent shadow-lg'
-                      : 'border-slate-200 text-slate-600 hover:border-[#3498db]'
+                  className={`px-5 py-2.5 rounded-pill border-2 font-medium transition ${
+                    selectedAmount === amount && !customAmount
+                      ? 'bg-app-iris text-white border-app-iris shadow-md'
+                      : 'border-app-gray-300 text-app-gray-900 hover:border-app-iris'
                   }`}
                 >
                   ${amount}
                 </button>
               ))}
               <div className="flex items-center gap-2">
-                <span className="text-sm text-slate-500">$</span>
+                <span className="text-sm text-app-gray-600">$</span>
                 <Input
                   type="number"
                   min="1"
                   step="1"
-                  value={planTier === 'supporter' ? customAmount : ''}
+                  value={customAmount}
                   onChange={(e) => {
-                    setPlanTier('supporter');
                     setCustomAmount(e.target.value);
-                    setSelectedAmount(presetAmounts[0]);
                   }}
                   placeholder="Custom"
                   className="w-28 text-center"
                 />
               </div>
             </div>
-            <p className="text-xs text-app-gray-600 mb-4">
-              Need it to keep the service active. Every contribution directly pays for Firebase,
-              storage, and AI costs.
-            </p>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-app-gray-600 uppercase tracking-wide mb-2 block">
+              Optional message (shown to us)
+            </label>
             <Textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              className="min-h-[100px]"
+              className="min-h-[80px]"
               maxLength={280}
+              placeholder="Thanks for building this!"
             />
-            <p className="text-xs text-slate-400 mt-1 text-right">{note.length}/280</p>
+            <p className="text-xs text-app-gray-600 mt-1 text-right">{note.length}/280</p>
           </div>
 
-          <div className="grid gap-6">
-            {Object.entries(planOptions).map(([tier, plan]) => (
-              <div
-                key={tier}
-                className={`rounded-2xl border p-5 bg-white shadow-appSoft transition cursor-pointer ${
-                  planTier === tier ? 'border-app-iris shadow-appCard' : 'border-app-gray-100/70'
-                }`}
-                onClick={() => setPlanTier(tier)}
-              >
-                <div className="flex justify-between items-center mb-2">
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-app-gray-600">{plan.highlight}</p>
-                    <h3 className="text-lg font-semibold text-app-gray-900">{plan.label}</h3>
-                  </div>
-                  <p className="text-2xl font-bold text-[#3498db]">
-                    {plan.amount ? `$${plan.amount}` : `$${resolvedAmount || selectedAmount}`}
-                    <span className="text-base font-normal text-slate-500">/one-time</span>
-                  </p>
-                </div>
-                <p className="text-sm text-app-gray-600 mb-4">{plan.description}</p>
-                <ul className="space-y-2 text-xs text-app-gray-600">
-                  {plan.features.map((feature) => (
-                    <li key={feature} className="flex items-center gap-2">
-                      <span className="text-[#2ecc71]">●</span>
-                      {feature}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
+          <div className="pt-4 border-t border-app-gray-200 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-app-gray-600 uppercase tracking-wide">Total</p>
+              <p className="text-3xl font-bold text-app-gray-900">
+                ${(resolvedAmount || 0).toFixed(2)}
+              </p>
+            </div>
+            <Button
+              onClick={handleCheckout}
+              disabled={loading || !resolvedAmount}
+              variant="appPrimary"
+              className="inline-flex items-center gap-2 px-8 py-3 text-base"
+            >
+              <Coffee className="h-5 w-5" />
+              {loading ? 'Processing...' : 'Donate now'}
+            </Button>
           </div>
-        </section>
+        </div>
 
-        <section className="bg-white rounded-2xl shadow-appSoft border border-app-gray-100 p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-widest text-app-gray-600">Summary</p>
-            <h4 className="text-lg font-semibold text-app-gray-900">{planOptions[planTier].label}</h4>
-            <p className="text-xs text-app-gray-600 mt-1">
-              {planTier === 'supporter'
-                ? 'Grants writing ability and keeps the service online.'
-                : 'Unlocks pro entitlements the moment Stripe confirms payment.'}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-app-gray-600 mb-1">Total</p>
-            <p className="text-2xl sm:text-3xl font-bold text-[#2ecc71]">
-              ${resolvedAmount?.toFixed(2) ?? '0.00'}
-            </p>
-          </div>
-          <Button
-            onClick={handleCheckout}
-            disabled={loading}
-            variant="appPrimary"
-            className="px-6 py-3 rounded-pill text-sm w-full sm:w-auto"
-          >
-            {loading ? 'Redirecting...' : 'Donate & continue'}
-          </Button>
-        </section>
+        <p className="text-xs text-app-gray-600 text-center leading-relaxed">
+          Your donation helps keep Airäbook online and accessible to everyone. 
+          You'll be redirected to Stripe for secure payment processing.
+        </p>
       </div>
     </div>
   );

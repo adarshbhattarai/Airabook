@@ -16,7 +16,7 @@ import { useToast } from '@/components/ui/use-toast';
 
 const defaultEntitlements = {
   canReadBooks: true,
-  canWriteBooks: false,
+  canWriteBooks: true, // Free for everyone!
   canInviteTeam: false,
 };
 
