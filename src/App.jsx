@@ -2,7 +2,8 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
-import Navbar from '@/components/Navbar';
+import MarketingLayout from '@/layouts/MarketingLayout';
+import AppShell from '@/layouts/AppShell';
 import Home from '@/pages/Home';
 import Login from '@/pages/Login';
 import Signup from '@/pages/Signup';
@@ -32,50 +33,107 @@ function App() {
   return (
     <AuthProvider>
       <Router>
-        <div className="min-h-screen bg-gradient-to-br from-violet-50 via-rose-50 to-amber-50">
-          <Navbar />
-          <main>
-            <Routes>
-              {/* Public Routes */}
-              <Route path="/" element={<Home />} />
-              <Route path="/signup" element={<Signup />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/forgot-password" element={<ForgotPassword />} />
-              <Route path="/donate" element={<Donate />} />
-              <Route path="/donate/success" element={<DonateSuccess />} />
+        <main>
+          <Routes>
+            {/* Public / marketing routes */}
+            <Route path="/" element={<MarketingLayout><Home /></MarketingLayout>} />
+            <Route path="/signup" element={<MarketingLayout><Signup /></MarketingLayout>} />
+            <Route path="/login" element={<MarketingLayout><Login /></MarketingLayout>} />
+            <Route path="/forgot-password" element={<MarketingLayout><ForgotPassword /></MarketingLayout>} />
 
-              {/* Private Routes */}
-              <Route 
-                path="/dashboard"
-                element={<PrivateRoute><Dashboard /></PrivateRoute>}
-              />
-              <Route 
-                path="/media" 
-                element={<PrivateRoute><Media /></PrivateRoute>}
-              />
-              <Route 
-                path="/media/album/:bookId" 
-                element={<PrivateRoute><AlbumDetail /></PrivateRoute>}
-              />
-              {/* <Route 
-                path="/notes" 
-                element={<PrivateRoute><Notes /></PrivateRoute>}
-              /> */}
-              <Route 
-                path="/create-book" 
-                element={<PrivateRoute><CreateBook /></PrivateRoute>}
-              />
-              <Route 
-                path="/book/:bookId" 
-                element={<PrivateRoute><BookDetail /></PrivateRoute>}
-              />
-              <Route 
-                path="/book/:bookId/view" 
-                element={<PrivateRoute><BookView /></PrivateRoute>}
-              />
-            </Routes>
-          </main>
-        </div>
+            {/* Authenticated app routes */}
+            <Route 
+              path="/dashboard"
+              element={
+                <PrivateRoute>
+                  <AppShell>
+                    <Dashboard />
+                  </AppShell>
+                </PrivateRoute>
+              }
+            />
+            <Route 
+              path="/media" 
+              element={
+                <PrivateRoute>
+                  <AppShell>
+                    <Media />
+                  </AppShell>
+                </PrivateRoute>
+              }
+            />
+            <Route 
+              path="/media/album/:bookId" 
+              element={
+                <PrivateRoute>
+                  <AppShell>
+                    <AlbumDetail />
+                  </AppShell>
+                </PrivateRoute>
+              }
+            />
+            <Route 
+              path="/notes" 
+              element={
+                <PrivateRoute>
+                  <AppShell>
+                    <Notes />
+                  </AppShell>
+                </PrivateRoute>
+              }
+            />
+            <Route 
+              path="/create-book" 
+              element={
+                <PrivateRoute>
+                  <AppShell>
+                    <CreateBook />
+                  </AppShell>
+                </PrivateRoute>
+              }
+            />
+            <Route 
+              path="/book/:bookId" 
+              element={
+                <PrivateRoute>
+                  <AppShell>
+                    <BookDetail />
+                  </AppShell>
+                </PrivateRoute>
+              }
+            />
+            <Route 
+              path="/book/:bookId/view" 
+              element={
+                <PrivateRoute>
+                  <AppShell>
+                    <BookView />
+                  </AppShell>
+                </PrivateRoute>
+              }
+            />
+            <Route 
+              path="/donate" 
+              element={
+                <PrivateRoute>
+                  <AppShell>
+                    <Donate />
+                  </AppShell>
+                </PrivateRoute>
+              }
+            />
+            <Route 
+              path="/donate/success" 
+              element={
+                <PrivateRoute>
+                  <AppShell>
+                    <DonateSuccess />
+                  </AppShell>
+                </PrivateRoute>
+              }
+            />
+          </Routes>
+        </main>
         <Toaster />
       </Router>
     </AuthProvider>

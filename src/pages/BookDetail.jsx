@@ -1585,7 +1585,7 @@ const BookDetail = () => {
     setSaveConfirmOpen(false);
   };
 
-  if (loading) return <div className="flex justify-center items-center min-h-screen">Loading book...</div>;
+  if (loading) return <div className="flex justify-center items-center min-h-[60vh] text-sm text-app-gray-600">Loading book...</div>;
 
   return (
     <DragDropContext onDragEnd={onDragEnd}>
@@ -1722,12 +1722,12 @@ const BookDetail = () => {
         </DialogContent>
       </Dialog>
 
-      <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between mb-6">
           <Button
-            variant="outline"
+            variant="appGhost"
             onClick={() => navigate('/dashboard')}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 text-xs"
           >
             <ArrowLeft className="h-4 w-4" />
             Back to Books
@@ -1736,7 +1736,7 @@ const BookDetail = () => {
           {isOwner && (
             <div className="flex items-center gap-2">
               <Button
-                variant={book?.isPublic ? "default" : "outline"}
+                variant={book?.isPublic ? 'appPrimary' : 'appGhost'}
                 onClick={() => setPublishModalOpen(true)}
                 className="flex items-center gap-2"
               >
@@ -1754,8 +1754,10 @@ const BookDetail = () => {
             </div>
           )}
         </div>
-        <h1 className="text-4xl font-extrabold text-center text-gray-900 mb-8">{book?.babyName}</h1>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8" style={{ minHeight: '70vh' }}>
+        <h1 className="text-[28px] font-semibold text-app-gray-900 text-center mb-6">
+          {book?.babyName}
+        </h1>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8" style={{ minHeight: '60vh' }}>
           <div className="lg:col-span-1 flex flex-col space-y-6">
             <form onSubmit={handleCreateChapter} className="flex items-center space-x-2">
               <Input 

@@ -4,17 +4,21 @@ import { functions, auth } from '@/lib/firebase';
 import { httpsCallable } from 'firebase/functions';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { AppInput } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/use-toast';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { Book, Sparkles, ArrowLeft } from 'lucide-react';
+import TwoColumnLayout from '@/layouts/TwoColumnLayout';
+import InfoCard from '@/components/app/InfoCard';
+import SummaryCard from '@/components/app/SummaryCard';
+import BookCardPreview from '@/components/previews/BookCardPreview';
+import { ArrowLeft } from 'lucide-react';
 
 const CreateBook = () => {
-  const [babyName, setBabyName] = useState('');
-  const [creationType, setCreationType] = useState(0);
-  const [promptMode, setPromptMode] = useState(false);
+  const [title, setTitle] = useState('');
+  const [subtitle, setSubtitle] = useState('');
+  const [creationType, setCreationType] = useState(0); // 0 = auto-generate, 1 = start blank
+  const [promptMode, setPromptMode] = useState(false); // false = baby journal, true = custom prompt
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
   const { user, entitlements } = useAuth();
@@ -26,10 +30,10 @@ const CreateBook = () => {
     e.preventDefault();
     console.log("🚀 CreateBook: Starting book creation process");
     console.log("👤 User:", user ? user.uid : "No user");
-    console.log("📝 Book title:", babyName);
+    console.log("📝 Book title:", title);
     console.log("🔧 Creation type:", creationType);
     
-    if (!babyName.trim()) {
+    if (!title.trim()) {
       toast({ title: "Error", description: "Book title cannot be empty.", variant: "destructive" });
       return;
     }
@@ -42,7 +46,7 @@ const CreateBook = () => {
       });
       return;
     }
-    
+
     // Validate prompt if prompt mode is enabled
     if (creationType === 0 && promptMode && !prompt.trim()) {
       toast({ title: "Error", description: "Please provide a prompt or disable prompt mode.", variant: "destructive" });
@@ -80,7 +84,7 @@ const CreateBook = () => {
       console.log("✅ CreateBook: Function reference created");
       
       const payload = {
-        title: babyName,
+        title: title,
         creationType: creationType,
         promptMode: creationType === 0 ? promptMode : false,
         prompt: (creationType === 0 && promptMode && prompt.trim()) ? prompt : undefined,
@@ -97,7 +101,7 @@ const CreateBook = () => {
       
       toast({
         title: "Book created",
-        description: `"${babyName}" has been successfully created.`,
+        description: `"${title}" has been successfully created.`,
       });
 
       navigate(`/book/${bookId}`);
@@ -119,141 +123,231 @@ const CreateBook = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-          Create a New Book
-        </h2>
-        <p className="mt-2 text-center text-sm text-gray-600">
-          Let's get started on a new adventure for your little one.
-        </p>
-      </div>
-
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10 space-y-6">
-          {!canWriteBooks && (
-            <div className="p-4 rounded-lg border border-yellow-200 bg-yellow-50 text-sm text-yellow-800 space-y-3">
-              <p className="font-semibold">Writing is unlocked on paid plans.</p>
-              <p>
-                Browse every book for free, but to create new stories you need at least the supporter plan. Your contribution keeps the service running.
+    <div className="py-6 lg:py-10">
+      <TwoColumnLayout
+        left={
+          <div className="space-y-6">
+            <div>
+              <h1 className="text-[28px] font-semibold text-app-gray-900 leading-tight">
+                Create a new book
+              </h1>
+              <p className="mt-2 text-sm text-app-gray-600 leading-relaxed">
+                Answer a few questions to personalize your book. You can change this later.
               </p>
-              <Button type="button" className="bg-[#3498db] hover:bg-[#2c82c9]" onClick={() => navigate('/donate')}>
-                View plans
-              </Button>
-            </div>
-          )}
-          <form className="space-y-6" onSubmit={handleCreateBook}>
-            <div>
-              <label htmlFor="baby-name" className="block text-sm font-medium text-gray-700">
-                Book Title
-              </label>
-              <div className="mt-1">
-                <Input
-                  id="baby-name"
-                  name="baby-name"
-                  type="text"
-                  required
-                  value={babyName}
-                  onChange={(e) => setBabyName(e.target.value)}
-                  placeholder="e.g., Lily's Journey, My Book, etc."
-                />
-              </div>
             </div>
 
-            <div>
-            <label htmlFor="creation-type" className="block text-sm font-medium text-gray-700 mb-2">
-                How would you like to start?
-              </label>
-              <ToggleGroup type="single" value={creationType.toString()} onValueChange={(value) => {
-                if(value) {
-                  setCreationType(parseInt(value));
-                  // Reset prompt mode when switching to Start Blank
-                  if (parseInt(value) === 1) {
-                    setPromptMode(false);
-                  }
-                }
-              }} className="grid grid-cols-2 gap-2">
-                            <ToggleGroupItem value="0" className="flex flex-col h-20">
-                              <Sparkles className="h-5 w-5 mb-1" />
-                              Auto-generate Chapters
-                            </ToggleGroupItem>
-                            <ToggleGroupItem value="1" className="flex flex-col h-20">
-                              <Book className="h-5 w-5 mb-1" />
-                              Start Blank
-                            </ToggleGroupItem>
-                          </ToggleGroup>
-            </div>
-
-            {/* Prompt Section - Only shown when Auto-generate is selected */}
-            {creationType === 0 && (
-              <div className="p-4 bg-violet-50 rounded-lg border border-violet-200 transition-all">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-medium text-gray-700">
-                    Chapter generation mode:
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs ${!promptMode ? 'text-gray-700 font-medium' : 'text-gray-400'}`}>
-                      Baby Journal
-                    </span>
-                    <Switch
-                      id="prompt-mode"
-                      checked={promptMode}
-                      onCheckedChange={setPromptMode}
-                    />
-                    <span className={`text-xs ${promptMode ? 'text-gray-700 font-medium' : 'text-gray-400'}`}>
-                      Custom Prompt
-                    </span>
-                  </div>
+            <InfoCard>
+              {!canWriteBooks && (
+                <div className="mb-6 p-4 rounded-2xl border border-amber-200 bg-amber-50 text-xs text-amber-900 space-y-3">
+                  <p className="font-semibold">Writing is unlocked on supporter plans.</p>
+                  <p>
+                    Browse every book for free, but to create new stories you&apos;ll need at least the supporter plan.
+                    Your contribution keeps Airäbook running.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="appOutline"
+                    className="mt-1"
+                    onClick={() => navigate('/donate')}
+                  >
+                    View plans
+                  </Button>
                 </div>
-                
-                {!promptMode && (
-                  <div className="mt-3 p-3 bg-white/60 rounded-md border border-violet-100">
-                    <p className="text-xs text-gray-600">
-                      Chapters will be auto-generated for a baby journal (Pre-birth, First Month, Second Month, etc.)
-                    </p>
-                  </div>
-                )}
-                
-                {promptMode && (
-                  <div className="mt-3 transition-all">
-                    <label htmlFor="prompt" className="block text-sm font-medium text-gray-700 mb-2">
-                      Describe your book idea
+              )}
+
+              <form className="space-y-6" onSubmit={handleCreateBook}>
+                <div className="space-y-4">
+                  <div>
+                    <label
+                      htmlFor="book-title"
+                      className="text-xs font-semibold text-app-gray-600 uppercase tracking-wide"
+                    >
+                      Book title
                     </label>
-                    <div className="relative">
-                      <Textarea
-                        id="prompt"
-                        value={prompt}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          if (value.length <= 500) {
-                            setPrompt(value);
-                          }
-                        }}
-                        placeholder="Describe your book idea, characters, plot, or theme... (e.g., A young wizard discovers he's a wizard on his 11th birthday...)"
-                        className="min-h-[100px] pr-16"
-                        maxLength={500}
+                    <div className="mt-2">
+                      <AppInput
+                        id="book-title"
+                        name="book-title"
+                        type="text"
+                        required
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder="e.g., Lily's Journey, My Book, etc."
                       />
-                      <span className="absolute bottom-2 right-3 text-xs text-gray-400">
-                        {prompt.length}/500
-                      </span>
                     </div>
                   </div>
-                )}
-              </div>
-            )}
 
-            <div className="space-y-2">
-              <Button type="submit" className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-violet-600 hover:bg-violet-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-violet-500" disabled={loading}>
-                {loading ? 'Creating Book...' : 'Create Book'}
-              </Button>
-              <Button variant="outline" type="button" className="w-full" onClick={() => navigate(-1)} disabled={loading}>
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back
-              </Button>
-            </div>
-          </form>
-        </div>
-      </div>
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <label
+                        htmlFor="book-subtitle"
+                        className="text-xs font-semibold text-app-gray-600 uppercase tracking-wide"
+                      >
+                        Subtitle (optional)
+                      </label>
+                      <span className="text-xs text-app-gray-600">
+                        A short phrase to add flavor.
+                      </span>
+                    </div>
+                    <div className="mt-2">
+                      <AppInput
+                        id="book-subtitle"
+                        name="book-subtitle"
+                        type="text"
+                        value={subtitle}
+                        onChange={(e) => setSubtitle(e.target.value)}
+                        placeholder="A cozy story about bedtime adventures"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="creation-type"
+                      className="text-xs font-semibold text-app-gray-600 uppercase tracking-wide"
+                    >
+                      How would you like to start?
+                    </label>
+                    <div className="mt-3 inline-flex rounded-pill bg-app-gray-100 p-1">
+                      <Button
+                        type="button"
+                        variant={creationType === 0 ? 'appPrimary' : 'appGhost'}
+                        size="sm"
+                        className="h-8 px-4 text-xs rounded-pill"
+                        onClick={() => {
+                          setCreationType(0);
+                        }}
+                      >
+                        Auto-generate Chapters
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={creationType === 1 ? 'appPrimary' : 'appGhost'}
+                        size="sm"
+                        className="h-8 px-4 text-xs rounded-pill"
+                        onClick={() => {
+                          setCreationType(1);
+                          setPromptMode(false); // Reset prompt mode when switching to blank
+                        }}
+                      >
+                        Start Blank
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Prompt Section - Only shown when Auto-generate is selected */}
+                  {creationType === 0 && (
+                    <div className="p-4 bg-app-violet/5 rounded-xl border border-app-violet/20 transition-all">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-semibold text-app-gray-600 uppercase tracking-wide">
+                          Chapter generation mode
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs ${!promptMode ? 'text-app-gray-900 font-medium' : 'text-app-gray-600'}`}>
+                            Baby Journal
+                          </span>
+                          <Switch
+                            id="prompt-mode"
+                            checked={promptMode}
+                            onCheckedChange={setPromptMode}
+                          />
+                          <span className={`text-xs ${promptMode ? 'text-app-gray-900 font-medium' : 'text-app-gray-600'}`}>
+                            Custom Prompt
+                          </span>
+                        </div>
+                      </div>
+                      
+                      {!promptMode && (
+                        <div className="mt-3 p-3 bg-white/60 rounded-md border border-app-violet/10">
+                          <p className="text-xs text-app-gray-600">
+                            Chapters will be auto-generated for a baby journal (Pre-birth, First Month, Second Month, etc.)
+                          </p>
+                        </div>
+                      )}
+                      
+                      {promptMode && (
+                        <div className="mt-3 transition-all">
+                          <label htmlFor="prompt" className="text-xs font-semibold text-app-gray-600 mb-2 block">
+                            Describe your book idea
+                          </label>
+                          <div className="relative">
+                            <Textarea
+                              id="prompt"
+                              value={prompt}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                if (value.length <= 500) {
+                                  setPrompt(value);
+                                }
+                              }}
+                              placeholder="Describe your book idea, characters, plot, or theme... (e.g., A young wizard discovers he's a wizard on his 11th birthday...)"
+                              className="min-h-[100px] pr-16 rounded-xl border-app-gray-300"
+                              maxLength={500}
+                            />
+                            <span className="absolute bottom-2 right-3 text-xs text-app-gray-600">
+                              {prompt.length}/500
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-4 flex items-center justify-between gap-3">
+                  <Button
+                    type="button"
+                    variant="appGhost"
+                    className="text-sm"
+                    onClick={() => navigate('/dashboard')}
+                    disabled={loading}
+                  >
+                    Skip for now
+                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="appGhost"
+                      className="hidden sm:inline-flex text-sm"
+                      onClick={() => navigate(-1)}
+                      disabled={loading}
+                    >
+                      <ArrowLeft className="mr-2 h-4 w-4" />
+                      Back
+                    </Button>
+                    <Button
+                      type="submit"
+                      variant="appPrimary"
+                      className="text-sm"
+                      disabled={!title.trim() || loading}
+                    >
+                      {loading ? 'Creating…' : 'Continue'}
+                    </Button>
+                  </div>
+                </div>
+              </form>
+            </InfoCard>
+          </div>
+        }
+        right={
+          <div className="space-y-6">
+            <BookCardPreview title={title} subtitle={subtitle} />
+            <SummaryCard
+              title="What we'll set up"
+              rows={[
+                { label: 'Book title', value: title.trim() || 'Not set yet' },
+                { 
+                  label: 'Mode', 
+                  value: creationType === 0 
+                    ? (promptMode ? 'AI-assisted (Custom)' : 'AI-assisted (Baby Journal)')
+                    : 'Start Blank'
+                },
+                { label: 'Est. chapters', value: creationType === 0 ? '8–12 (editable later)' : 'Add manually' },
+              ]}
+            />
+          </div>
+        }
+      />
     </div>
   );
 };

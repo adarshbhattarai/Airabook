@@ -60,7 +60,7 @@ const Notes = () => {
   };
 
   return (
-    <div className="min-h-screen py-8 px-4">
+    <div className="py-6 px-4 sm:px-6 lg:px-8">
       <Helmet>
         <title>Notes & Stories - Baby Aira</title>
         <meta name="description" content="Read heartwarming stories and milestones from Baby Aira's journey. Parents share precious moments and memories of their little angel." />
@@ -69,24 +69,26 @@ const Notes = () => {
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <motion.div
-          initial={{ opacity: 0, y: -20 }}
+          initial={{ opacity: 0, y: -12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="text-center mb-12"
+          transition={{ duration: 0.4 }}
+          className="mb-8 flex items-center justify-between gap-3"
         >
-          <h1 className="text-5xl font-bold mb-4 bg-gradient-to-r from-purple-500 to-indigo-500 bg-clip-text text-transparent">
-            Aira's Stories
-          </h1>
-          <p className="text-xl text-gray-700 mb-8">
-            Precious moments and milestones shared with love
-          </p>
-          
+          <div>
+            <h1 className="text-[28px] font-semibold text-app-gray-900 leading-tight">
+              Notes & stories
+            </h1>
+            <p className="mt-2 text-sm text-app-gray-600">
+              Precious moments and milestones you&apos;ve captured along the way.
+            </p>
+          </div>
           <Button
             onClick={handleNewNote}
-            className="bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white px-6 py-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-200"
+            variant="appPrimary"
+            className="inline-flex items-center gap-2 text-sm"
           >
-            <PenTool className="h-5 w-5 mr-2" />
-            Write New Story
+            <PenTool className="h-4 w-4" />
+            Write new story
           </Button>
         </motion.div>
 
@@ -98,15 +100,15 @@ const Notes = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: index * 0.1 }}
-              className="bg-white/70 backdrop-blur-sm rounded-3xl p-8 shadow-xl border border-violet-100 hover:shadow-2xl transition-all duration-300"
+              className="bg-white rounded-2xl p-6 shadow-appSoft border border-app-gray-100 hover:shadow-appCard transition-all duration-200"
             >
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center space-x-4">
-                  <div className="bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full p-3">
-                    <Heart className="h-6 w-6 text-white fill-current" />
+                  <div className="rounded-xl p-3 bg-app-iris/10 text-app-iris">
+                    <Heart className="h-5 w-5 fill-current" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-bold text-gray-800 mb-1">
+                    <h2 className="text-lg font-semibold text-app-gray-900 mb-1">
                       <Link 
                         to={`/notes/${note.id}`}
                         className="hover:text-violet-600 transition-colors"
@@ -114,7 +116,7 @@ const Notes = () => {
                         {note.title}
                       </Link>
                     </h2>
-                    <div className="flex items-center space-x-4 text-sm text-gray-600">
+                    <div className="flex items-center space-x-4 text-xs text-app-gray-600">
                       <div className="flex items-center space-x-1">
                         <Calendar className="h-4 w-4" />
                         <span>{new Date(note.date).toLocaleDateString()}</span>
@@ -125,18 +127,18 @@ const Notes = () => {
                 </div>
               </div>
 
-              <p className="text-gray-700 leading-relaxed mb-6">
+              <p className="text-sm text-app-gray-600 leading-relaxed mb-4">
                 {note.excerpt}
               </p>
 
               <div className="flex items-center justify-between">
                 <Link
                   to={`/notes/${note.id}`}
-                  className="text-violet-600 hover:text-violet-700 font-medium transition-colors"
+                  className="text-app-iris hover:text-app-iris-hover font-medium text-sm transition-colors"
                 >
                   Read full story →
                 </Link>
-                <div className="flex items-center space-x-1 text-gray-600">
+                <div className="flex items-center space-x-1 text-app-gray-600 text-xs">
                   <MessageCircle className="h-4 w-4" />
                   <span className="text-sm">{note.comments} comments</span>
                 </div>

@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
-import { PlusCircle } from 'lucide-react';
+import { PlusCircle, Sparkles, BookOpen, PenSquare } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import BookItem from '@/components/BookItem';
+import StatCard from '@/components/app/StatCard';
 
 const Dashboard = () => {
   const { appUser, appLoading, billing, entitlements } = useAuth();
@@ -30,9 +31,9 @@ const Dashboard = () => {
 
   if (appLoading || !appUser) {
     return (
-        <div className="flex justify-center items-center min-h-screen">
-            <p>Loading your dashboard...</p>
-        </div>
+      <div className="flex justify-center items-center min-h-[60vh]">
+        <p className="text-sm text-app-gray-600">Loading your dashboard...</p>
+      </div>
     );
   }
 
@@ -46,57 +47,94 @@ const Dashboard = () => {
     return item;
   }).filter(book => !deletedBooks.has(book.bookId));
 
+  const planLabel = billing?.planLabel || 'Free reader';
+  const canWrite = !!entitlements?.canWriteBooks;
+  const totalBooks = books.length;
+
   return (
-    <div className="min-h-screen py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="grid gap-6 mb-10">
-          <div className="bg-white border border-[#3498db]/20 rounded-2xl p-6 shadow">
-            <p className="text-sm uppercase tracking-widest text-slate-400">Your plan</p>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-2xl font-semibold text-slate-900">{billing?.planLabel}</p>
-                <p className="text-sm text-slate-500">
-                  {entitlements?.canWriteBooks
-                    ? 'Writing unlocked'
-                    : 'Read-only access. Donate to unlock writing.'}
-                </p>
-              </div>
-              <Button
-                variant="outline"
-                className="border-[#3498db] text-[#3498db]"
-                onClick={() => navigate('/donate')}
-              >
-                Manage plan
-              </Button>
-            </div>
+    <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <div className="max-w-5xl mx-auto space-y-8">
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="text-[28px] font-semibold text-app-gray-900 leading-tight">
+              Your books
+            </h1>
+            <p className="mt-1 text-sm text-app-gray-600 leading-relaxed">
+              Manage your stories, track your plan, and jump back into writing.
+            </p>
           </div>
-          <div className="flex justify-center">
+          <div className="flex justify-start sm:justify-end">
             <Button
               onClick={() => navigate('/create-book')}
-              className="bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white px-8 py-4 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 text-lg disabled:opacity-70"
-              disabled={!entitlements?.canWriteBooks}
+              variant="appPrimary"
+              className="inline-flex items-center gap-2 text-sm"
+              disabled={!canWrite}
             >
-              <PlusCircle className="h-6 w-6 mr-3" />
-              {entitlements?.canWriteBooks ? 'Create New Book' : 'Unlock writing to create'}
+              <PlusCircle className="h-4 w-4" />
+              {canWrite ? 'Create new book' : 'Unlock writing'}
             </Button>
           </div>
+        </header>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <StatCard
+            label="Active plan"
+            value={planLabel}
+            helper={canWrite ? 'Writing tools unlocked' : 'Read-only, upgrade to write'}
+            icon={Sparkles}
+          />
+          <StatCard
+            label="Books"
+            value={totalBooks}
+            helper={totalBooks === 0 ? 'Let’s create your first story' : 'Books in your library'}
+            icon={BookOpen}
+          />
+          <StatCard
+            label="Writing status"
+            value={canWrite ? 'Enabled' : 'Locked'}
+            helper={canWrite ? 'You can create and edit books' : 'Donate to enable writing'}
+            icon={PenSquare}
+          />
         </div>
 
-        {books.length > 0 && (
-            <div className="space-y-4">
-                <h2 className="text-2xl font-bold text-center text-gray-800 mb-6">Your Books</h2>
-                {books.map(book => (
-                    <BookItem 
-                      key={book.bookId} 
-                      bookId={book.bookId}
-                      bookTitle={book.title}
-                      coverImage={book.coverImage}
-                      onBookDeleted={handleBookDeleted}
-                    />
-                  ))}
-            </div>
-        )}
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold text-app-gray-900">
+              Library
+            </h2>
+            {books.length > 0 && (
+              <p className="text-xs text-app-gray-600">
+                Showing {books.length} {books.length === 1 ? 'book' : 'books'}
+              </p>
+            )}
+          </div>
 
+          {books.length === 0 ? (
+            <div className="rounded-2xl border border-app-gray-100 bg-white shadow-appSoft px-6 py-8 text-center">
+              <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-app-iris/10 text-app-iris mb-3">
+                <BookOpen className="h-5 w-5" />
+              </div>
+              <p className="text-sm font-medium text-app-gray-900">
+                No books yet
+              </p>
+              <p className="mt-1 text-xs text-app-gray-600 max-w-sm mx-auto">
+                Create your first book to start capturing journeys, then come back here to manage them.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {books.map(book => (
+                <BookItem 
+                  key={book.bookId} 
+                  bookId={book.bookId}
+                  bookTitle={book.title}
+                  coverImage={book.coverImage}
+                  onBookDeleted={handleBookDeleted}
+                />
+              ))}
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );

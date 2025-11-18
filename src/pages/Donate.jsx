@@ -171,16 +171,16 @@ const Donate = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#ecf0f1]">
-      <div className="max-w-5xl mx-auto py-16 px-4 space-y-10">
-        <section className="text-center space-y-4">
+    <div className="py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-5xl mx-auto space-y-10">
+        <section className="space-y-4">
           <motion.p initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="text-sm uppercase tracking-[0.3em] text-[#3498db]">
             Powered by our community
           </motion.p>
-          <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="text-4xl sm:text-5xl font-bold text-slate-900">
+          <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="text-[28px] sm:text-4xl font-semibold text-app-gray-900 leading-tight">
             Keep Airabook free for every reader
           </motion.h1>
-          <p className="text-lg text-slate-600 max-w-3xl mx-auto">
+          <p className="text-sm text-app-gray-600 max-w-3xl">
             Hosting, AI, and storage bills add up quickly. Your donation keeps the service active and
             unlocks creation tools for your account.
           </p>
@@ -192,7 +192,7 @@ const Donate = () => {
         </section>
 
         <section className="grid lg:grid-cols-2 gap-8">
-          <div className="bg-white rounded-3xl shadow-xl p-8 border border-[#3498db]/10">
+          <div className="bg-white rounded-2xl shadow-appSoft p-6 border border-app-gray-100">
             <p className="text-sm font-semibold text-[#3498db] mb-3">Choose an amount</p>
             <div className="flex flex-wrap gap-3 mb-6">
               {presetAmounts.map((amount) => (
@@ -230,7 +230,7 @@ const Donate = () => {
                 />
               </div>
             </div>
-            <p className="text-sm text-slate-500 mb-4">
+            <p className="text-xs text-app-gray-600 mb-4">
               Need it to keep the service active. Every contribution directly pays for Firebase,
               storage, and AI costs.
             </p>
@@ -247,23 +247,23 @@ const Donate = () => {
             {Object.entries(planOptions).map(([tier, plan]) => (
               <div
                 key={tier}
-                className={`rounded-3xl border p-6 bg-white shadow-md transition cursor-pointer ${
-                  planTier === tier ? 'border-[#2ecc71] shadow-xl' : 'border-transparent'
+                className={`rounded-2xl border p-5 bg-white shadow-appSoft transition cursor-pointer ${
+                  planTier === tier ? 'border-app-iris shadow-appCard' : 'border-app-gray-100/70'
                 }`}
                 onClick={() => setPlanTier(tier)}
               >
                 <div className="flex justify-between items-center mb-2">
                   <div>
-                    <p className="text-sm uppercase tracking-wide text-slate-400">{plan.highlight}</p>
-                    <h3 className="text-2xl font-semibold text-slate-900">{plan.label}</h3>
+                    <p className="text-xs uppercase tracking-wide text-app-gray-600">{plan.highlight}</p>
+                    <h3 className="text-lg font-semibold text-app-gray-900">{plan.label}</h3>
                   </div>
-                  <p className="text-3xl font-bold text-[#3498db]">
+                  <p className="text-2xl font-bold text-[#3498db]">
                     {plan.amount ? `$${plan.amount}` : `$${resolvedAmount || selectedAmount}`}
                     <span className="text-base font-normal text-slate-500">/one-time</span>
                   </p>
                 </div>
-                <p className="text-slate-600 mb-4">{plan.description}</p>
-                <ul className="space-y-2 text-sm text-slate-600">
+                <p className="text-sm text-app-gray-600 mb-4">{plan.description}</p>
+                <ul className="space-y-2 text-xs text-app-gray-600">
                   {plan.features.map((feature) => (
                     <li key={feature} className="flex items-center gap-2">
                       <span className="text-[#2ecc71]">●</span>
@@ -276,28 +276,29 @@ const Donate = () => {
           </div>
         </section>
 
-        <section className="bg-white rounded-3xl shadow-xl border border-slate-200 p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <section className="bg-white rounded-2xl shadow-appSoft border border-app-gray-100 p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div>
-            <p className="text-sm uppercase tracking-widest text-slate-400">Summary</p>
-            <h4 className="text-2xl font-bold text-slate-900">{planOptions[planTier].label}</h4>
-            <p className="text-slate-500 text-sm">
+            <p className="text-xs uppercase tracking-widest text-app-gray-600">Summary</p>
+            <h4 className="text-lg font-semibold text-app-gray-900">{planOptions[planTier].label}</h4>
+            <p className="text-xs text-app-gray-600 mt-1">
               {planTier === 'supporter'
                 ? 'Grants writing ability and keeps the service online.'
                 : 'Unlocks pro entitlements the moment Stripe confirms payment.'}
             </p>
           </div>
           <div className="text-right">
-            <p className="text-sm text-slate-500 mb-1">Total</p>
-            <p className="text-4xl font-bold text-[#2ecc71]">
+            <p className="text-xs text-app-gray-600 mb-1">Total</p>
+            <p className="text-2xl sm:text-3xl font-bold text-[#2ecc71]">
               ${resolvedAmount?.toFixed(2) ?? '0.00'}
             </p>
           </div>
           <Button
             onClick={handleCheckout}
             disabled={loading}
-            className="bg-[#3498db] hover:bg-[#2c82c9] text-white px-8 py-6 rounded-full text-lg shadow-lg w-full sm:w-auto"
+            variant="appPrimary"
+            className="px-6 py-3 rounded-pill text-sm w-full sm:w-auto"
           >
-            {loading ? 'Redirecting...' : 'Donate & Continue'}
+            {loading ? 'Redirecting...' : 'Donate & continue'}
           </Button>
         </section>
       </div>

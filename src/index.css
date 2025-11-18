@@ -175,6 +175,22 @@ a:focus-visible {
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
     --radius: 0.5rem;
+
+    /* App (logged-in) Stripe-like theme */
+    --app-iris: #635bff;
+    --app-iris-hover: #4f47d9;
+    --app-violet: #9b8cff;
+    --app-mint: #2ed3b7;
+
+    --app-gray-50: #f7f8fb;
+    --app-gray-100: #eef1f7;
+    --app-gray-300: #d8dfea;
+    --app-gray-600: #5b6578;
+    --app-gray-900: #151a2d;
+    --app-navy: #0f172a;
+
+  --app-gradient-spotlight: linear-gradient(135deg, #c084fc 0%, #ec4899 35%, #8b5cf6 65%, #06b6d4 100%);
+  --app-gradient-book: linear-gradient(135deg, #9b8cff 0%, #635bff 100%);
   }
   .dark {
     --background: 240 10% 3.9%;
