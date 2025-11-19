@@ -13,7 +13,7 @@ import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import {
-  Trash2, PlusCircle, ChevronRight, ChevronDown, ArrowLeft, ArrowRight, UploadCloud, GripVertical, MoreVertical, ChevronLeft, Sparkles, Globe, Users, UserPlus, X
+  Trash2, PlusCircle, ChevronRight, ChevronDown, ArrowLeft, ArrowRight, UploadCloud, GripVertical, MoreVertical, ChevronLeft, Sparkles, Globe, Users, UserPlus, X, Send
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
@@ -247,12 +247,12 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
 
   const autoSave = async () => {
     if (!note || note === page.note) return; // Don't save if no changes
-    
+
     setIsAutoSaving(true);
     const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', page.id);
     const plain = stripHtml(note);
     const shortNote = plain.substring(0, 40) + (plain.length > 40 ? '...' : '');
-    
+
     try {
       await updateDoc(pageRef, { note });
       onPageUpdate({ ...page, note, shortNote });
@@ -266,12 +266,12 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
 
   const handleNoteChange = (newNote) => {
     setNote(newNote);
-    
+
     // Clear existing timeout
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
-    
+
     // Set new timeout for auto-save (2 seconds after user stops typing)
     saveTimeoutRef.current = setTimeout(() => {
       autoSave();
@@ -328,12 +328,12 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
           };
           const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', page.id);
           await updateDoc(pageRef, { media: arrayUnion(newMediaItem) });
-          
+
           onPageUpdate(prev => ({
             ...prev,
             media: [...(prev?.media || []), newMediaItem],
           }));
-          
+
           setUploadProgress(prev => {
             const next = { ...prev };
             delete next[file.name];
@@ -473,15 +473,15 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
 
   const handleSaveChanges = async () => {
     if (!pendingNote) return;
-    
+
     setIsSaving(true);
     const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', page.id);
     const plain = stripHtml(pendingNote);
     const shortNote = plain.substring(0, 40) + (plain.length > 40 ? '...' : '');
-    
+
     try {
       await updateDoc(pageRef, { note: pendingNote });
-      
+
       // Update editor content
       const editor = quillRef.current?.getEditor?.();
       if (editor) {
@@ -493,7 +493,7 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
           editor.insertText(0, pendingNote);
         }
       }
-      
+
       setNote(pendingNote);
       onPageUpdate({ ...page, note: pendingNote, shortNote });
       setPendingNote(null);
@@ -501,10 +501,10 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
       toast({ title: 'Success', description: 'Changes saved successfully.' });
     } catch (error) {
       console.error('Failed to save changes:', error);
-      toast({ 
-        title: 'Error', 
-        description: 'Failed to save changes. Please try again.', 
-        variant: 'destructive' 
+      toast({
+        title: 'Error',
+        description: 'Failed to save changes. Please try again.',
+        variant: 'destructive'
       });
     } finally {
       setIsSaving(false);
@@ -675,8 +675,8 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
               <div className="relative flex items-center style-dropdown-container">
                 <Input
                   type="text"
-                value={aiStyle}
-                onChange={(e) => setAiStyle(e.target.value)}
+                  value={aiStyle}
+                  onChange={(e) => setAiStyle(e.target.value)}
                   maxLength={25}
                   placeholder="Custom style or choose preset..."
                   className="text-sm w-48 h-9 rounded-r-none border-r-0 pr-2"
@@ -849,36 +849,36 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
           {/* Action buttons */}
           <div className="px-6 pb-6 space-y-3">
             <div className="flex items-center justify-center gap-3">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={insertAtCursor}
                 className="bg-white hover:bg-violet-50 border-violet-300 text-violet-700 hover:text-violet-900"
               >
                 Insert at cursor
               </Button>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={replaceAll}
                 className="bg-white hover:bg-rose-50 border-rose-300 text-rose-700 hover:text-rose-900"
               >
                 Replace all
               </Button>
             </div>
-            
+
             {pendingNote && (
               <div className="pt-3 border-t border-violet-200">
                 <p className="text-sm text-center text-gray-600 mb-3">
                   Changes are ready. Save to update or cancel to discard.
                 </p>
                 <div className="flex items-center justify-center gap-3">
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     onClick={handleCancelChanges}
                     className="bg-white hover:bg-gray-50 border-gray-300"
                   >
                     Cancel
                   </Button>
-                  <Button 
+                  <Button
                     onClick={handleSaveChanges}
                     disabled={isSaving}
                     className="bg-gradient-to-r from-violet-500 to-rose-500 hover:from-violet-600 hover:to-rose-600 text-white shadow-lg"
@@ -888,11 +888,11 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
                 </div>
               </div>
             )}
-            
+
             {!pendingNote && (
               <div className="flex items-center justify-center pt-3 border-t border-violet-200">
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   onClick={handleCancelChanges}
                   className="bg-white hover:bg-gray-50 border-gray-300"
                 >
@@ -908,6 +908,66 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
 };
 
 // --- MAIN COMPONENT ---
+
+const ChatPanel = () => {
+  const [messages, setMessages] = useState([
+    { role: 'assistant', content: 'Hello! I can help you plan your book, brainstorm ideas, or review your writing. What are you working on today?' }
+  ]);
+  const [input, setInput] = useState('');
+
+  const handleSend = () => {
+    if (!input.trim()) return;
+    setMessages([...messages, { role: 'user', content: input }]);
+    setInput('');
+    // Mock response
+    setTimeout(() => {
+      setMessages(prev => [...prev, { role: 'assistant', content: 'This is a placeholder response. The AI chat engine is coming soon!' }]);
+    }, 1000);
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-white border-l border-gray-200 w-80 shrink-0">
+      <div className="p-4 border-b border-gray-200 flex items-center gap-2 bg-gray-50/50">
+        <Sparkles className="h-4 w-4 text-violet-600" />
+        <h3 className="font-semibold text-gray-800 text-sm">AI Assistant</h3>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {messages.map((msg, i) => (
+          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${msg.role === 'user'
+              ? 'bg-violet-600 text-white rounded-br-none'
+              : 'bg-gray-100 text-gray-800 rounded-bl-none'
+              }`}>
+              {msg.content}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="p-3 border-t border-gray-200 bg-white">
+        <div className="relative">
+          <Input
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            placeholder="Ask anything..."
+            className="pr-10 text-sm"
+            onKeyDown={e => e.key === 'Enter' && handleSend()}
+          />
+          <Button
+            size="icon"
+            variant="ghost"
+            className="absolute right-1 top-1 h-7 w-7 text-violet-600 hover:bg-violet-50"
+            onClick={handleSend}
+          >
+            <Send className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 
 const BookDetail = () => {
   const { bookId } = useParams();
@@ -1036,7 +1096,7 @@ const BookDetail = () => {
             .slice(0, 10);
         }
       }
-      
+
       // Filter results
       results = results.filter(u => {
         // Filter out current user
@@ -1045,7 +1105,7 @@ const BookDetail = () => {
         if (book?.members?.[u.id]) return false;
         return true;
       });
-      
+
       setSearchResults(results);
     } catch (error) {
       console.error('Error searching users:', error);
@@ -1090,12 +1150,12 @@ const BookDetail = () => {
         isPublic: !book.isPublic,
         updatedAt: new Date(),
       });
-      
+
       setBook(prev => ({ ...prev, isPublic: !prev.isPublic }));
       toast({
         title: book.isPublic ? 'Book Unpublished' : 'Book Published',
-        description: book.isPublic 
-          ? 'Your book is now private.' 
+        description: book.isPublic
+          ? 'Your book is now private.'
           : 'Your book is now public. Anyone with the link can view it.',
       });
       setPublishModalOpen(false);
@@ -1155,7 +1215,7 @@ const BookDetail = () => {
       const bookRef = doc(firestore, 'books', bookId);
       const updatedMembers = { ...book.members };
       delete updatedMembers[userId];
-      
+
       await updateDoc(bookRef, {
         members: updatedMembers,
         updatedAt: new Date(),
@@ -1177,10 +1237,10 @@ const BookDetail = () => {
   };
 
   // Get co-authors list (excluding owner)
-  const coAuthors = book?.members 
+  const coAuthors = book?.members
     ? Object.entries(book.members)
-        .filter(([uid, role]) => uid !== book.ownerId && role === 'Co-author')
-        .map(([uid]) => uid)
+      .filter(([uid, role]) => uid !== book.ownerId && role === 'Co-author')
+      .map(([uid]) => uid)
     : [];
 
   // Fetch co-author user details
@@ -1342,25 +1402,25 @@ const BookDetail = () => {
       batch.delete(oldRef);
 
       const fromChapterRef = doc(firestore, 'books', bookId, 'chapters', fromChapterId);
-      const toChapterRef   = doc(firestore, 'books', bookId, 'chapters', toChapterId);
+      const toChapterRef = doc(firestore, 'books', bookId, 'chapters', toChapterId);
 
       batch.update(fromChapterRef, { pagesSummary: chaptersMap.get(fromChapterId).pagesSummary });
-      batch.update(toChapterRef,   { pagesSummary: toList });
+      batch.update(toChapterRef, { pagesSummary: toList });
     }
 
     await batch.commit();
 
     setChapters(chapters.map(c =>
       c.id === fromChapterId ? chaptersMap.get(fromChapterId)
-      : c.id === toChapterId ? chaptersMap.get(toChapterId)
-      : c
+        : c.id === toChapterId ? chaptersMap.get(toChapterId)
+          : c
     ));
 
     if (fromChapterId === toChapterId) {
       if (selectedChapterId === toChapterId) {
         setPages(prev =>
           prev.map(p => p.id === draggableId ? { ...p, order: newOrder } : p)
-             .sort((a, b) => a.order.localeCompare(b.order))
+            .sort((a, b) => a.order.localeCompare(b.order))
         );
       }
     } else {
@@ -1402,10 +1462,10 @@ const BookDetail = () => {
       return;
     }
     if (!selectedChapterId) return;
-    
+
     // Clear the editor form content first
     setClearEditor(true);
-    
+
     const newOrder = getMidpointString(pages[pages.length - 1]?.order);
     const newPageData = { note: '', media: [], createdAt: new Date(), order: newOrder };
 
@@ -1423,7 +1483,7 @@ const BookDetail = () => {
       ...c,
       pagesSummary: [...(c.pagesSummary || []), newPageSummary].sort((a, b) => a.order.localeCompare(b.order))
     } : c));
-    
+
     // Reset the clear editor flag
     setClearEditor(false);
     toast({ title: 'New Page Added' });
@@ -1434,12 +1494,12 @@ const BookDetail = () => {
       // Figure out the current page being edited
       const current = prevPages.find(p => p.id === selectedPageId);
       if (!current) return prevPages;
-  
+
       const updatedPage = (typeof update === 'function') ? update(current) : update;
-  
+
       // Update pages array
       const nextPages = prevPages.map(p => p.id === updatedPage.id ? updatedPage : p);
-  
+
       // If shortNote provided, reflect it in the chapter sidebar and update Firestore
       if (updatedPage.shortNote) {
         const chapter = chapters.find(c => c.id === selectedChapterId);
@@ -1450,12 +1510,12 @@ const BookDetail = () => {
             console.log(ps.pageId, updatedPage.id);
             return ps.pageId === updatedPage.id ? { ...ps, shortNote: updatedPage.shortNote } : ps;
           });
-          
+
           // Update local state
           setChapters(chapters.map(c =>
             c.id === selectedChapterId ? { ...c, pagesSummary: updatedPagesSummary } : c
           ));
-          
+
           // Update Firestore
           const chapterRef = doc(firestore, 'books', bookId, 'chapters', selectedChapterId);
           updateDoc(chapterRef, { pagesSummary: updatedPagesSummary })
@@ -1464,19 +1524,19 @@ const BookDetail = () => {
             })
             .catch((error) => {
               console.error('Failed to update chapter in Firestore:', error);
-              toast({ 
-                title: 'Update Error', 
-                description: 'Failed to update chapter summary in database.', 
-                variant: 'destructive' 
+              toast({
+                title: 'Update Error',
+                description: 'Failed to update chapter summary in database.',
+                variant: 'destructive'
               });
             });
         }
       }
-  
+
       return nextPages;
     });
   };
-  
+
   // ---------- Chapter Title Editing ----------
   const handleStartEditChapter = (chapter) => {
     if (!canEdit) {
@@ -1501,10 +1561,10 @@ const BookDetail = () => {
   const handleSaveChapterTitle = async (chapterId) => {
     const trimmedTitle = editingChapterTitle.trim();
     if (!trimmedTitle) {
-      toast({ 
-        title: 'Error', 
-        description: 'Chapter title cannot be empty.', 
-        variant: 'destructive' 
+      toast({
+        title: 'Error',
+        description: 'Chapter title cannot be empty.',
+        variant: 'destructive'
       });
       return;
     }
@@ -1519,20 +1579,20 @@ const BookDetail = () => {
     try {
       const chapterRef = doc(firestore, 'books', bookId, 'chapters', chapterId);
       await updateDoc(chapterRef, { title: trimmedTitle });
-      
-      setChapters(chapters.map(c => 
+
+      setChapters(chapters.map(c =>
         c.id === chapterId ? { ...c, title: trimmedTitle } : c
       ));
-      
+
       setEditingChapterId(null);
       setEditingChapterTitle('');
       toast({ title: 'Chapter updated', description: 'Chapter title has been saved.' });
     } catch (error) {
       console.error('Failed to update chapter title:', error);
-      toast({ 
-        title: 'Update Error', 
-        description: 'Failed to update chapter title. Please try again.', 
-        variant: 'destructive' 
+      toast({
+        title: 'Update Error',
+        description: 'Failed to update chapter title. Please try again.',
+        variant: 'destructive'
       });
     }
   };
@@ -1547,7 +1607,7 @@ const BookDetail = () => {
     if (editingChapterId) {
       const chapter = chapters.find(c => c.id === editingChapterId);
       const hasChanges = editingChapterTitle.trim() !== chapter?.title;
-      
+
       if (hasChanges) {
         setSaveConfirmOpen(true);
       } else {
@@ -1614,7 +1674,7 @@ const BookDetail = () => {
               {book?.isPublic ? 'Unpublish this book?' : 'Make this book public?'}
             </DialogTitle>
             <DialogDescription className="mt-2 text-gray-600">
-              {book?.isPublic 
+              {book?.isPublic
                 ? 'Your book will become private. Only you and co-authors will be able to access it.'
                 : 'Making this book public means anyone with the link can view it. Your content will be visible to the public.'}
             </DialogDescription>
@@ -1722,64 +1782,72 @@ const BookDetail = () => {
         </DialogContent>
       </Dialog>
 
-      <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between mb-6">
-          <Button
-            variant="appGhost"
-            onClick={() => navigate('/dashboard')}
-            className="flex items-center gap-2 text-xs"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Books
-          </Button>
-          
+      <div className="flex flex-col h-full overflow-hidden">
+        {/* Header */}
+        <div className="shrink-0 py-3 px-4 border-b border-gray-200 bg-white flex items-center justify-between z-10">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="appGhost"
+              onClick={() => navigate('/dashboard')}
+              className="flex items-center gap-2 text-xs"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </Button>
+            <h1 className="text-lg font-semibold text-app-gray-900 truncate max-w-md" title={book?.babyName}>
+              {book?.babyName}
+            </h1>
+          </div>
+
           {isOwner && (
             <div className="flex items-center gap-2">
               <Button
                 variant={book?.isPublic ? 'appPrimary' : 'appGhost'}
                 onClick={() => setPublishModalOpen(true)}
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 h-8 text-xs"
               >
-                <Globe className="h-4 w-4" />
+                <Globe className="h-3 w-3" />
                 {book?.isPublic ? 'Unpublish' : 'Publish'}
               </Button>
               <Button
                 variant="outline"
                 onClick={() => setCoAuthorModalOpen(true)}
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 h-8 text-xs"
               >
-                <Users className="h-4 w-4" />
+                <Users className="h-3 w-3" />
                 Co-Authors
               </Button>
             </div>
           )}
         </div>
-        <h1 className="text-[28px] font-semibold text-app-gray-900 text-center mb-6">
-          {book?.babyName}
-        </h1>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8" style={{ minHeight: '60vh' }}>
-          <div className="lg:col-span-1 flex flex-col space-y-6">
-            <form onSubmit={handleCreateChapter} className="flex items-center space-x-2">
-              <Input 
-                value={newChapterTitle} 
-                onChange={(e) => setNewChapterTitle(e.target.value)} 
-                placeholder="New chapter title..." 
-                disabled={!canEdit}
-              />
-              <Button type="submit" size="icon" disabled={!canEdit}>
-                <PlusCircle className="h-4 w-4" />
-              </Button>
-            </form>
-            <div className="p-4 bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border flex-grow">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">Content</h2>
+
+        {/* Main Content */}
+        <div className="flex flex-1 overflow-hidden">
+          {/* Left Sidebar: Chapters */}
+          <div className="w-72 bg-gray-50 border-r border-gray-200 flex flex-col shrink-0">
+            <div className="p-3 border-b border-gray-200 bg-white">
+              <form onSubmit={handleCreateChapter} className="flex items-center space-x-2">
+                <Input
+                  value={newChapterTitle}
+                  onChange={(e) => setNewChapterTitle(e.target.value)}
+                  placeholder="New chapter..."
+                  disabled={!canEdit}
+                  className="h-8 text-sm"
+                />
+                <Button type="submit" size="icon" disabled={!canEdit} className="h-8 w-8">
+                  <PlusCircle className="h-4 w-4" />
+                </Button>
+              </form>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-2">
               <div className="space-y-1">
                 {[...chapters].sort((a, b) => a.order.localeCompare(b.order)).map(chapter => (
                   <div key={chapter.id} className="group">
                     <div
                       onClick={(e) => {
-                        if (editingChapterId === chapter.id) return; // Don't change selection if editing this chapter
+                        if (editingChapterId === chapter.id) return;
                         if (editingChapterId && editingChapterId !== chapter.id) {
-                          // There's an unsaved edit in another chapter
                           const chapterTitle = chapters.find(c => c.id === chapter.id)?.title || '';
                           setPendingChapterEdit({ chapterId: chapter.id, originalTitle: chapterTitle });
                           setSaveConfirmOpen(true);
@@ -1788,9 +1856,9 @@ const BookDetail = () => {
                         setSelectedChapterId(chapter.id);
                         setExpandedChapters(new Set([chapter.id]));
                       }}
-                      className={`w-full text-left p-3 rounded-lg flex items-center justify-between ${editingChapterId === chapter.id ? '' : 'cursor-pointer'} ${selectedChapterId === chapter.id ? 'bg-violet-200 text-violet-900' : 'hover:bg-violet-100'}`}
+                      className={`w-full text-left p-2 rounded-lg flex items-center justify-between ${editingChapterId === chapter.id ? '' : 'cursor-pointer'} ${selectedChapterId === chapter.id ? 'bg-violet-100 text-violet-900 font-medium' : 'hover:bg-gray-100 text-gray-700'}`}
                     >
-                    <div className="flex items-center flex-1 min-w-0 mr-2">
+                      <div className="flex items-center flex-1 min-w-0 mr-2">
                         {isOwner && <HoverDeleteMenu onDelete={() => openDeleteModal('chapter', chapter)} />}
                         {editingChapterId === chapter.id ? (
                           <input
@@ -1813,7 +1881,7 @@ const BookDetail = () => {
                           />
                         ) : (
                           <span
-                            className="font-medium truncate pr-2 ml-1"
+                            className="truncate pr-2 ml-1 text-sm"
                             title={chapter.title}
                             onDoubleClick={(e) => {
                               e.stopPropagation();
@@ -1827,21 +1895,21 @@ const BookDetail = () => {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 shrink-0"
+                        className="h-6 w-6 shrink-0"
                         onClick={(e) => {
-                           e.stopPropagation();
+                          e.stopPropagation();
                           const s = new Set(expandedChapters);
                           s.has(chapter.id) ? s.delete(chapter.id) : s.add(chapter.id);
                           setExpandedChapters(s);
                         }}
                       >
-                        {expandedChapters.has(chapter.id) ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
+                        {expandedChapters.has(chapter.id) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                       </Button>
                     </div>
                     {expandedChapters.has(chapter.id) && (
                       <Droppable droppableId={chapter.id} type="PAGE">
                         {(provided) => (
-                          <div ref={provided.innerRef} {...provided.droppableProps} className="ml-4 pl-4 border-l-2 border-violet-200 py-1 space-y-1">
+                          <div ref={provided.innerRef} {...provided.droppableProps} className="ml-3 pl-3 border-l border-gray-200 py-1 space-y-0.5">
                             {chapter.pagesSummary?.length > 0 ? chapter.pagesSummary.map((pageSummary, index) => (
                               <Draggable key={pageSummary.pageId} draggableId={pageSummary.pageId} index={index}>
                                 {(provided2) => (
@@ -1854,23 +1922,23 @@ const BookDetail = () => {
                                     }}
                                     role="button"
                                     tabIndex={0}
-                                    className={`group w-full text-left p-2 rounded-md text-sm flex items-center justify-between cursor-pointer ${selectedPageId === pageSummary.pageId ? 'bg-violet-100 text-violet-800' : 'hover:bg-gray-100'}`}
+                                    className={`group w-full text-left p-1.5 rounded-md text-sm flex items-center justify-between cursor-pointer ${selectedPageId === pageSummary.pageId ? 'bg-violet-50 text-violet-700 font-medium' : 'hover:bg-gray-50 text-gray-600'}`}
                                   >
                                     <div className="flex items-center truncate">
                                       <span
                                         {...provided2.dragHandleProps}
-                                        className="mr-2 text-gray-400 shrink-0 cursor-grab active:cursor-grabbing"
+                                        className="mr-2 text-gray-300 hover:text-gray-500 shrink-0 cursor-grab active:cursor-grabbing"
                                       >
-                                        <GripVertical className="h-4 w-4" />
+                                        <GripVertical className="h-3 w-3" />
                                       </span>
-                                      <span className="truncate">{pageSummary.shortNote || 'Untitled Page'}</span>
+                                      <span className="truncate text-xs">{pageSummary.shortNote || 'Untitled Page'}</span>
                                     </div>
 
                                     {canEdit && <HoverDeleteMenu onDelete={() => openDeleteModal('page', { ...pageSummary, chapterId: chapter.id, pageIndex: index })} />}
                                   </div>
                                 )}
                               </Draggable>
-                            )) : <div className="p-2 text-xs text-gray-500">No pages yet.</div>}
+                            )) : <div className="p-2 text-xs text-gray-400 italic">No pages</div>}
                             {provided.placeholder}
                           </div>
                         )}
@@ -1882,31 +1950,40 @@ const BookDetail = () => {
             </div>
           </div>
 
-          <div className="lg:col-span-2">
-            {selectedPageId && pages.find(p => p.id === selectedPageId) ? (
-              <PageEditor
-                bookId={bookId}
-                chapterId={selectedChapterId}
-                page={pages.find(p => p.id === selectedPageId)}
-                onPageUpdate={handlePageUpdate}
-                onAddPage={handleAddPage}
-                onNavigate={(dir) => {
-                  const currentIndex = pages.findIndex(p => p.id === selectedPageId);
-                  if (dir === 'next' && currentIndex < pages.length - 1) setSelectedPageId(pages[currentIndex + 1].id);
-                  else if (dir === 'prev' && currentIndex > 0) setSelectedPageId(pages[currentIndex - 1].id);
-                }}
-                pageIndex={pages.findIndex(p => p.id === selectedPageId)}
-                totalPages={pages.length}
-                clearEditor={clearEditor}
-              />
-            ) : (
-              <div className="flex flex-col justify-center items-center text-center h-full p-6 bg-white/80 rounded-2xl shadow-lg">
-                <h2 className="text-xl font-semibold text-gray-700">{selectedChapterId ? 'Select a page or create one' : 'Select a chapter'}</h2>
-                <p className="mt-2 text-gray-500 max-w-xs">{selectedChapterId ? 'Click "Add New Page" to get started.' : 'Select a chapter from the list to view its pages.'}</p>
-                {selectedChapterId && canEdit && <Button onClick={handleAddPage} className="mt-4"><PlusCircle className="h-4 w-4 mr-2" />Add Page</Button>}
-              </div>
-            )}
+          {/* Center: Editor */}
+          <div className="flex-1 overflow-y-auto bg-white relative">
+            <div className="max-w-4xl mx-auto min-h-full p-8">
+              {selectedPageId && pages.find(p => p.id === selectedPageId) ? (
+                <PageEditor
+                  bookId={bookId}
+                  chapterId={selectedChapterId}
+                  page={pages.find(p => p.id === selectedPageId)}
+                  onPageUpdate={handlePageUpdate}
+                  onAddPage={handleAddPage}
+                  onNavigate={(dir) => {
+                    const currentIndex = pages.findIndex(p => p.id === selectedPageId);
+                    if (dir === 'next' && currentIndex < pages.length - 1) setSelectedPageId(pages[currentIndex + 1].id);
+                    else if (dir === 'prev' && currentIndex > 0) setSelectedPageId(pages[currentIndex - 1].id);
+                  }}
+                  pageIndex={pages.findIndex(p => p.id === selectedPageId)}
+                  totalPages={pages.length}
+                  clearEditor={clearEditor}
+                />
+              ) : (
+                <div className="flex flex-col justify-center items-center text-center h-full p-6">
+                  <div className="bg-gray-50 rounded-full p-6 mb-4">
+                    <Sparkles className="h-8 w-8 text-violet-400" />
+                  </div>
+                  <h2 className="text-xl font-semibold text-gray-800">{selectedChapterId ? 'Ready to write?' : 'Select a chapter'}</h2>
+                  <p className="mt-2 text-gray-500 max-w-xs">{selectedChapterId ? 'Select a page or create a new one to start writing.' : 'Choose a chapter from the sidebar to view its pages.'}</p>
+                  {selectedChapterId && canEdit && <Button onClick={handleAddPage} className="mt-6"><PlusCircle className="h-4 w-4 mr-2" />Add Page</Button>}
+                </div>
+              )}
+            </div>
           </div>
+
+          {/* Right Sidebar: Chat */}
+          <ChatPanel />
         </div>
       </div>
     </DragDropContext>

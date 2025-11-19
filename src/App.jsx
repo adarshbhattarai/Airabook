@@ -9,6 +9,7 @@ import Login from '@/pages/Login';
 import Signup from '@/pages/Signup';
 import ForgotPassword from '@/pages/ForgotPassword';
 import Dashboard from '@/pages/Dashboard';
+import Books from '@/pages/Books';
 import Media from '@/pages/Media';
 import Notes from '@/pages/Notes';
 import CreateBook from '@/pages/CreateBook';
@@ -21,7 +22,7 @@ import AlbumDetail from '@/pages/AlbumDetail';
 // A wrapper to protect routes that require authentication
 const PrivateRoute = ({ children }) => {
   const { user, loading } = useAuth();
-  
+
   if (loading) {
     return <div>Loading...</div>; // Or a spinner
   }
@@ -42,7 +43,7 @@ function App() {
             <Route path="/forgot-password" element={<MarketingLayout><ForgotPassword /></MarketingLayout>} />
 
             {/* Authenticated app routes */}
-            <Route 
+            <Route
               path="/dashboard"
               element={
                 <PrivateRoute>
@@ -52,8 +53,18 @@ function App() {
                 </PrivateRoute>
               }
             />
-            <Route 
-              path="/media" 
+            <Route
+              path="/books"
+              element={
+                <PrivateRoute>
+                  <AppShell>
+                    <Books />
+                  </AppShell>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/media"
               element={
                 <PrivateRoute>
                   <AppShell>
@@ -62,8 +73,8 @@ function App() {
                 </PrivateRoute>
               }
             />
-            <Route 
-              path="/media/album/:bookId" 
+            <Route
+              path="/media/album/:bookId"
               element={
                 <PrivateRoute>
                   <AppShell>
@@ -72,8 +83,8 @@ function App() {
                 </PrivateRoute>
               }
             />
-            <Route 
-              path="/notes" 
+            <Route
+              path="/notes"
               element={
                 <PrivateRoute>
                   <AppShell>
@@ -82,8 +93,8 @@ function App() {
                 </PrivateRoute>
               }
             />
-            <Route 
-              path="/create-book" 
+            <Route
+              path="/create-book"
               element={
                 <PrivateRoute>
                   <AppShell>
@@ -92,8 +103,8 @@ function App() {
                 </PrivateRoute>
               }
             />
-            <Route 
-              path="/book/:bookId" 
+            <Route
+              path="/book/:bookId"
               element={
                 <PrivateRoute>
                   <AppShell>
@@ -102,8 +113,8 @@ function App() {
                 </PrivateRoute>
               }
             />
-            <Route 
-              path="/book/:bookId/view" 
+            <Route
+              path="/book/:bookId/view"
               element={
                 <PrivateRoute>
                   <AppShell>
@@ -112,8 +123,8 @@ function App() {
                 </PrivateRoute>
               }
             />
-            <Route 
-              path="/donate" 
+            <Route
+              path="/donate"
               element={
                 <PrivateRoute>
                   <AppShell>
@@ -122,8 +133,8 @@ function App() {
                 </PrivateRoute>
               }
             />
-            <Route 
-              path="/donate/success" 
+            <Route
+              path="/donate/success"
               element={
                 <PrivateRoute>
                   <AppShell>

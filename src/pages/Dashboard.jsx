@@ -1,131 +1,128 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/context/AuthContext';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Sparkles, BookOpen, PenSquare } from 'lucide-react';
-import { useToast } from '@/components/ui/use-toast';
-import BookItem from '@/components/BookItem';
-import StatCard from '@/components/app/StatCard';
+import { Send, Sparkles } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
+import { functions } from '@/lib/firebase';
+import { httpsCallable } from 'firebase/functions';
 
 const Dashboard = () => {
-  const { appUser, appLoading } = useAuth();
-  const navigate = useNavigate();
-  const { toast } = useToast();
-  const [deletedBooks, setDeletedBooks] = useState(new Set());
+  const { appUser } = useAuth();
+  const [prompt, setPrompt] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    // Check if user has any books (handle both old and new structure)
-    const hasBooks = appUser?.accessibleBookIds && appUser.accessibleBookIds.length > 0;
-    if (!appLoading && appUser && !hasBooks) {
-      toast({
-        title: "Welcome!",
-        description: "Let's create your first baby book to get started.",
-      });
-      navigate('/create-book');
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!prompt.trim()) return;
+
+    setIsSubmitting(true);
+    try {
+      console.log('Submitting prompt:', prompt);
+
+      const searchAgent = httpsCallable(functions, 'searchAgent');
+      const result = await searchAgent({ prompt });
+
+      console.log('Agent response:', result.data);
+
+      // TODO: Handle the response (e.g., navigate to a new page, show a message, etc.)
+
+      setPrompt('');
+    } catch (error) {
+      console.error('Error submitting prompt:', error);
+    } finally {
+      setIsSubmitting(false);
     }
-  }, [appUser, appLoading, navigate, toast]);
-
-  const handleBookDeleted = (bookId) => {
-    setDeletedBooks(prev => new Set([...prev, bookId]));
   };
 
-  if (appLoading || !appUser) {
-    return (
-      <div className="flex justify-center items-center min-h-[60vh]">
-        <p className="text-sm text-app-gray-600">Loading your dashboard...</p>
-      </div>
-    );
-  }
-
-  // Extract bookIds from accessibleBookIds (handle both old string array and new object array)
-  const books = (appUser.accessibleBookIds || []).map(item => {
-    if (typeof item === 'string') {
-      // Old format - return minimal object
-      return { bookId: item, title: 'Untitled Book', coverImage: null };
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e);
     }
-    // New format - return full object
-    return item;
-  }).filter(book => !deletedBooks.has(book.bookId));
-
-  const totalBooks = books.length;
+  };
 
   return (
-    <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-      <div className="max-w-5xl mx-auto space-y-8">
-        <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-[28px] font-semibold text-app-gray-900 leading-tight">
-              Your books
-            </h1>
-            <p className="mt-1 text-sm text-app-gray-600 leading-relaxed">
-              Manage your stories, track your plan, and jump back into writing.
-            </p>
-          </div>
-          <div className="flex justify-start sm:justify-end">
-            <Button
-              onClick={() => navigate('/create-book')}
-              variant="appPrimary"
-              className="inline-flex items-center gap-2 text-sm"
-            >
-              <PlusCircle className="h-4 w-4" />
-              Create new book
-            </Button>
-          </div>
-        </header>
+    <div className="flex flex-col h-full bg-white">
+      <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8 max-w-4xl mx-auto w-full">
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <StatCard
-            label="Books"
-            value={totalBooks}
-            helper={totalBooks === 0 ? "Let's create your first story" : 'Books in your library'}
-            icon={BookOpen}
-          />
-          <StatCard
-            label="Stories created"
-            value={totalBooks}
-            helper="Free for everyone, forever"
-            icon={Sparkles}
-          />
+        <div className="mb-8 text-center space-y-2">
+          <h1 className="text-3xl sm:text-4xl font-semibold text-app-gray-900 tracking-tight">
+            What do you want to create?
+          </h1>
+          <p className="text-app-gray-500 text-lg">
+            Describe your book idea, and I'll help you bring it to life.
+          </p>
         </div>
 
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-app-gray-900">
-              Library
-            </h2>
-            {books.length > 0 && (
-              <p className="text-xs text-app-gray-600">
-                Showing {books.length} {books.length === 1 ? 'book' : 'books'}
-              </p>
-            )}
-          </div>
+        <div className="w-full relative group">
+          <div className="absolute -inset-1 bg-gradient-to-r from-app-iris via-purple-500 to-pink-500 rounded-2xl opacity-20 group-hover:opacity-30 transition duration-500 blur-lg"></div>
+          <div className="relative bg-white rounded-2xl shadow-2xl border border-app-gray-100 overflow-hidden">
+            <form onSubmit={handleSubmit} className="flex flex-col min-h-[160px]">
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="e.g. A children's book about a brave little toaster who travels to Mars..."
+                className="flex-1 w-full p-6 text-lg text-app-gray-900 placeholder:text-app-gray-400 resize-none focus:outline-none bg-transparent"
+                disabled={isSubmitting}
+                autoFocus
+              />
 
-          {books.length === 0 ? (
-            <div className="rounded-2xl border border-app-gray-100 bg-white shadow-appSoft px-6 py-8 text-center">
-              <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-app-iris/10 text-app-iris mb-3">
-                <BookOpen className="h-5 w-5" />
+              <div className="flex items-center justify-between px-4 py-3 bg-app-gray-50/50 border-t border-app-gray-100">
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-app-gray-500 hover:text-app-iris hover:bg-app-iris/10 rounded-full px-3"
+                  >
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Surprise me
+                  </Button>
+                </div>
+
+                <Button
+                  type="submit"
+                  disabled={!prompt.trim() || isSubmitting}
+                  className={`
+                    rounded-xl px-4 py-2 transition-all duration-200
+                    ${prompt.trim()
+                      ? 'bg-app-iris hover:bg-app-iris/90 text-white shadow-lg shadow-app-iris/25'
+                      : 'bg-app-gray-200 text-app-gray-400 cursor-not-allowed'}
+                  `}
+                >
+                  {isSubmitting ? (
+                    <span className="flex items-center gap-2">
+                      <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Thinking...
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      Create
+                      <Send className="h-4 w-4" />
+                    </span>
+                  )}
+                </Button>
               </div>
-              <p className="text-sm font-medium text-app-gray-900">
-                No books yet
-              </p>
-              <p className="mt-1 text-xs text-app-gray-600 max-w-sm mx-auto">
-                Create your first book to start capturing journeys, then come back here to manage them.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {books.map(book => (
-                <BookItem 
-                  key={book.bookId} 
-                  bookId={book.bookId}
-                  bookTitle={book.title}
-                  coverImage={book.coverImage}
-                  onBookDeleted={handleBookDeleted}
-                />
-              ))}
-            </div>
-          )}
-        </section>
+            </form>
+          </div>
+        </div>
+
+        <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-3 w-full text-sm">
+          {[
+            "A mystery novel set in 1920s Paris",
+            "A sci-fi guide to galaxy hitchhiking",
+            "A cookbook for college students"
+          ].map((suggestion, i) => (
+            <button
+              key={i}
+              onClick={() => setPrompt(suggestion)}
+              className="px-4 py-3 rounded-xl bg-app-gray-50 hover:bg-app-gray-100 text-app-gray-600 hover:text-app-gray-900 text-left transition-colors border border-transparent hover:border-app-gray-200 truncate"
+            >
+              {suggestion}
+            </button>
+          ))}
+        </div>
+
       </div>
     </div>
   );

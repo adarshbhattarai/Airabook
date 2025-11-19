@@ -37,7 +37,7 @@ console.log(`📦 Storage bucket: ${STORAGE_BUCKET}`);
 if (!admin.apps.length) {
   const runningInEmulator = process.env.FUNCTIONS_EMULATOR === 'true' || process.env.FIREBASE_AUTH_EMULATOR_HOST;
   const isDeployed = !!process.env.GCLOUD_PROJECT; // Cloud Functions set this automatically
-  
+
   if (runningInEmulator) {
     // Emulator mode - use default initialization
     admin.initializeApp({
@@ -56,7 +56,7 @@ if (!admin.apps.length) {
     // Local development - try to use service account key
     // Check for key in custom location via environment variable, or in default location
     const keyPath = process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.SERVICE_ACCOUNT_KEY_PATH || "./serviceAccountKey.json";
-    
+
     try {
       const serviceAccount = require(keyPath);
       admin.initializeApp({
@@ -84,16 +84,17 @@ if (!admin.apps.length) {
 // Get default Firestore instance
 const db = admin.firestore();
 
-const {uploadMedia} = require("./imageProcessor");
-const {rewriteNote} = require("./textGenerator");
-const {createBook} = require("./createBook");
-const {onMediaUpload, onMediaDelete} = require("./mediaProcessor");
-const {inviteCoAuthor} = require("./inviteCoAuthor");
-const {createCheckoutSession} = require("./payments/createCheckoutSession");
-const {stripeWebhook} = require("./payments/stripeWebhook");
+const { uploadMedia } = require("./imageProcessor");
+const { rewriteNote } = require("./textGenerator");
+const { createBook } = require("./createBook");
+const { onMediaUpload, onMediaDelete } = require("./mediaProcessor");
+const { inviteCoAuthor } = require("./inviteCoAuthor");
+const { createCheckoutSession } = require("./payments/createCheckoutSession");
+const { stripeWebhook } = require("./payments/stripeWebhook");
+const { searchAgent } = require("./agent");
 
 exports.helloWorld = onRequest({ region: "us-central1" }, (request, response) => {
-  logger.info("Hello logs!", {structuredData: true});
+  logger.info("Hello logs!", { structuredData: true });
   response.send("Hello from Firebase!");
 });
 
@@ -105,14 +106,15 @@ exports.onMediaDelete = onMediaDelete;
 exports.inviteCoAuthor = inviteCoAuthor;
 exports.createCheckoutSession = createCheckoutSession;
 exports.stripeWebhook = stripeWebhook;
+exports.searchAgent = searchAgent;
 
 // Function to get chapters for a book (hot reload test)
 exports.getBookChapters = onCall({ region: "us-central1" }, async (request) => {
   const { data, auth } = request;
-  
+
   logger.log("getBookChapters called at:", new Date().toISOString());
   logger.log("Received data:", JSON.stringify(data, null, 2));
-  
+
   // Check authentication
   if (!auth) {
     throw new HttpsError('unauthenticated', 'User must be authenticated to view chapters.');
@@ -130,7 +132,7 @@ exports.getBookChapters = onCall({ region: "us-central1" }, async (request) => {
     // Verify user has access to this book
     const bookRef = db.collection('books').doc(bookId);
     const bookDoc = await bookRef.get();
-    
+
     if (!bookDoc.exists) {
       throw new HttpsError('not-found', 'Book not found.');
     }
@@ -139,7 +141,7 @@ exports.getBookChapters = onCall({ region: "us-central1" }, async (request) => {
     // Check if user is owner or member
     const isOwner = bookData.ownerId === userId;
     const isMember = bookData.members && bookData.members[userId];
-    
+
     if (!isOwner && !isMember) {
       throw new HttpsError('permission-denied', 'You do not have access to this book.');
     }
@@ -181,10 +183,10 @@ exports.getBookChapters = onCall({ region: "us-central1" }, async (request) => {
 // Function to add a new chapter to a book
 exports.addChapter = onCall({ region: "us-central1" }, async (request) => {
   const { data, auth } = request;
-  
+
   logger.log("addChapter called at:", new Date().toISOString());
   logger.log("Received data:", JSON.stringify(data, null, 2));
-  
+
   // Check authentication
   if (!auth) {
     throw new HttpsError('unauthenticated', 'User must be authenticated to add chapters.');
@@ -202,7 +204,7 @@ exports.addChapter = onCall({ region: "us-central1" }, async (request) => {
     // Verify user has access to this book
     const bookRef = db.collection('books').doc(bookId);
     const bookDoc = await bookRef.get();
-    
+
     if (!bookDoc.exists) {
       throw new HttpsError('not-found', 'Book not found.');
     }
@@ -211,7 +213,7 @@ exports.addChapter = onCall({ region: "us-central1" }, async (request) => {
     // Check if user is owner or member
     const isOwner = bookData.ownerId === userId;
     const isMember = bookData.members && bookData.members[userId];
-    
+
     if (!isOwner && !isMember) {
       throw new HttpsError('permission-denied', 'You do not have access to this book.');
     }
@@ -274,10 +276,10 @@ exports.addChapter = onCall({ region: "us-central1" }, async (request) => {
 // Function to add a page summary to a chapter
 exports.addPageSummary = onCall({ region: "us-central1" }, async (request) => {
   const { data, auth } = request;
-  
+
   logger.log("addPageSummary called at:", new Date().toISOString());
   logger.log("Received data:", JSON.stringify(data, null, 2));
-  
+
   // Check authentication
   if (!auth) {
     throw new HttpsError('unauthenticated', 'User must be authenticated to add page summaries.');
@@ -295,7 +297,7 @@ exports.addPageSummary = onCall({ region: "us-central1" }, async (request) => {
     // Verify user has access to this book
     const bookRef = db.collection('books').doc(bookId);
     const bookDoc = await bookRef.get();
-    
+
     if (!bookDoc.exists) {
       throw new HttpsError('not-found', 'Book not found.');
     }
@@ -303,7 +305,7 @@ exports.addPageSummary = onCall({ region: "us-central1" }, async (request) => {
     const bookData = bookDoc.data();
     const isOwner = bookData.ownerId === userId;
     const isMember = bookData.members && bookData.members[userId];
-    
+
     if (!isOwner && !isMember) {
       throw new HttpsError('permission-denied', 'You do not have access to this book.');
     }
@@ -314,7 +316,7 @@ exports.addPageSummary = onCall({ region: "us-central1" }, async (request) => {
       .doc(bookId)
       .collection('chapters')
       .doc(chapterId);
-    
+
     const chapterDoc = await chapterRef.get();
     if (!chapterDoc.exists) {
       throw new HttpsError('not-found', 'Chapter not found.');
