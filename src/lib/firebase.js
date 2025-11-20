@@ -65,16 +65,16 @@ if (useEmulator) {
     const host = '127.0.0.1';
     // Connect Auth emulator
     connectAuthEmulator(auth, `http://${host}:9099`);
-    
+
     // Connect Firestore emulator
     connectFirestoreEmulator(firestore, host, 8080);
-    
+
     // Connect Storage emulator
     connectStorageEmulator(storage, host, 9199);
-    
+
     // Connect Functions emulator
     connectFunctionsEmulator(functions, host, 5001);
-    
+
     console.log("🔥 Connected to Firebase emulators");
     console.log(`📍 Environment: ${currentMode}`);
   } catch (error) {

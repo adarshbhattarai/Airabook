@@ -15,21 +15,23 @@ const Books = () => {
 
   useEffect(() => {
     // Check if user has any books (handle both old and new structure)
-    const hasBooks = appUser?.accessibleBookIds && appUser.accessibleBookIds.length > 0;
-    if (!appLoading && appUser && !hasBooks) {
-      toast({
-        title: "Welcome!",
-        description: "Let's create your first baby book to get started.",
-      });
-      navigate('/create-book');
+    // We check this only when appLoading is false and we have an appUser
+    if (!appLoading && appUser) {
+      const hasBooks = appUser.accessibleBookIds && appUser.accessibleBookIds.length > 0;
+      if (!hasBooks) {
+        console.log("User has no books, redirecting to create-book");
+        navigate('/create-book');
+      }
     }
-  }, [appUser, appLoading, navigate, toast]);
+  }, [appUser, appLoading, navigate]);
 
   const handleBookDeleted = (bookId) => {
     setDeletedBooks(prev => new Set([...prev, bookId]));
   };
 
   if (appLoading || !appUser) {
+    // If we have a user but no books, and we've been loading for a while, maybe just redirect?
+    // Or rely on the useEffect.
     return (
       <div className="flex justify-center items-center min-h-[60vh]">
         <p className="text-sm text-app-gray-600">Loading your books...</p>

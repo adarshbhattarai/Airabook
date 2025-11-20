@@ -94,6 +94,7 @@ const { stripeWebhook } = require("./payments/stripeWebhook");
 const { searchAgent } = require("./agent");
 const { createPage } = require("./createPage");
 const { updatePage } = require("./updatePage");
+const { onUserCreate } = require("./onUserCreate");
 
 exports.helloWorld = onRequest({ region: "us-central1" }, (request, response) => {
   logger.info("Hello logs!", { structuredData: true });
@@ -111,6 +112,7 @@ exports.stripeWebhook = stripeWebhook;
 exports.searchAgent = searchAgent;
 exports.createPage = createPage;
 exports.updatePage = updatePage;
+exports.onUserCreate = onUserCreate;
 
 // Function to get chapters for a book (hot reload test)
 exports.getBookChapters = onCall({ region: "us-central1" }, async (request) => {
