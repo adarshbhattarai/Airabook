@@ -1466,27 +1466,50 @@ const BookDetail = () => {
     // Clear the editor form content first
     setClearEditor(true);
 
-    const newOrder = getMidpointString(pages[pages.length - 1]?.order);
-    const newPageData = { note: '', media: [], createdAt: new Date(), order: newOrder };
+    try {
+      const newOrder = getMidpointString(pages[pages.length - 1]?.order);
 
-    const pageRef = await addDoc(collection(firestore, 'books', bookId, 'chapters', selectedChapterId, 'pages'), newPageData);
+      // Call Cloud Function to create NEW page with embeddings
+      const createPageFn = httpsCallable(functions, 'createPage');
+      const result = await createPageFn({
+        bookId,
+        chapterId: selectedChapterId,
+        note: '',
+        media: [],
+        order: newOrder,
+      });
 
-    const plain = stripHtml(newPageData.note || '');
-    const newPageSummary = { pageId: pageRef.id, shortNote: plain ? plain.substring(0, 40) + (plain.length > 40 ? '...' : '') : 'New Page', order: newOrder };
-    const chapterRef = doc(firestore, 'books', bookId, 'chapters', selectedChapterId);
-    await updateDoc(chapterRef, { pagesSummary: arrayUnion(newPageSummary) });
+      const newPage = result.data.page;
 
-    const newPage = { id: pageRef.id, ...newPageData };
-    setPages([...pages, newPage].sort((a, b) => a.order.localeCompare(b.order)));
-    setSelectedPageId(newPage.id);
-    setChapters(chapters.map(c => c.id === selectedChapterId ? {
-      ...c,
-      pagesSummary: [...(c.pagesSummary || []), newPageSummary].sort((a, b) => a.order.localeCompare(b.order))
-    } : c));
+      // Update local state
+      setPages([...pages, newPage].sort((a, b) => a.order.localeCompare(b.order)));
+      setSelectedPageId(newPage.id);
 
-    // Reset the clear editor flag
-    setClearEditor(false);
-    toast({ title: 'New Page Added' });
+      // Update chapters with new page summary
+      const plain = stripHtml(newPage.note || '');
+      const newPageSummary = {
+        pageId: newPage.id,
+        shortNote: plain ? plain.substring(0, 40) + (plain.length > 40 ? '...' : '') : 'New Page',
+        order: newOrder
+      };
+
+      setChapters(chapters.map(c => c.id === selectedChapterId ? {
+        ...c,
+        pagesSummary: [...(c.pagesSummary || []), newPageSummary].sort((a, b) => a.order.localeCompare(b.order))
+      } : c));
+
+      setClearEditor(false);
+      toast({ title: 'New Page Added' });
+
+    } catch (error) {
+      console.error('Error creating page:', error);
+      setClearEditor(false);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to create page. Please try again.',
+        variant: 'destructive'
+      });
+    }
   };
 
   const handlePageUpdate = async (update) => {

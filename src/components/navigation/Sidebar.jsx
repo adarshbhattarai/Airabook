@@ -46,7 +46,10 @@ const SidebarContent = ({ onNavigate }) => {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-2 px-4 pt-4 pb-6">
+      <div
+        className="flex items-center gap-2 px-4 pt-4 pb-6 cursor-pointer"
+        onClick={() => window.location.href = '/dashboard'}
+      >
         <div className="h-9 w-9 rounded-2xl bg-app-iris text-white flex items-center justify-center text-lg font-semibold shadow-appCard">
           A
         </div>
