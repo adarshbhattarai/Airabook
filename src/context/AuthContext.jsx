@@ -51,10 +51,11 @@ export const AuthProvider = ({ children }) => {
       if (user) {
         setAppLoading(true);
 
-        // Subscribe to the user document
-        // This handles the race condition: if the doc doesn't exist yet (backend is creating it),
-        // we wait. When it's created, this listener will fire with the data.
         const userRef = doc(firestore, 'users', user.uid);
+        let retryCount = 0;
+        const maxRetries = 3; // ~5 seconds total
+        let retryTimeout;
+
         const unsubscribeSnapshot = onSnapshot(userRef, (docSnap) => {
           if (docSnap.exists()) {
             const userData = docSnap.data();
@@ -64,11 +65,65 @@ export const AuthProvider = ({ children }) => {
               billing: userData.billing || createDefaultBilling(),
             });
             setAppLoading(false);
+            
+            // Clear any pending retry timeout
+            if (retryTimeout) {
+              clearTimeout(retryTimeout);
+            }
           } else {
-            // Document doesn't exist yet.
-            // If it's a new signup, the backend function is likely still running.
-            // We keep appLoading = true so the UI waits.
+            // Document doesn't exist yet - new user
             console.log("Waiting for user document to be created by backend...");
+            
+            // Implement retry mechanism for new users
+            if (retryCount < maxRetries) {
+              retryCount++;
+              const delay = Math.min(retryCount * 200, 1000); // Exponential backoff
+              retryTimeout = setTimeout(() => {
+                // Force a re-check by unsubscribing and resubscribing
+                unsubscribeSnapshot();
+                const newUnsubscribe = onSnapshot(userRef, (docSnap) => {
+                  if (docSnap.exists()) {
+                    const userData = docSnap.data();
+                    setAppUser({
+                      uid: user.uid,
+                      ...userData,
+                      billing: userData.billing || createDefaultBilling(),
+                    });
+                    setAppLoading(false);
+                  } else if (retryCount >= maxRetries) {
+                    // After max retries, give up and let user proceed
+                    console.warn("User document not found after retries, proceeding with empty state");
+                    setAppUser({
+                      uid: user.uid,
+                      accessibleBookIds: [],
+                      accessibleAlbums: [],
+                      billing: createDefaultBilling(),
+                      displayName: user.displayName || '',
+                      email: user.email || '',
+                      createdAt: new Date(),
+                      updatedAt: new Date(),
+                    });
+                    setAppLoading(false);
+                  }
+                });
+                // Store the new unsubscribe function
+                retryTimeout = newUnsubscribe;
+              }, delay);
+            } else {
+              // Max retries reached, create minimal user state
+              console.warn("Max retries reached for user document, creating minimal state");
+              setAppUser({
+                uid: user.uid,
+                accessibleBookIds: [],
+                accessibleAlbums: [],
+                billing: createDefaultBilling(),
+                displayName: user.displayName || '',
+                email: user.email || '',
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              });
+              setAppLoading(false);
+            }
           }
         }, (error) => {
           console.error("Error fetching user data:", error);
@@ -76,7 +131,14 @@ export const AuthProvider = ({ children }) => {
           setAppLoading(false);
         });
 
-        return () => unsubscribeSnapshot();
+        return () => {
+          unsubscribeSnapshot();
+          if (retryTimeout && typeof retryTimeout === 'function') {
+            retryTimeout();
+          } else if (retryTimeout) {
+            clearTimeout(retryTimeout);
+          }
+        };
       } else {
         setAppUser(null);
         setAppLoading(false);

@@ -13,17 +13,6 @@ const Books = () => {
   const { toast } = useToast();
   const [deletedBooks, setDeletedBooks] = useState(new Set());
 
-  useEffect(() => {
-    // Check if user has any books (handle both old and new structure)
-    // We check this only when appLoading is false and we have an appUser
-    if (!appLoading && appUser) {
-      const hasBooks = appUser.accessibleBookIds && appUser.accessibleBookIds.length > 0;
-      if (!hasBooks) {
-        console.log("User has no books, redirecting to create-book");
-        navigate('/create-book');
-      }
-    }
-  }, [appUser, appLoading, navigate]);
 
   const handleBookDeleted = (bookId) => {
     setDeletedBooks(prev => new Set([...prev, bookId]));
