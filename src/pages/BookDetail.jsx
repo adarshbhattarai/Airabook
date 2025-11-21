@@ -232,14 +232,23 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
 
   const handleSave = async () => {
     setIsSaving(true);
-    const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', page.id);
     const plain = stripHtml(note);
     const shortNote = plain.substring(0, 40) + (plain.length > 40 ? '...' : '');
+
     try {
-      await updateDoc(pageRef, { note });
+      const updatePageFn = httpsCallable(functions, 'updatePage');
+      await updatePageFn({
+        bookId,
+        chapterId,
+        pageId: page.id,
+        note,
+        media: page.media || []
+      });
+
       onPageUpdate({ ...page, note, shortNote });
       toast({ title: 'Success', description: 'Page saved.' });
-    } catch {
+    } catch (error) {
+      console.error('Save error:', error);
       toast({ title: 'Error', description: 'Failed to save page.', variant: 'destructive' });
     }
     setIsSaving(false);
@@ -249,12 +258,19 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
     if (!note || note === page.note) return; // Don't save if no changes
 
     setIsAutoSaving(true);
-    const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', page.id);
     const plain = stripHtml(note);
     const shortNote = plain.substring(0, 40) + (plain.length > 40 ? '...' : '');
 
     try {
-      await updateDoc(pageRef, { note });
+      const updatePageFn = httpsCallable(functions, 'updatePage');
+      await updatePageFn({
+        bookId,
+        chapterId,
+        pageId: page.id,
+        note,
+        media: page.media || []
+      });
+
       onPageUpdate({ ...page, note, shortNote });
       console.log('Auto-saved page content');
     } catch (error) {
@@ -475,12 +491,18 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
     if (!pendingNote) return;
 
     setIsSaving(true);
-    const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', page.id);
     const plain = stripHtml(pendingNote);
     const shortNote = plain.substring(0, 40) + (plain.length > 40 ? '...' : '');
 
     try {
-      await updateDoc(pageRef, { note: pendingNote });
+      const updatePageFn = httpsCallable(functions, 'updatePage');
+      await updatePageFn({
+        bookId,
+        chapterId,
+        pageId: page.id,
+        note: pendingNote,
+        media: page.media || []
+      });
 
       // Update editor content
       const editor = quillRef.current?.getEditor?.();
