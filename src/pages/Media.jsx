@@ -6,37 +6,38 @@ import { Helmet } from 'react-helmet';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/context/AuthContext';
+import AppLoader from '@/components/app/AppLoader';
 
 /**
  * Convert storage URL to emulator format if running in emulator mode
  */
 const convertToEmulatorURL = (url) => {
   if (!url) return url;
-  
+
   const useEmulator = import.meta.env.VITE_USE_EMULATOR === 'true';
-  
+
   if (!useEmulator) {
     return url;
   }
-  
+
   if (url.includes('127.0.0.1:9199') || url.includes('localhost:9199')) {
     return url;
   }
-  
+
   if (url.includes('storage.googleapis.com')) {
     try {
       const urlObj = new URL(url);
       const pathParts = urlObj.pathname.split('/').filter(p => p);
-      
+
       if (pathParts.length >= 1) {
         const bucket = pathParts[0];
         const storagePath = pathParts.slice(1).join('/');
-        
+
         let emulatorBucket = bucket;
         if (bucket.endsWith('.appspot.com')) {
           emulatorBucket = bucket.replace('.appspot.com', '.firebasestorage.app');
         }
-        
+
         const encodedPath = encodeURIComponent(storagePath);
         const token = urlObj.searchParams.get('token') || 'emulator-token';
         return `http://127.0.0.1:9199/v0/b/${emulatorBucket}/o/${encodedPath}?alt=media&token=${token}`;
@@ -46,7 +47,7 @@ const convertToEmulatorURL = (url) => {
       return url;
     }
   }
-  
+
   return url;
 };
 
@@ -93,11 +94,7 @@ const Media = () => {
   };
 
   if (loading || !appUser) {
-    return (
-      <div className="flex justify-center items-center min-h-[60vh]">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-app-iris"></div>
-      </div>
-    );
+    return <AppLoader message="Loading your albums..." />;
   }
 
   return (

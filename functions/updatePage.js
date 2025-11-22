@@ -7,6 +7,7 @@ const admin = require('firebase-admin');
 const FieldValue = require('firebase-admin/firestore').FieldValue;
 
 const { extractTextFromHtml, generateGeminiEmbeddings } = require('./utils/embeddingsClient');
+const { updateChapterPageSummary } = require('./utils/chapterUtils');
 
 const db = admin.firestore();
 
@@ -100,25 +101,12 @@ exports.updatePage = onCall(
             await pageRef.update(updateData);
             logger.log(`✅ Page ${pageId} updated`);
 
-            // Update chapter's pagesSummary
-            const chapterRef = db.collection('books').doc(bookId).collection('chapters').doc(chapterId);
-            const chapterDoc = await chapterRef.get();
+            logger.log(`📝 About to update chapter summary. plainText: "${plainText}"`);
 
-            if (chapterDoc.exists) {
-                const shortNote = plainText
-                    ? plainText.substring(0, 40) + (plainText.length > 40 ? '...' : '')
-                    : 'New Page';
+            // Update chapter's pagesSummary using helper
+            await updateChapterPageSummary(db, bookId, chapterId, pageId, plainText, null, false);
 
-                const pagesSummary = chapterDoc.data().pagesSummary || [];
-                const updatedPagesSummary = pagesSummary.map(ps =>
-                    ps.pageId === pageId ? { ...ps, shortNote } : ps
-                );
-
-                await chapterRef.update({
-                    pagesSummary: updatedPagesSummary,
-                    updatedAt: FieldValue.serverTimestamp(),
-                });
-            }
+            logger.log(`✅ Chapter summary update completed`);
 
             return {
                 success: true,

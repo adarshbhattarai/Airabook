@@ -1,4 +1,13 @@
 {
-  "indexes": [],
+  "indexes": [
+    {
+      "collectionGroup": "pages",
+      "fieldPath": "embeddings",
+      "vectorConfig": {
+        "dimension": 768,
+        "flat": {}
+      }
+    }
+  ],
   "fieldOverrides": []
 }

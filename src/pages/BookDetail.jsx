@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   doc, getDoc, collection, getDocs, addDoc, deleteDoc, updateDoc, writeBatch, query, orderBy, arrayUnion, arrayRemove, where, limit
 } from 'firebase/firestore';
@@ -936,15 +936,36 @@ const ChatPanel = () => {
     { role: 'assistant', content: 'Hello! I can help you plan your book, brainstorm ideas, or review your writing. What are you working on today?' }
   ]);
   const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSend = () => {
-    if (!input.trim()) return;
-    setMessages([...messages, { role: 'user', content: input }]);
+  const handleSend = async () => {
+    if (!input.trim() || isLoading) return;
+
+    const userQuery = input.trim();
+    setMessages(prev => [...prev, { role: 'user', content: userQuery }]);
     setInput('');
-    // Mock response
-    setTimeout(() => {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'This is a placeholder response. The AI chat engine is coming soon!' }]);
-    }, 1000);
+    setIsLoading(true);
+
+    try {
+      const queryBookFlowFn = httpsCallable(functions, 'queryBookFlow');
+      const result = await queryBookFlowFn({ query: userQuery });
+
+      const { answer, sources } = result.data;
+
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: answer,
+        sources: sources
+      }]);
+    } catch (error) {
+      console.error('RAG Query Error:', error);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: 'Sorry, I encountered an error while searching your book. Please try again.'
+      }]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -961,10 +982,29 @@ const ChatPanel = () => {
               ? 'bg-violet-600 text-white rounded-br-none'
               : 'bg-gray-100 text-gray-800 rounded-bl-none'
               }`}>
-              {msg.content}
+              <p>{msg.content}</p>
+              {msg.sources && msg.sources.length > 0 && (
+                <div className="mt-2 pt-2 border-t border-gray-200/20 text-xs opacity-80">
+                  <p className="font-semibold mb-1">Sources:</p>
+                  <ul className="list-disc pl-4 space-y-0.5">
+                    {msg.sources.map((source, idx) => (
+                      <li key={idx}>{source.shortNote}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
         ))}
+        {isLoading && (
+          <div className="flex justify-start">
+            <div className="bg-gray-100 text-gray-800 rounded-2xl rounded-bl-none px-3 py-2 text-sm flex items-center gap-1">
+              <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="p-3 border-t border-gray-200 bg-white">
@@ -974,13 +1014,15 @@ const ChatPanel = () => {
             onChange={e => setInput(e.target.value)}
             placeholder="Ask anything..."
             className="pr-10 text-sm"
-            onKeyDown={e => e.key === 'Enter' && handleSend()}
+            onKeyDown={e => e.key === 'Enter' && !isLoading && handleSend()}
+            disabled={isLoading}
           />
           <Button
             size="icon"
             variant="ghost"
             className="absolute right-1 top-1 h-7 w-7 text-violet-600 hover:bg-violet-50"
             onClick={handleSend}
+            disabled={isLoading || !input.trim()}
           >
             <Send className="h-4 w-4" />
           </Button>
@@ -994,15 +1036,39 @@ const ChatPanel = () => {
 const BookDetail = () => {
   const { bookId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
-  const [book, setBook] = useState(null);
-  const [chapters, setChapters] = useState([]);
+  
+  // ---------------------------------------------------------------------------
+  // ⚡ OPTIMIZATION 1: Synchronous State Initialization
+  // Initialize state directly from location.state so we don't show loading screen
+  // ---------------------------------------------------------------------------
+  const [book, setBook] = useState(() => location.state?.prefetchedBook || null);
+  const [chapters, setChapters] = useState(() => location.state?.prefetchedChapters || []);
+  
+  // Only show loading if we don't have the book data yet
+  const [loading, setLoading] = useState(() => !location.state?.prefetchedBook);
+
+  // Derived state for initial selection
+  const [selectedChapterId, setSelectedChapterId] = useState(() => {
+    if (location.state?.prefetchedChapters?.length > 0) {
+      return location.state.prefetchedChapters[0].id;
+    }
+    return null;
+  });
+  
+  const [expandedChapters, setExpandedChapters] = useState(() => {
+    if (location.state?.prefetchedChapters?.length > 0) {
+      return new Set([location.state.prefetchedChapters[0].id]);
+    }
+    return new Set();
+  });
+
   const [pages, setPages] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [newChapterTitle, setNewChapterTitle] = useState('');
-  const [selectedChapterId, setSelectedChapterId] = useState(null);
   const [selectedPageId, setSelectedPageId] = useState(null);
-  const [expandedChapters, setExpandedChapters] = useState(new Set());
+  
+  // UI States
+  const [newChapterTitle, setNewChapterTitle] = useState('');
   const [modalState, setModalState] = useState({ isOpen: false });
   const [clearEditor, setClearEditor] = useState(false);
   const [editingChapterId, setEditingChapterId] = useState(null);
@@ -1018,50 +1084,116 @@ const BookDetail = () => {
   const searchTimeoutRef = useRef(null);
   const { toast } = useToast();
 
-  const fetchChapters = useCallback(async () => {
-    if (!bookId) return;
-    const chaptersRef = collection(firestore, 'books', bookId, 'chapters');
-    const qy = query(chaptersRef, orderBy('order'));
-    console.log('chaptersSnap', qy);
-    const chaptersSnap = await getDocs(qy);
-    console.log('chaptersSnap', chaptersSnap);
-    const chaptersList = chaptersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    setChapters(chaptersList);
-    if (chaptersList.length > 0 && !selectedChapterId) {
-      const firstChapterId = chaptersList[0].id;
-      setSelectedChapterId(firstChapterId);
-      setExpandedChapters(new Set([firstChapterId]));
-    }
-  }, [bookId, selectedChapterId]);
+  // Refs
+  const isFetchingRef = useRef(false);
+  // Track if we've done the initial page load for the selected chapter
+  const loadedChaptersRef = useRef(new Set());
 
+  // ---------------------------------------------------------------------------
+  // ⚡ OPTIMIZATION 2: Smart Fetching Logic
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    // If we already have the book (from prefetch), DO NOT fetch from Firestore.
+    if (book && chapters.length > 0 && location.state?.skipFetch) {
+      console.log('⚡ Using prefetched data. Skipping network request.');
+      
+      // Clear the location state so a refresh DOES fetch fresh data
+      // We use replaceState to modify history without navigating
+      window.history.replaceState({}, document.title);
+      return; 
+    }
+
+    // If we are here, it means we entered via URL directly (no prefetch), so we fetch.
+    if (isFetchingRef.current) return; // Prevent duplicate fetches
+    
+    const fetchBookData = async () => {
+      if (!bookId) return;
+      isFetchingRef.current = true;
+      setLoading(true);
+      console.log('🔄 Fetching book data from Firestore for:', bookId);
+      
+      try {
+        // Fetch book and chapters in parallel
+        const [bookSnap, chaptersSnap] = await Promise.all([
+          getDoc(doc(firestore, 'books', bookId)),
+          getDocs(query(collection(firestore, 'books', bookId, 'chapters'), orderBy('order')))
+        ]);
+        
+        if (bookSnap.exists()) {
+          setBook({ id: bookSnap.id, ...bookSnap.data() });
+        } else {
+          console.error('❌ Book not found');
+          toast({ title: 'Error', description: 'Book not found', variant: 'destructive' });
+        }
+        
+        const chaptersList = chaptersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setChapters(chaptersList);
+
+        // Logic to auto-select first chapter if none selected
+        if (chaptersList.length > 0 && !selectedChapterId) {
+            const firstId = chaptersList[0].id;
+            setSelectedChapterId(firstId);
+            setExpandedChapters(new Set([firstId]));
+        }
+      } catch (err) {
+        console.error('Error fetching book:', err);
+        toast({ title: 'Error', description: 'Failed to load book', variant: 'destructive' });
+      } finally {
+        setLoading(false);
+        isFetchingRef.current = false;
+      }
+    };
+
+    fetchBookData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookId]); // Remove dependencies that cause re-runs
+
+  // ---------------------------------------------------------------------------
+  // ⚡ OPTIMIZATION 3: Lazy Load Pages (On Chapter Selection)
+  // ---------------------------------------------------------------------------
   const fetchPages = useCallback(async (chapterId) => {
     if (!chapterId || !bookId) return;
-    const pagesRef = collection(firestore, 'books', bookId, 'chapters', chapterId, 'pages');
-    const qy = query(pagesRef, orderBy('order'));
-    const pagesSnap = await getDocs(qy);
-    const pagesList = pagesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    setPages(pagesList);
-    if (pagesList.length > 0) {
-      setSelectedPageId(p => pagesList.some(pg => pg.id === p) ? p : pagesList[0].id);
-    } else {
-      setSelectedPageId(null);
+    console.log(`📄 Lazy loading pages for chapter: ${chapterId}`);
+    
+    try {
+      const pagesRef = collection(firestore, 'books', bookId, 'chapters', chapterId, 'pages');
+      const qy = query(pagesRef, orderBy('order'));
+      const pagesSnap = await getDocs(qy);
+      const pagesList = pagesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      setPages(pagesList);
+      
+      // Auto-select first page if none selected
+      if (pagesList.length > 0) {
+        setSelectedPageId(p => pagesList.some(pg => pg.id === p) ? p : pagesList[0].id);
+      } else {
+        setSelectedPageId(null);
+      }
+      
+      // Mark as loaded
+      loadedChaptersRef.current.add(chapterId);
+    } catch (error) {
+      console.error('Error fetching pages:', error);
     }
   }, [bookId]);
 
+  // Trigger page fetch when chapter selection changes
   useEffect(() => {
-    const fetchBookData = async () => {
-      if (!bookId) return;
-      setLoading(true);
-      const bookRef = doc(firestore, 'books', bookId);
-      const bookSnap = await getDoc(bookRef);
-      if (bookSnap.exists()) setBook({ id: bookSnap.id, ...bookSnap.data() });
-      await fetchChapters();
-      setLoading(false);
-    };
-    fetchBookData();
-  }, [bookId, fetchChapters]);
+    if (selectedChapterId) {
+      fetchPages(selectedChapterId);
+    }
+  }, [selectedChapterId, fetchPages]);
 
-  useEffect(() => { fetchPages(selectedChapterId); }, [selectedChapterId, fetchPages]);
+  // Deprecated old fetchers (keeping names to avoid breaking other refs if any, but making them no-ops or aliased)
+  // We don't need separate fetchChapters anymore as it's handled in main effect
+  const fetchChapters = useCallback(async () => {
+     if (!bookId) return;
+     const chaptersRef = collection(firestore, 'books', bookId, 'chapters');
+     const qy = query(chaptersRef, orderBy('order'));
+     const chaptersSnap = await getDocs(qy);
+     const chaptersList = chaptersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+     setChapters(chaptersList);
+  }, [bookId]);
 
   // Permission checks
   const isOwner = book?.ownerId === user?.uid;
@@ -1545,37 +1677,18 @@ const BookDetail = () => {
       // Update pages array
       const nextPages = prevPages.map(p => p.id === updatedPage.id ? updatedPage : p);
 
-      // If shortNote provided, reflect it in the chapter sidebar and update Firestore
+      // If shortNote provided, reflect it in the chapter sidebar (Optimistic Update)
+      // The backend (updatePage) handles the actual Firestore update for pagesSummary
       if (updatedPage.shortNote) {
-        const chapter = chapters.find(c => c.id === selectedChapterId);
-        if (chapter) {
-          console.log(updatedPage.shortNote);
+        setChapters(prevChapters => prevChapters.map(c => {
+          if (c.id !== selectedChapterId) return c;
 
-          const updatedPagesSummary = chapter.pagesSummary.map(ps => {
-            console.log(ps.pageId, updatedPage.id);
-            return ps.pageId === updatedPage.id ? { ...ps, shortNote: updatedPage.shortNote } : ps;
-          });
+          const updatedPagesSummary = (c.pagesSummary || []).map(ps =>
+            ps.pageId === updatedPage.id ? { ...ps, shortNote: updatedPage.shortNote } : ps
+          );
 
-          // Update local state
-          setChapters(chapters.map(c =>
-            c.id === selectedChapterId ? { ...c, pagesSummary: updatedPagesSummary } : c
-          ));
-
-          // Update Firestore
-          const chapterRef = doc(firestore, 'books', bookId, 'chapters', selectedChapterId);
-          updateDoc(chapterRef, { pagesSummary: updatedPagesSummary })
-            .then(() => {
-              console.log('Chapter pagesSummary updated in Firestore');
-            })
-            .catch((error) => {
-              console.error('Failed to update chapter in Firestore:', error);
-              toast({
-                title: 'Update Error',
-                description: 'Failed to update chapter summary in database.',
-                variant: 'destructive'
-              });
-            });
-        }
+          return { ...c, pagesSummary: updatedPagesSummary };
+        }));
       }
 
       return nextPages;
@@ -1690,7 +1803,45 @@ const BookDetail = () => {
     setSaveConfirmOpen(false);
   };
 
-  if (loading) return <div className="flex justify-center items-center min-h-[60vh] text-sm text-app-gray-600">Loading book...</div>;
+  if (loading) {
+    return (
+      <div className="flex flex-col h-full overflow-hidden">
+        {/* Header Skeleton */}
+        <div className="shrink-0 py-3 px-4 border-b border-gray-200 bg-white flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="h-8 w-20 bg-gray-200 rounded animate-pulse" />
+            <div className="h-6 w-48 bg-gray-200 rounded animate-pulse" />
+          </div>
+        </div>
+
+        <div className="flex flex-1 overflow-hidden">
+          {/* Sidebar Skeleton */}
+          <div className="w-72 bg-gray-50 border-r border-gray-200 flex flex-col">
+            <div className="p-3 border-b border-gray-200 bg-white">
+              <div className="h-8 bg-gray-200 rounded animate-pulse" />
+            </div>
+            <div className="flex-1 p-2 space-y-2">
+              <div className="h-10 bg-gray-200 rounded animate-pulse" />
+              <div className="h-10 bg-gray-200 rounded animate-pulse" />
+              <div className="h-10 bg-gray-200 rounded animate-pulse" />
+            </div>
+          </div>
+
+          {/* Main Content Skeleton */}
+          <div className="flex-1 overflow-hidden bg-white">
+            <div className="max-w-4xl mx-auto p-8 space-y-4">
+              <div className="h-8 w-32 bg-gray-200 rounded animate-pulse" />
+              <div className="h-64 bg-gray-200 rounded animate-pulse" />
+              <div className="h-32 bg-gray-200 rounded animate-pulse" />
+            </div>
+          </div>
+
+          {/* Chat Panel Skeleton */}
+          <div className="w-80 bg-white border-l border-gray-200" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <DragDropContext onDragEnd={onDragEnd}>

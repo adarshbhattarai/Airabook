@@ -45,101 +45,61 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+      console.log('🔐 Auth State Changed:', user ? `User ${user.uid}` : 'No User');
       setUser(user);
       setLoading(false);
 
       if (user) {
+        console.log('👤 Fetching user data for:', user.uid);
         setAppLoading(true);
 
         const userRef = doc(firestore, 'users', user.uid);
-        let retryCount = 0;
-        const maxRetries = 3; // ~5 seconds total
-        let retryTimeout;
+        console.log('🔗 Setting up snapshot listener for:', userRef.path);
 
-        const unsubscribeSnapshot = onSnapshot(userRef, (docSnap) => {
-          if (docSnap.exists()) {
-            const userData = docSnap.data();
-            setAppUser({
-              uid: user.uid,
-              ...userData,
-              billing: userData.billing || createDefaultBilling(),
-            });
-            setAppLoading(false);
-            
-            // Clear any pending retry timeout
-            if (retryTimeout) {
-              clearTimeout(retryTimeout);
-            }
-          } else {
-            // Document doesn't exist yet - new user
-            console.log("Waiting for user document to be created by backend...");
-            
-            // Implement retry mechanism for new users
-            if (retryCount < maxRetries) {
-              retryCount++;
-              const delay = Math.min(retryCount * 200, 1000); // Exponential backoff
-              retryTimeout = setTimeout(() => {
-                // Force a re-check by unsubscribing and resubscribing
-                unsubscribeSnapshot();
-                const newUnsubscribe = onSnapshot(userRef, (docSnap) => {
-                  if (docSnap.exists()) {
-                    const userData = docSnap.data();
-                    setAppUser({
-                      uid: user.uid,
-                      ...userData,
-                      billing: userData.billing || createDefaultBilling(),
-                    });
-                    setAppLoading(false);
-                  } else if (retryCount >= maxRetries) {
-                    // After max retries, give up and let user proceed
-                    console.warn("User document not found after retries, proceeding with empty state");
-                    setAppUser({
-                      uid: user.uid,
-                      accessibleBookIds: [],
-                      accessibleAlbums: [],
-                      billing: createDefaultBilling(),
-                      displayName: user.displayName || '',
-                      email: user.email || '',
-                      createdAt: new Date(),
-                      updatedAt: new Date(),
-                    });
-                    setAppLoading(false);
-                  }
-                });
-                // Store the new unsubscribe function
-                retryTimeout = newUnsubscribe;
-              }, delay);
-            } else {
-              // Max retries reached, create minimal user state
-              console.warn("Max retries reached for user document, creating minimal state");
+        // Simple snapshot listener - it will automatically detect when the doc is created
+        const unsubscribeSnapshot = onSnapshot(userRef,
+          (docSnap) => {
+            console.log('📄 User Snapshot update:', { exists: docSnap.exists(), id: docSnap.id });
+
+            if (docSnap.exists()) {
+              const userData = docSnap.data();
+              console.log('✅ User data found:', userData);
               setAppUser({
                 uid: user.uid,
-                accessibleBookIds: [],
-                accessibleAlbums: [],
-                billing: createDefaultBilling(),
-                displayName: user.displayName || '',
-                email: user.email || '',
-                createdAt: new Date(),
-                updatedAt: new Date(),
+                ...userData,
+                billing: userData.billing || createDefaultBilling(),
               });
               setAppLoading(false);
+            } else {
+              // Document doesn't exist yet - just wait, the snapshot will update when it's created
+              console.log("⏳ Waiting for user document to be created by backend trigger...");
+              // Don't set appLoading to false yet - keep waiting for the trigger
             }
+          },
+          (error) => {
+            console.error("❌ Error in snapshot listener:", error);
+            // On error, create minimal user state so app doesn't hang
+            console.warn("⚠️ Creating minimal user state due to error");
+            setAppUser({
+              uid: user.uid,
+              accessibleBookIds: [],
+              accessibleAlbums: [],
+              billing: createDefaultBilling(),
+              displayName: user.displayName || '',
+              email: user.email || '',
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+            setAppLoading(false);
           }
-        }, (error) => {
-          console.error("Error fetching user data:", error);
-          setAppUser(null);
-          setAppLoading(false);
-        });
+        );
 
         return () => {
+          console.log('🧹 Cleaning up user snapshot listener');
           unsubscribeSnapshot();
-          if (retryTimeout && typeof retryTimeout === 'function') {
-            retryTimeout();
-          } else if (retryTimeout) {
-            clearTimeout(retryTimeout);
-          }
         };
       } else {
+        console.log('👋 User logged out or no session, clearing appUser');
         setAppUser(null);
         setAppLoading(false);
       }
@@ -150,15 +110,20 @@ export const AuthProvider = ({ children }) => {
 
   const signup = async (name, email, password) => {
     try {
+      console.log("🚀 Starting signup process...");
+
+      // Create user with Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(userCredential.user, { displayName: name });
 
-      console.log("Signup successful, waiting for auth listener to set doc.");
-      setUser(userCredential.user);
+      console.log("✅ Signup successful, user created:", userCredential.user.uid);
+      console.log("⏳ Waiting for backend trigger to create Firestore document...");
+
+      // The onAuthStateChanged listener will handle the rest
+      // It has retry logic to wait for the backend trigger to finish
 
     } catch (error) {
-      console.log("Error during signup:", error)
-      console.error("Error during signup:", error);
+      console.error("❌ Error during signup:", error);
       toast({
         title: "Signup Failed",
         description: error.message,

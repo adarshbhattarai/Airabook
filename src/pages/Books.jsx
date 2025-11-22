@@ -6,6 +6,7 @@ import { PlusCircle, Sparkles, BookOpen } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import BookCard from '@/components/BookCard';
 import StatCard from '@/components/app/StatCard';
+import AppLoader from '@/components/app/AppLoader';
 
 const Books = () => {
   const { appUser, appLoading } = useAuth();
@@ -13,23 +14,14 @@ const Books = () => {
   const { toast } = useToast();
   const [deletedBooks, setDeletedBooks] = useState(new Set());
 
-
-  const handleBookDeleted = (bookId) => {
-    setDeletedBooks(prev => new Set([...prev, bookId]));
-  };
-
-  if (appLoading || !appUser) {
-    // If we have a user but no books, and we've been loading for a while, maybe just redirect?
-    // Or rely on the useEffect.
-    return (
-      <div className="flex justify-center items-center min-h-[60vh]">
-        <p className="text-sm text-app-gray-600">Loading your books...</p>
-      </div>
-    );
-  }
+  console.log('📚 Books Page Render:', {
+    appLoading,
+    hasAppUser: !!appUser,
+    accessibleBookIds: appUser?.accessibleBookIds
+  });
 
   // Extract bookIds from accessibleBookIds (handle both old string array and new object array)
-  const books = (appUser.accessibleBookIds || []).map(item => {
+  const books = appLoading || !appUser ? [] : (appUser.accessibleBookIds || []).map(item => {
     if (typeof item === 'string') {
       // Old format - return minimal object
       return { bookId: item, title: 'Untitled Book', coverImage: null };
@@ -39,6 +31,31 @@ const Books = () => {
   }).filter(book => !deletedBooks.has(book.bookId));
 
   const totalBooks = books.length;
+
+  // Redirect to create-book if user has no books
+  useEffect(() => {
+    if (!appLoading && appUser && books.length === 0) {
+      navigate('/create-book', { replace: true });
+    }
+  }, [appLoading, appUser, books.length, navigate]);
+
+  const handleBookDeleted = (bookId) => {
+    setDeletedBooks(prev => new Set([...prev, bookId]));
+  };
+
+  // Show loader while app is loading
+  if (appLoading || !appUser) {
+    return <AppLoader />;
+  }
+
+  // If redirecting, don't render the empty state to avoid flash
+  if (!appLoading && appUser && books.length === 0) {
+    return (
+      <div className="flex justify-center items-center min-h-[60vh]">
+        <p className="text-sm text-app-gray-600">Redirecting to create your first book...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8">

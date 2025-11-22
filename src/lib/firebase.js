@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, connectAuthEmulator } from "firebase/auth";
-import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
+import { getFirestore, connectFirestoreEmulator, enableIndexedDbPersistence } from "firebase/firestore";
 import { getStorage, connectStorageEmulator } from "firebase/storage";
 import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
@@ -26,12 +26,8 @@ const currentMode = import.meta.env.MODE;
 const isProduction = currentMode === 'production';
 
 export const firestore = getFirestore(app);
-
-
 export const storage = getStorage(app);
 export const functions = getFunctions(app, "us-central1");
-
-
 
 // Determine if we should use emulators
 // NEVER use emulators in production mode - always use real Firebase services for deployed apps
@@ -59,6 +55,7 @@ console.log("🔧 VITE_USE_EMULATOR type:", typeof import.meta.env.VITE_USE_EMUL
 console.log("🔧 VITE_USE_EMULATOR === 'true':", import.meta.env.VITE_USE_EMULATOR === 'true');
 console.log("🔧 useEmulator:", useEmulator);
 
+// CRITICAL: Connect to emulators BEFORE enabling persistence
 if (useEmulator) {
   try {
     // Use explicit IPv4 loopback to avoid IPv6/hostname CORS mismatches
@@ -85,6 +82,17 @@ if (useEmulator) {
   console.log(`🚀 Using Firebase services`);
   console.log(`📍 Environment: ${currentMode}`);
   console.log(`🔐 Project: ${firebaseConfig.projectId}`);
+}
+
+// Enable Firestore offline persistence AFTER emulator connection
+if (typeof window !== 'undefined') {
+  enableIndexedDbPersistence(firestore, { synchronizeTabs: true }).catch((err) => {
+    if (err.code === 'failed-precondition') {
+      console.warn('⚠️ Firestore persistence failed: Multiple tabs open');
+    } else if (err.code === 'unimplemented') {
+      console.warn('⚠️ Firestore persistence not supported in this browser');
+    }
+  });
 }
 // App Check (optional but recommended)
 // In emulator mode, enable debug token to bypass reCAPTCHA

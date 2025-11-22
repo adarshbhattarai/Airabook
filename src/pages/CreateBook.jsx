@@ -81,20 +81,56 @@ const CreateBook = () => {
       };
       console.log("📦 CreateBook: Payload:", payload);
       
+      const functionStartTime = performance.now();
       const result = await createBookFunction(payload);
+      const functionEndTime = performance.now();
       console.log("✅ CreateBook: Function call successful, result:", result);
+      console.log(`⏱️ Function call took: ${(functionEndTime - functionStartTime).toFixed(2)}ms`);
 
       const bookId = result.data.bookId;
       if (!bookId) {
         throw new Error("Function did not return a book ID.");
       }
       
+      // Navigate immediately with prefetched data to avoid slow Firestore queries
+      const navStartTime = performance.now();
+      console.log("🚀 Navigating to book detail page with prefetched data...");
+      
+      const navState = {
+        prefetchedBook: {
+          id: bookId,
+          babyName: title.trim(), // Ensure this matches BookDetail expectation
+          titleLower: title.trim().toLowerCase(),
+          description: result.data.description,
+          chapterCount: result.data.chaptersCount || 0,
+          ownerId: user.uid,
+          isPublic: false,
+          createdAt: new Date().toISOString(), 
+          members: { [user.uid]: 'Owner' } // Important for permission checks
+        },
+        prefetchedChapters: (result.data.chapters || []).map(ch => ({
+          id: ch.id,
+          title: ch.title,
+          order: ch.order,
+          pagesSummary: [], // CRITICAL: Initialize so sidebar renders immediately
+          ownerId: user.uid
+        })),
+        skipFetch: true,
+      };
+      
+      console.log("📦 Navigation State:", navState);
+
+      navigate(`/book/${bookId}`, {
+        state: navState
+      });
+      const navEndTime = performance.now();
+      console.log(`⏱️ Navigation took: ${(navEndTime - navStartTime).toFixed(2)}ms`);
+      
+      // Show toast after navigation
       toast({
         title: "Book created",
         description: `"${title}" has been successfully created.`,
       });
-
-      navigate(`/book/${bookId}`);
 
     } catch (error) {
       console.error("❌ CreateBook: Error creating book via function:", error);

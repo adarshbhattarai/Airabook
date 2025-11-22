@@ -114,6 +114,10 @@ exports.createPage = createPage;
 exports.updatePage = updatePage;
 exports.onUserCreate = onUserCreate;
 
+// Genkit RAG Flow
+const { queryBookFlow } = require("./genkit");
+exports.queryBookFlow = queryBookFlow;
+
 // Function to get chapters for a book (hot reload test)
 exports.getBookChapters = onCall({ region: "us-central1" }, async (request) => {
   const { data, auth } = request;

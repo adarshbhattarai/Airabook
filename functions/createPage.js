@@ -7,6 +7,7 @@ const admin = require('firebase-admin');
 const FieldValue = require('firebase-admin/firestore').FieldValue;
 
 const { extractTextFromHtml, generateGeminiEmbeddings } = require('./utils/embeddingsClient');
+const { updateChapterPageSummary } = require('./utils/chapterUtils');
 
 // Firebase Admin initialized in index.js
 const db = admin.firestore();
@@ -107,22 +108,8 @@ exports.createPage = onCall(
 
             logger.log(`📄 Page created with ID: ${pageRef.id}`);
 
-            // Update chapter's pagesSummary
-            const shortNote = plainText
-                ? plainText.substring(0, 40) + (plainText.length > 40 ? '...' : '')
-                : 'New Page';
-
-            const newPageSummary = {
-                pageId: pageRef.id,
-                shortNote,
-                order: order || '',
-            };
-
-            // arrayUnion APPENDS to existing array without duplicates
-            await chapterRef.update({
-                pagesSummary: FieldValue.arrayUnion(newPageSummary),
-                updatedAt: FieldValue.serverTimestamp(),
-            });
+            // Update chapter's pagesSummary using helper
+            await updateChapterPageSummary(db, bookId, chapterId, pageRef.id, plainText, order, true);
 
             logger.log(`✅ Chapter pagesSummary updated`);
 
