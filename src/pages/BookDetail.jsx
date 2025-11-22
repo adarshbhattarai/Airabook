@@ -937,6 +937,9 @@ const ChatPanel = () => {
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
+  const [panelWidth, setPanelWidth] = useState(320); // Default 320px (w-80)
+  const [isResizing, setIsResizing] = useState(false);
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
@@ -968,11 +971,80 @@ const ChatPanel = () => {
     }
   };
 
+  // Handle resize drag
+  const handleMouseDown = (e) => {
+    e.preventDefault();
+    setIsResizing(true);
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isResizing) return;
+      const newWidth = window.innerWidth - e.clientX;
+      // Clamp width between 280px and 600px
+      setPanelWidth(Math.max(280, Math.min(600, newWidth)));
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
+
+  if (isMinimized) {
+    return (
+      <div className="shrink-0 bg-white border-l border-gray-200 flex flex-col items-center py-4 px-2 w-12">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setIsMinimized(false)}
+          className="h-8 w-8 text-violet-600 hover:bg-violet-50"
+          title="Expand AI Assistant"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <div className="mt-4 writing-mode-vertical text-xs font-semibold text-gray-500 transform rotate-180">
+          AI Assistant
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col h-full bg-white border-l border-gray-200 w-80 shrink-0">
-      <div className="p-4 border-b border-gray-200 flex items-center gap-2 bg-gray-50/50">
-        <Sparkles className="h-4 w-4 text-violet-600" />
-        <h3 className="font-semibold text-gray-800 text-sm">AI Assistant</h3>
+    <div
+      className="flex flex-col h-full bg-white border-l border-gray-200 shrink-0 relative transition-all duration-200"
+      style={{ width: `${panelWidth}px` }}
+    >
+      {/* Resize handle */}
+      <div
+        className={`absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-violet-400 transition-colors ${isResizing ? 'bg-violet-500' : 'bg-transparent'}`}
+        onMouseDown={handleMouseDown}
+        title="Drag to resize"
+      />
+
+      <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-gray-50/50">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-violet-600" />
+          <h3 className="font-semibold text-gray-800 text-sm">AI Assistant</h3>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setIsMinimized(true)}
+          className="h-6 w-6 text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+          title="Minimize"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -1038,14 +1110,14 @@ const BookDetail = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
-  
+
   // ---------------------------------------------------------------------------
   // ⚡ OPTIMIZATION 1: Synchronous State Initialization
   // Initialize state directly from location.state so we don't show loading screen
   // ---------------------------------------------------------------------------
   const [book, setBook] = useState(() => location.state?.prefetchedBook || null);
   const [chapters, setChapters] = useState(() => location.state?.prefetchedChapters || []);
-  
+
   // Only show loading if we don't have the book data yet
   const [loading, setLoading] = useState(() => !location.state?.prefetchedBook);
 
@@ -1056,7 +1128,7 @@ const BookDetail = () => {
     }
     return null;
   });
-  
+
   const [expandedChapters, setExpandedChapters] = useState(() => {
     if (location.state?.prefetchedChapters?.length > 0) {
       return new Set([location.state.prefetchedChapters[0].id]);
@@ -1066,7 +1138,7 @@ const BookDetail = () => {
 
   const [pages, setPages] = useState([]);
   const [selectedPageId, setSelectedPageId] = useState(null);
-  
+
   // UI States
   const [newChapterTitle, setNewChapterTitle] = useState('');
   const [modalState, setModalState] = useState({ isOpen: false });
@@ -1096,44 +1168,44 @@ const BookDetail = () => {
     // If we already have the book (from prefetch), DO NOT fetch from Firestore.
     if (book && chapters.length > 0 && location.state?.skipFetch) {
       console.log('⚡ Using prefetched data. Skipping network request.');
-      
+
       // Clear the location state so a refresh DOES fetch fresh data
       // We use replaceState to modify history without navigating
       window.history.replaceState({}, document.title);
-      return; 
+      return;
     }
 
     // If we are here, it means we entered via URL directly (no prefetch), so we fetch.
     if (isFetchingRef.current) return; // Prevent duplicate fetches
-    
+
     const fetchBookData = async () => {
       if (!bookId) return;
       isFetchingRef.current = true;
       setLoading(true);
       console.log('🔄 Fetching book data from Firestore for:', bookId);
-      
+
       try {
         // Fetch book and chapters in parallel
         const [bookSnap, chaptersSnap] = await Promise.all([
           getDoc(doc(firestore, 'books', bookId)),
           getDocs(query(collection(firestore, 'books', bookId, 'chapters'), orderBy('order')))
         ]);
-        
+
         if (bookSnap.exists()) {
           setBook({ id: bookSnap.id, ...bookSnap.data() });
         } else {
           console.error('❌ Book not found');
           toast({ title: 'Error', description: 'Book not found', variant: 'destructive' });
         }
-        
+
         const chaptersList = chaptersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         setChapters(chaptersList);
 
         // Logic to auto-select first chapter if none selected
         if (chaptersList.length > 0 && !selectedChapterId) {
-            const firstId = chaptersList[0].id;
-            setSelectedChapterId(firstId);
-            setExpandedChapters(new Set([firstId]));
+          const firstId = chaptersList[0].id;
+          setSelectedChapterId(firstId);
+          setExpandedChapters(new Set([firstId]));
         }
       } catch (err) {
         console.error('Error fetching book:', err);
@@ -1154,22 +1226,22 @@ const BookDetail = () => {
   const fetchPages = useCallback(async (chapterId) => {
     if (!chapterId || !bookId) return;
     console.log(`📄 Lazy loading pages for chapter: ${chapterId}`);
-    
+
     try {
       const pagesRef = collection(firestore, 'books', bookId, 'chapters', chapterId, 'pages');
       const qy = query(pagesRef, orderBy('order'));
       const pagesSnap = await getDocs(qy);
       const pagesList = pagesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
+
       setPages(pagesList);
-      
+
       // Auto-select first page if none selected
       if (pagesList.length > 0) {
         setSelectedPageId(p => pagesList.some(pg => pg.id === p) ? p : pagesList[0].id);
       } else {
         setSelectedPageId(null);
       }
-      
+
       // Mark as loaded
       loadedChaptersRef.current.add(chapterId);
     } catch (error) {
@@ -1187,12 +1259,12 @@ const BookDetail = () => {
   // Deprecated old fetchers (keeping names to avoid breaking other refs if any, but making them no-ops or aliased)
   // We don't need separate fetchChapters anymore as it's handled in main effect
   const fetchChapters = useCallback(async () => {
-     if (!bookId) return;
-     const chaptersRef = collection(firestore, 'books', bookId, 'chapters');
-     const qy = query(chaptersRef, orderBy('order'));
-     const chaptersSnap = await getDocs(qy);
-     const chaptersList = chaptersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-     setChapters(chaptersList);
+    if (!bookId) return;
+    const chaptersRef = collection(firestore, 'books', bookId, 'chapters');
+    const qy = query(chaptersRef, orderBy('order'));
+    const chaptersSnap = await getDocs(qy);
+    const chaptersList = chaptersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    setChapters(chaptersList);
   }, [bookId]);
 
   // Permission checks
@@ -1984,7 +2056,7 @@ const BookDetail = () => {
           <div className="flex items-center gap-4">
             <Button
               variant="appGhost"
-              onClick={() => navigate('/dashboard')}
+              onClick={() => navigate('/books')}
               className="flex items-center gap-2 text-xs"
             >
               <ArrowLeft className="h-4 w-4" />
@@ -2171,7 +2243,7 @@ const BookDetail = () => {
                     <Sparkles className="h-8 w-8 text-violet-400" />
                   </div>
                   <h2 className="text-xl font-semibold text-gray-800">{selectedChapterId ? 'Ready to write?' : 'Select a chapter'}</h2>
-                  <p className="mt-2 text-gray-500 max-w-xs">{selectedChapterId ? 'Select a page or create a new one to start writing.' : 'Choose a chapter from the sidebar to view its pages.'}</p>
+                  <p className="mt-2 text-gray-500 max-w-xs">{selectedChapterId ? 'Select a page or create a new one to start writing.' : 'Create a new chapter to get started.'}</p>
                   {selectedChapterId && canEdit && <Button onClick={handleAddPage} className="mt-6"><PlusCircle className="h-4 w-4 mr-2" />Add Page</Button>}
                 </div>
               )}
