@@ -233,37 +233,39 @@ const AlbumDetail = () => {
 
   if (loading || !album) {
     return (
-      <div className="min-h-screen py-8 px-4 flex justify-center items-center">
-        <Loader2 className="h-12 w-12 animate-spin text-violet-500" />
+      <div className="flex justify-center items-center min-h-[60vh]">
+        <Loader2 className="h-10 w-10 animate-spin text-app-iris" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen py-8 px-4 bg-gradient-to-br from-violet-50 via-purple-50 to-indigo-50">
+    <div className="py-6 px-4 sm:px-6 lg:px-8">
       <Helmet>
         <title>{album.name || 'Album'} - Media Gallery</title>
       </Helmet>
 
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <Button
-            variant="outline"
-            onClick={() => navigate('/media')}
-            className="mb-4"
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Albums
-          </Button>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-500 to-indigo-500 bg-clip-text text-transparent">
-            {album.name || 'Album'}
-          </h1>
-          <p className="text-gray-600 mt-2">
-            {(album.mediaCount || 0) === 0
-              ? 'No media yet'
-              : `${album.mediaCount || 0} ${(album.mediaCount || 0) === 1 ? 'item' : 'items'}`}
-          </p>
+        <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <Button
+              variant="appGhost"
+              onClick={() => navigate('/media')}
+              className="mb-3 inline-flex items-center gap-2 text-xs"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Back to albums
+            </Button>
+            <h1 className="text-[28px] font-semibold text-app-gray-900 leading-tight">
+              {album.name || 'Album'}
+            </h1>
+            <p className="mt-1 text-xs text-app-gray-600">
+              {(album.mediaCount || 0) === 0
+                ? 'No media yet'
+                : `${album.mediaCount || 0} ${(album.mediaCount || 0) === 1 ? 'item' : 'items'}`}
+            </p>
+          </div>
         </div>
 
         {/* Media Grid */}

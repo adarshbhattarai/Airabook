@@ -10,9 +10,25 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { auth, firestore } from '@/lib/firebase';
 import { useToast } from '@/components/ui/use-toast';
+
+const defaultEntitlements = {
+  canReadBooks: true,
+  canWriteBooks: true, // Free for everyone!
+  canInviteTeam: false,
+};
+
+const createDefaultBilling = () => ({
+  planTier: 'free',
+  planLabel: 'Free Explorer',
+  planState: 'inactive',
+  entitlements: { ...defaultEntitlements },
+  latestPaymentId: null,
+});
+
+const defaultBilling = createDefaultBilling();
 
 const AuthContext = createContext();
 
@@ -28,38 +44,62 @@ export const AuthProvider = ({ children }) => {
   const { toast } = useToast();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      console.log('🔐 Auth State Changed:', user ? `User ${user.uid}` : 'No User');
       setUser(user);
       setLoading(false);
 
       if (user) {
+        console.log('👤 Fetching user data for:', user.uid);
         setAppLoading(true);
-        try {
-          const userRef = doc(firestore, 'users', user.uid);
-          const docSnap = await getDoc(userRef);
 
-          if (docSnap.exists()) {
-            setAppUser({ uid: user.uid, ...docSnap.data() });
-          } else {
-            // This is the key change.
-          // If a user is authenticated but no Firestore doc exists, create it.
-          const newUser = {
-            displayName: user.displayName,
-            displayNameLower: (user.displayName || '').toLowerCase(),
-            email: user.email,
-            accessibleBookIds: [],
-            accessibleAlbums: [],
-          };
-          await setDoc(userRef, newUser);
-          console.log("Firestore document created for new user via auth listener.");
-          setAppUser({ uid: user.uid, ...newUser });
+        const userRef = doc(firestore, 'users', user.uid);
+        console.log('🔗 Setting up snapshot listener for:', userRef.path);
+
+        // Simple snapshot listener - it will automatically detect when the doc is created
+        const unsubscribeSnapshot = onSnapshot(userRef,
+          (docSnap) => {
+            console.log('📄 User Snapshot update:', { exists: docSnap.exists(), id: docSnap.id });
+
+            if (docSnap.exists()) {
+              const userData = docSnap.data();
+              console.log('✅ User data found:', userData);
+              setAppUser({
+                uid: user.uid,
+                ...userData,
+                billing: userData.billing || createDefaultBilling(),
+              });
+              setAppLoading(false);
+            } else {
+              // Document doesn't exist yet - just wait, the snapshot will update when it's created
+              console.log("⏳ Waiting for user document to be created by backend trigger...");
+              // Don't set appLoading to false yet - keep waiting for the trigger
+            }
+          },
+          (error) => {
+            console.error("❌ Error in snapshot listener:", error);
+            // On error, create minimal user state so app doesn't hang
+            console.warn("⚠️ Creating minimal user state due to error");
+            setAppUser({
+              uid: user.uid,
+              accessibleBookIds: [],
+              accessibleAlbums: [],
+              billing: createDefaultBilling(),
+              displayName: user.displayName || '',
+              email: user.email || '',
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+            setAppLoading(false);
           }
-        } catch (error) {
-            console.error("Error fetching user data:", error);
-            setAppUser(null);
-        }
-        setAppLoading(false);
+        );
+
+        return () => {
+          console.log('🧹 Cleaning up user snapshot listener');
+          unsubscribeSnapshot();
+        };
       } else {
+        console.log('👋 User logged out or no session, clearing appUser');
         setAppUser(null);
         setAppLoading(false);
       }
@@ -70,15 +110,20 @@ export const AuthProvider = ({ children }) => {
 
   const signup = async (name, email, password) => {
     try {
+      console.log("🚀 Starting signup process...");
+
+      // Create user with Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(userCredential.user, { displayName: name });
-  
-      console.log("Signup successful, waiting for auth listener to set doc.");
-      setUser(userCredential.user);
-      
+
+      console.log("✅ Signup successful, user created:", userCredential.user.uid);
+      console.log("⏳ Waiting for backend trigger to create Firestore document...");
+
+      // The onAuthStateChanged listener will handle the rest
+      // It has retry logic to wait for the backend trigger to finish
+
     } catch (error) {
-      console.log("Error during signup:", error)
-      console.error("Error during signup:", error);
+      console.error("❌ Error during signup:", error);
       toast({
         title: "Signup Failed",
         description: error.message,
@@ -98,23 +143,9 @@ export const AuthProvider = ({ children }) => {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
 
-      const userRef = doc(firestore, 'users', user.uid);
-      const docSnap = await getDoc(userRef);
-
-      if (!docSnap.exists()) {
-        const newUser = {
-          displayName: user.displayName,
-          displayNameLower: (user.displayName || '').toLowerCase(),
-          email: user.email,
-          accessibleBookIds: [],
-          accessibleAlbums: [],
-        };
-        await setDoc(userRef, newUser);
-        console.log("Firestore document set successfully for new Google user.");
-        setAppUser({ uid: user.uid, ...newUser });
-      } else {
-        setAppUser({ uid: user.uid, ...docSnap.data() });
-      }
+      // Backend handles user creation via triggers.
+      // We just wait for the auth state listener to pick up the new user doc.
+      console.log("Google Sign-In successful for:", user.uid);
     } catch (error) {
       console.error("Error during Google sign-in:", error);
       toast({
@@ -142,9 +173,12 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const billing = appUser?.billing || createDefaultBilling();
   const value = {
     user,
     appUser,
+    billing,
+    entitlements: billing.entitlements || defaultBilling.entitlements,
     loading,
     appLoading,
     signup,

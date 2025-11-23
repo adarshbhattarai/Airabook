@@ -49,7 +49,23 @@ module.exports = {
     			card: {
     				DEFAULT: 'hsl(var(--card))',
     				foreground: 'hsl(var(--card-foreground))'
-    			},
+    				},
+            app: {
+              iris: {
+                DEFAULT: '#635bff',
+                hover: '#4f47d9',
+              },
+              violet: '#9b8cff',
+              mint: '#2ed3b7',
+              gray: {
+                50: '#f7f8fb',
+                100: '#eef1f7',
+                300: '#d8dfea',
+                600: '#5b6578',
+                900: '#151a2d',
+              },
+              navy: '#0f172a',
+            },
     			chart: {
     				'1': 'hsl(var(--chart-1))',
     				'2': 'hsl(var(--chart-2))',
@@ -61,8 +77,16 @@ module.exports = {
     		borderRadius: {
     			lg: 'var(--radius)',
     			md: 'calc(var(--radius) - 2px)',
-    			sm: 'calc(var(--radius) - 4px)'
-    		},
+    				sm: 'calc(var(--radius) - 4px)',
+            xl: '1rem',
+            '2xl': '1.5rem',
+            pill: '999px',
+     			},
+        boxShadow: {
+          appCard: '0 18px 45px rgba(15,23,42,0.06)',
+          appFloating: '0 20px 60px rgba(99,91,255,0.25)',
+          appSoft: '0 10px 40px rgba(15,23,42,0.04)',
+        },
     		keyframes: {
     			'accordion-down': {
     				from: {

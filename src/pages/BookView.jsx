@@ -117,46 +117,48 @@ const BookView = () => {
     return () => window.removeEventListener('keydown', onKey);
   }, [previewOpen, mediaList.length]);
 
-  if (loading) return <div className="flex justify-center items-center min-h-screen">Loading...</div>;
+  if (loading) return <div className="flex justify-center items-center min-h-[60vh] text-sm text-app-gray-600">Loading...</div>;
 
   const noteHtml = selectedPage?.note
     ? (isLikelyHtml(selectedPage.note) ? selectedPage.note : textToHtml(stripHtml(selectedPage.note)))
     : '<p>No content.</p>';
 
   return (
-    <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
+    <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
       <div className="mb-6">
         <Button
-          variant="outline"
+          variant="appGhost"
           onClick={() => navigate('/dashboard')}
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 text-xs"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Books
         </Button>
       </div>
-      <h1 className="text-4xl font-extrabold text-center text-gray-900 mb-8">{book?.babyName}'s Journey</h1>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8" style={{ minHeight: '70vh' }}>
+      <h1 className="text-[28px] font-semibold text-app-gray-900 text-center mb-6">
+        {book?.babyName}&apos;s journey
+      </h1>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8" style={{ minHeight: '60vh' }}>
         {/* Sidebar: Chapters and Pages (read-only) */}
         <div className="lg:col-span-1 flex flex-col space-y-6">
-          <div className="p-4 bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border flex-grow">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Content</h2>
+          <div className="p-4 bg-white rounded-2xl shadow-appSoft border border-app-gray-100 flex-grow">
+            <h2 className="text-sm font-semibold text-app-gray-900 mb-3">Content</h2>
             <div className="space-y-1">
               {[...chapters].sort((a, b) => a.order.localeCompare(b.order)).map(chapter => (
                 <div key={chapter.id} className="group">
                   <div
                     onClick={() => { setSelectedChapterId(chapter.id); }}
-                    className={`w-full text-left p-3 rounded-lg flex items-center justify-between cursor-pointer ${selectedChapterId === chapter.id ? 'bg-violet-200 text-violet-900' : 'hover:bg-violet-100'}`}
+                    className={`w-full text-left p-3 rounded-lg flex items-center justify-between cursor-pointer ${selectedChapterId === chapter.id ? 'bg-app-iris/10 text-app-iris' : 'hover:bg-app-gray-100'}`}
                   >
-                    <span className="font-medium truncate pr-2 ml-1">{chapter.title}</span>
+                    <span className="text-sm font-medium truncate pr-2 ml-1">{chapter.title}</span>
                   </div>
                   {selectedChapterId === chapter.id && (
-                    <div className="ml-4 pl-4 border-l-2 border-violet-200 py-1 space-y-1">
+                    <div className="ml-4 pl-4 border-l border-app-gray-100 py-1 space-y-1">
                       {chapter.pagesSummary?.length > 0 ? chapter.pagesSummary.map((pageSummary) => (
                         <div
                           key={pageSummary.pageId}
                           onClick={() => { setSelectedChapterId(chapter.id); setSelectedPageId(pageSummary.pageId); }}
-                          className={`w-full text-left p-2 rounded-md text-sm cursor-pointer ${selectedPageId === pageSummary.pageId ? 'bg-violet-100 text-violet-800' : 'hover:bg-gray-100'}`}
+                          className={`w-full text-left p-2 rounded-md text-xs cursor-pointer ${selectedPageId === pageSummary.pageId ? 'bg-app-iris/10 text-app-iris' : 'hover:bg-app-gray-100'}`}
                         >
                           <span className="truncate">{pageSummary.shortNote || 'Untitled Page'}</span>
                         </div>
@@ -171,7 +173,7 @@ const BookView = () => {
 
         {/* Main content: Media on top, Page note below (read-only) */}
         <div className="lg:col-span-2">
-          <div className="p-6 bg-white rounded-2xl shadow-lg border border-gray-200 flex flex-col h-full">
+          <div className="p-6 bg-white rounded-2xl shadow-appSoft border border-app-gray-100 flex flex-col h-full">
             {/* Media Section - On Top */}
             {selectedPage?.media && selectedPage.media.length > 0 && (
               <div className="mb-6">
@@ -197,7 +199,7 @@ const BookView = () => {
             )}
             
             {/* Page Content Section - Below Media */}
-            <div className="prose max-w-none flex-grow mb-6">
+            <div className="prose max-w-none flex-grow mb-6 text-app-gray-900">
               <div dangerouslySetInnerHTML={{ __html: noteHtml }} />
             </div>
 

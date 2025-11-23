@@ -182,47 +182,46 @@ const BookItem = ({ bookId, bookTitle, coverImage, onBookDeleted }) => {
     }
   };
 
-  const renderContent = () => {
-    return (
-        <div className="flex-1">
-          <h3 className="text-xl font-bold text-gray-800">{book.name}</h3>
-          <p className="text-gray-600">Click to view journey</p>
-        </div>
-    );
-  };
-
   return (
-    <div className={`relative bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-violet-100 hover:shadow-2xl transition-all duration-300 ${isDeleting ? 'pointer-events-none' : ''}`}>
-    <Link 
-      to={`/book/${bookId}`} 
-        className="flex items-center space-x-4"
+    <div className={`relative bg-white p-5 rounded-2xl shadow-appSoft border border-app-gray-100 hover:shadow-appCard hover:border-app-iris/40 transition-all duration-200 ${isDeleting ? 'pointer-events-none' : ''}`}>
+      <Link 
+        to={`/book/${bookId}`} 
+        className="flex items-center gap-4 pr-28"
       >
         {book.coverImage ? (
           <img 
             src={convertToEmulatorURL(book.coverImage)} 
             alt={book.name}
-            className="h-16 w-16 object-cover rounded-lg"
+            className="h-14 w-14 object-cover rounded-xl border border-app-gray-100"
             onError={(e) => {
               console.error('Failed to load cover image:', book.coverImage);
               e.target.style.display = 'none';
             }}
           />
         ) : (
-        <BookOpen className="h-8 w-8 text-purple-500" />
+          <div className="h-14 w-14 rounded-xl bg-app-iris/10 flex items-center justify-center text-app-iris">
+            <BookOpen className="h-6 w-6" />
+          </div>
         )}
-        {renderContent()}
+        <div className="flex-1 min-w-0">
+          <h3 className="text-sm font-semibold text-app-gray-900 truncate">
+            {book.name}
+          </h3>
+          <p className="mt-1 text-xs text-app-gray-600">
+            Click to open the editor and continue the journey.
+          </p>
+        </div>
       </Link>
 
       {/* Action Icons: View, Edit, Delete */}
       {!isDeleting && (
-        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center space-x-2">
+        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center space-x-1">
           <Link to={`/book/${bookId}/view`} title="View">
             <Button
-              variant="ghost"
+              variant="appGhost"
               size="icon"
               className="h-8 w-8"
               onClick={(e) => {
-                // allow navigation
                 e.stopPropagation();
               }}
             >
@@ -230,7 +229,7 @@ const BookItem = ({ bookId, bookTitle, coverImage, onBookDeleted }) => {
             </Button>
           </Link>
           <Button
-            variant="ghost"
+            variant="appGhost"
             size="icon"
             className="h-8 w-8"
             title="Edit"
@@ -243,7 +242,7 @@ const BookItem = ({ bookId, bookTitle, coverImage, onBookDeleted }) => {
             <Pencil className="h-4 w-4" />
           </Button>
           <Button
-            variant="ghost"
+            variant="appGhost"
             size="icon"
             className="h-8 w-8 hover:bg-red-50 hover:text-red-600"
             title="Delete"

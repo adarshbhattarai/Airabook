@@ -6,37 +6,38 @@ import { Helmet } from 'react-helmet';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/context/AuthContext';
+import AppLoader from '@/components/app/AppLoader';
 
 /**
  * Convert storage URL to emulator format if running in emulator mode
  */
 const convertToEmulatorURL = (url) => {
   if (!url) return url;
-  
+
   const useEmulator = import.meta.env.VITE_USE_EMULATOR === 'true';
-  
+
   if (!useEmulator) {
     return url;
   }
-  
+
   if (url.includes('127.0.0.1:9199') || url.includes('localhost:9199')) {
     return url;
   }
-  
+
   if (url.includes('storage.googleapis.com')) {
     try {
       const urlObj = new URL(url);
       const pathParts = urlObj.pathname.split('/').filter(p => p);
-      
+
       if (pathParts.length >= 1) {
         const bucket = pathParts[0];
         const storagePath = pathParts.slice(1).join('/');
-        
+
         let emulatorBucket = bucket;
         if (bucket.endsWith('.appspot.com')) {
           emulatorBucket = bucket.replace('.appspot.com', '.firebasestorage.app');
         }
-        
+
         const encodedPath = encodeURIComponent(storagePath);
         const token = urlObj.searchParams.get('token') || 'emulator-token';
         return `http://127.0.0.1:9199/v0/b/${emulatorBucket}/o/${encodedPath}?alt=media&token=${token}`;
@@ -46,7 +47,7 @@ const convertToEmulatorURL = (url) => {
       return url;
     }
   }
-  
+
   return url;
 };
 
@@ -93,15 +94,11 @@ const Media = () => {
   };
 
   if (loading || !appUser) {
-    return (
-      <div className="min-h-screen py-8 px-4 flex justify-center items-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-violet-500"></div>
-      </div>
-    );
+    return <AppLoader message="Loading your albums..." />;
   }
 
   return (
-    <div className="min-h-screen py-8 px-4 bg-gradient-to-br from-violet-50 via-purple-50 to-indigo-50">
+    <div className="py-6 px-4 sm:px-6 lg:px-8">
       <Helmet>
         <title>Media Gallery - Baby Aira</title>
         <meta name="description" content="Browse through your photo and video albums. Watch precious moments captured with love." />
@@ -110,16 +107,16 @@ const Media = () => {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <motion.div
-          initial={{ opacity: 0, y: -20 }}
+          initial={{ opacity: 0, y: -12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="text-center mb-12"
+          transition={{ duration: 0.4 }}
+          className="mb-8"
         >
-          <h1 className="text-5xl font-bold mb-4 bg-gradient-to-r from-purple-500 to-indigo-500 bg-clip-text text-transparent">
-            Media Gallery
+          <h1 className="text-[28px] font-semibold text-app-gray-900 leading-tight">
+            Media gallery
           </h1>
-          <p className="text-xl text-gray-700 mb-8">
-            Browse your photo and video albums
+          <p className="mt-2 text-sm text-app-gray-600 max-w-md">
+            Browse photo and video albums attached to your books.
           </p>
         </motion.div>
 
@@ -129,16 +126,16 @@ const Media = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5 }}
-            className="text-center py-16"
+            className="text-center py-16 rounded-2xl border border-app-gray-100 bg-white shadow-appSoft"
           >
             <BookOpen className="h-16 w-16 mx-auto text-gray-400 mb-4" />
-            <h3 className="text-2xl font-bold text-gray-700 mb-2">No Albums Yet</h3>
-            <p className="text-gray-600 mb-6">
+            <h3 className="text-lg font-semibold text-app-gray-900 mb-2">No albums yet</h3>
+            <p className="text-sm text-app-gray-600 mb-6">
               Start creating books and adding media to see them here.
             </p>
             <Button
               onClick={() => navigate('/dashboard')}
-              className="bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white"
+              variant="appPrimary"
             >
               Go to Dashboard
             </Button>
@@ -153,13 +150,13 @@ const Media = () => {
             {albums.map((album, index) => (
               <motion.div
                 key={album.id}
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
+                transition={{ duration: 0.4, delay: index * 0.05 }}
                 onClick={() => navigate(`/media/album/${album.id}`)}
-                className="bg-white/70 backdrop-blur-sm rounded-3xl overflow-hidden shadow-xl border border-violet-100 hover:shadow-2xl transition-all duration-300 cursor-pointer group"
+                className="bg-white rounded-2xl overflow-hidden shadow-appSoft border border-app-gray-100 hover:shadow-appCard transition-all duration-200 cursor-pointer group"
               >
-                <div className="relative aspect-square bg-gradient-to-br from-violet-200 to-purple-300">
+                <div className="relative aspect-square bg-app-gray-100">
                   {album.coverImage ? (
                     <img
                       src={convertToEmulatorURL(album.coverImage)}
@@ -171,29 +168,29 @@ const Media = () => {
                       }}
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <BookOpen className="h-16 w-16 text-violet-400" />
+                    <div className="w-full h-full flex items-center justify-center text-app-iris">
+                      <BookOpen className="h-12 w-12" />
                     </div>
                   )}
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-300 flex items-center justify-center">
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity text-white font-semibold text-lg">
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/15 transition-all duration-200 flex items-center justify-center">
+                    <div className="opacity-0 group-hover:opacity-100 transition-opacity text-white font-semibold text-sm">
                       View Album
                     </div>
                   </div>
                   {(album.mediaCount || 0) > 0 && (
-                    <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm rounded-full px-3 py-1 flex items-center gap-2 shadow-lg">
-                      <ImageIcon className="h-4 w-4 text-violet-600" />
-                      <span className="text-sm font-semibold text-gray-800">
+                    <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm rounded-full px-2.5 py-1 flex items-center gap-1.5 shadow-appSoft">
+                      <ImageIcon className="h-3.5 w-3.5 text-app-iris" />
+                      <span className="text-xs font-medium text-app-gray-900">
                         {album.mediaCount || 0}
                       </span>
                     </div>
                   )}
                 </div>
-                <div className="p-6">
-                  <h3 className="text-xl font-bold text-gray-800 mb-2 truncate">
+                <div className="p-4">
+                  <h3 className="text-sm font-semibold text-app-gray-900 mb-1 truncate">
                     {album.name || 'Untitled Album'}
                   </h3>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-xs text-app-gray-600">
                     {(album.mediaCount || 0) === 0
                       ? 'No media yet'
                       : `${album.mediaCount || 0} ${(album.mediaCount || 0) === 1 ? 'item' : 'items'}`}

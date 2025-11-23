@@ -7,3 +7,9 @@ node_modules/
 test.js
 
 .env
+
+# Runtime config with actual secrets (DO NOT COMMIT)
+.runtimeconfig.json
+
+# Example file (safe to commit - no real secrets)
+# .runtimeconfig.json.example

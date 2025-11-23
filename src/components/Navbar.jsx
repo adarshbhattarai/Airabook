@@ -13,11 +13,8 @@ const Navbar = () => {
   const { user, appUser, logout } = useAuth();
 
   const handleDonate = () => {
-    toast({
-      title: "💝 Thank you for your kindness!",
-      description: "🚧 This feature isn\'t implemented yet—but don\'t worry! You can request it in your next prompt! 🚀",
-      duration: 5000,
-    });
+    navigate('/donate');
+    setIsOpen(false);
   };
 
   const handleLogout = async () => {
@@ -38,7 +35,7 @@ const Navbar = () => {
   ];
 
   const visibleNavItems = navItems.filter(item => item.public || user);
-  
+
   const userName = appUser?.displayName || user?.displayName || 'User';
   const avatarUrl = user?.photoURL;
 
@@ -46,17 +43,17 @@ const Navbar = () => {
     <nav className="bg-white/80 backdrop-blur-md shadow-lg sticky top-0 z-50 border-b border-violet-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-          <Link to={homePath} className="flex items-center space-x-2">
+          <div onClick={() => window.location.href = homePath} className="flex items-center space-x-2 cursor-pointer">
             <motion.div
               whileHover={{ scale: 1.05 }}
               className="flex items-center space-x-2"
             >
               <Heart className="h-8 w-8 text-violet-500 fill-current" />
               <span className="text-2xl font-bold bg-gradient-to-r from-purple-500 to-indigo-500 bg-clip-text text-transparent">
-              Airäbook
+                Airäbook
               </span>
             </motion.div>
-          </Link>
+          </div>
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-4">
@@ -64,21 +61,20 @@ const Navbar = () => {
               <Link
                 key={item.name}
                 to={item.path}
-                className={`px-3 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
-                  location.pathname === item.path
+                className={`px-3 py-2 rounded-full text-sm font-medium transition-all duration-200 ${location.pathname === item.path
                     ? 'bg-violet-100 text-violet-700'
                     : 'text-gray-700 hover:bg-violet-50 hover:text-violet-600'
-                }`}
+                  }`}
               >
                 {item.name}
               </Link>
             ))}
-             <Button
-                  onClick={handleDonate}
-                  className="bg-gradient-to-r from-yellow-400 to-orange-400 hover:from-yellow-500 hover:to-orange-500 text-white px-4 py-2 rounded-full shadow-lg hover:shadow-xl transition-all duration-200"
-                >
-                  💝 Donate
-                </Button>
+            <Button
+              onClick={handleDonate}
+              className="bg-gradient-to-r from-yellow-400 to-orange-400 hover:from-yellow-500 hover:to-orange-500 text-white px-4 py-2 rounded-full shadow-lg hover:shadow-xl transition-all duration-200"
+            >
+              💝 Donate
+            </Button>
             {user ? (
               <div className="flex items-center space-x-4">
                 <div className="flex items-center space-x-2">
@@ -102,20 +98,20 @@ const Navbar = () => {
                 </Button>
                 <Button asChild className="bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200">
                   <Link to="/signup"><UserPlus className="h-4 w-4 mr-2" />Signup</Link>
-                  </Button>
+                </Button>
               </>
             )}
           </div>
 
           {/* Mobile menu button */}
           <div className="md:hidden flex items-center gap-2">
-             <Button
-                  onClick={handleDonate}
-                  size="sm"
-                  className="bg-gradient-to-r from-yellow-400 to-orange-400 text-white rounded-full shadow-md"
-                >
-                  💝
-                </Button>
+            <Button
+              onClick={handleDonate}
+              size="sm"
+              className="bg-gradient-to-r from-yellow-400 to-orange-400 text-white rounded-full shadow-md"
+            >
+              💝
+            </Button>
             <button
               onClick={() => setIsOpen(!isOpen)}
               className="text-gray-700 hover:text-violet-600 transition-colors"
@@ -136,7 +132,7 @@ const Navbar = () => {
             <div className="flex flex-col space-y-2">
               {user && (
                 <div className="flex items-center space-x-3 px-3 py-2">
-                   {avatarUrl ? (
+                  {avatarUrl ? (
                     <img src={avatarUrl} alt={userName} className="h-10 w-10 rounded-full" />
                   ) : (
                     <div className="h-10 w-10 rounded-full bg-violet-200 flex items-center justify-center">
@@ -151,11 +147,10 @@ const Navbar = () => {
                   key={item.name}
                   to={item.path}
                   onClick={() => setIsOpen(false)}
-                  className={`px-3 py-2 rounded-lg text-base font-medium transition-all duration-200 ${
-                    location.pathname === item.path
+                  className={`px-3 py-2 rounded-lg text-base font-medium transition-all duration-200 ${location.pathname === item.path
                       ? 'bg-violet-100 text-violet-700'
                       : 'text-gray-700 hover:bg-violet-50 hover:text-violet-600'
-                  }`}
+                    }`}
                 >
                   {item.name}
                 </Link>
