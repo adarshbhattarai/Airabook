@@ -6,7 +6,7 @@ const logger = require('firebase-functions/logger');
 const admin = require('firebase-admin');
 const FieldValue = require('firebase-admin/firestore').FieldValue;
 
-const { extractTextFromHtml, generateGeminiEmbeddings } = require('./utils/embeddingsClient');
+const { extractTextFromHtml, generateEmbeddings } = require('./utils/embeddingsClient');
 const { updateChapterPageSummary } = require('./utils/chapterUtils');
 
 const db = admin.firestore();
@@ -73,7 +73,7 @@ exports.updatePage = onCall(
 
             if (plainText && plainText.length > 0) {
                 try {
-                    embeddings = await generateGeminiEmbeddings(plainText, {
+                    embeddings = await generateEmbeddings(plainText, {
                         taskType: 'RETRIEVAL_DOCUMENT'
                     });
                     embeddingModel = 'text-embedding-004';
@@ -92,7 +92,7 @@ exports.updatePage = onCall(
             const updateData = {
                 note: note || '',
                 plainText,
-                embeddings,
+                embeddings: (embeddings && embeddings.length > 0) ? FieldValue.vector(embeddings) : null,
                 embeddingModel,
                 media: media !== undefined ? media : pageDoc.data().media,
                 updatedAt: FieldValue.serverTimestamp(),

@@ -2,6 +2,7 @@
 // Gemini embeddings client for generating text embeddings
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { ai, textEmbedding004 } = require('../genkitClient');
 
 // Get API key from environment
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -42,10 +43,59 @@ function extractTextFromHtml(html = '') {
 }
 
 /**
+ * generateEmbeddings(input, options)
+ *
+ * input can be:
+ *  - string
+ *  - Genkit Document: { content: [{ text: "..." }, ...] }
+ *  - array of parts: [{ text: "..." }, ...]
+ */
+async function generateEmbeddings(input, options = {}) {
+    let text = "";
+
+    // Case 1: simple string
+    if (typeof input === "string") {
+        text = input.trim();
+    }
+
+    // Case 2: full Document { content: [...] }
+    else if (input && typeof input === "object" && Array.isArray(input.content)) {
+        const texts = input.content
+            .filter((part) => typeof part.text === "string" && part.text.trim())
+            .map((part) => part.text.trim());
+
+        text = texts.join("\n\n"); // handles multi-content
+    }
+
+    // Case 3: direct parts array [{ text }]
+    else if (Array.isArray(input)) {
+        const texts = input
+            .filter((part) => typeof part.text === "string" && part.text.trim())
+            .map((part) => part.text.trim());
+
+        text = texts.join("\n\n");
+    }
+
+    if (!text) {
+        throw new Error("Text is required for embeddings generation.");
+    }
+
+    const taskType = options.taskType || "RETRIEVAL_DOCUMENT";
+
+    const result = await ai.embed({
+        embedder: textEmbedding004,
+        content: text,
+        options: { taskType },
+    });
+
+    return result[0].embedding; // number[]
+}
+/**
  * Generate embeddings using Gemini embedding model
  * @param {string} text - Text to generate embeddings for
  * @param {Object} options - Options like taskType
  * @returns {Promise<Array<number>>} Embedding vector
+ * @deprecated
  */
 async function generateGeminiEmbeddings(text, options = {}) {
     if (!genAI) {
@@ -89,4 +139,5 @@ async function generateGeminiEmbeddings(text, options = {}) {
 module.exports = {
     extractTextFromHtml,
     generateGeminiEmbeddings,
+    generateEmbeddings,
 };

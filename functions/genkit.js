@@ -1,19 +1,13 @@
-const { genkit, z } = require('genkit');
-const { googleAI, gemini15Flash, textEmbedding004 } = require('@genkit-ai/googleai');
+const { ai, textEmbedding004 } = require('./genkitClient');
+const { z } = require('genkit');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
-
+const { generateEmbeddings } = require('./utils/embeddingsClient');
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
     admin.initializeApp();
 }
 const db = admin.firestore();
-
-// Configure Genkit
-const ai = genkit({
-    plugins: [googleAI()],
-    model: gemini15Flash, // Default model
-});
 
 // Define the Retriever
 const bookPagesRetriever = ai.defineRetriever(
@@ -26,29 +20,20 @@ const bookPagesRetriever = ai.defineRetriever(
     },
     async (input, options) => {
         const { userId, k } = options;
-        const queryEmbedding = await ai.embed({
-            embedder: textEmbedding004,
-            content: input,
-            options: { taskType: 'RETRIEVAL_QUERY' },
+
+        const queryEmbedding = await generateEmbeddings(input, {
+            taskType: 'RETRIEVAL_QUERY',
         });
 
-        console.log("queryEmbedding generated, length:", queryEmbedding.length);
-
+        console.log(
+            'queryEmbedding length:',
+            queryEmbedding.length
+        );
         // Firestore Vector Search
         // CRITICAL: Filter by createdBy to ensure user isolation
         const coll = db.collectionGroup('pages');
-        console.log("coll", coll);
+
         try {
-
-            const snapshot2 = await coll
-                .where('createdBy', '==', userId)
-                .get();
-
-            console.log("snapshot2 docs:", snapshot2.docs.map(d => ({
-                id: d.id,
-                path: d.ref.path,
-                data: d.data()
-            })));
 
             const snapshot = await coll
                 .where('createdBy', '==', userId)
@@ -113,6 +98,8 @@ const queryBookFlowRaw = ai.defineFlow(
             query: query,
             options: { userId: userId, k: 3 },
         });
+
+        console.log("docs:", docs);
 
         // Construct history for the model (excluding the last message which is the current prompt)
         const history = messages.slice(0, -1).map(m => ({

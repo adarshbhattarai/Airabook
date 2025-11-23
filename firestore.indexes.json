@@ -1,13 +1,15 @@
 {
-  "indexes": [
+  "indexes": [],
+  "fieldOverrides": [
     {
       "collectionGroup": "pages",
       "fieldPath": "embeddings",
-      "vectorConfig": {
-        "dimension": 768,
-        "flat": {}
-      }
+      "vectorIndexes": [
+        {
+          "dimension": 768,
+          "distanceMeasure": "COSINE"
+        }
+      ]
     }
-  ],
-  "fieldOverrides": []
+  ]
 }
