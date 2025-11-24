@@ -160,7 +160,7 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description }) =
 // ======================
 // PageEditor (UPDATED)
 // ======================
-const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNavigate, pageIndex, totalPages, clearEditor }) => {
+const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNavigate, pageIndex, totalPages, clearEditor, chapterTitle }) => {
   const [note, setNote] = useState(page.note || '');
   const [isSaving, setIsSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({});
@@ -555,9 +555,16 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
   return (
     <div className="p-6 bg-white rounded-2xl shadow-lg border border-gray-200 flex flex-col h-full">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-2xl font-bold text-gray-800">
-          Page {pageIndex + 1}
-        </h2>
+        <div>
+          {chapterTitle && (
+            <div className="text-xs font-semibold text-violet-600 uppercase tracking-wider mb-1">
+              {chapterTitle}
+            </div>
+          )}
+          <h2 className="text-2xl font-bold text-gray-800">
+            Page {pageIndex + 1}
+          </h2>
+        </div>
         <div className="relative group">
           <Button
             variant="secondary"
@@ -2236,12 +2243,18 @@ const BookDetail = () => {
                   pageIndex={pages.findIndex(p => p.id === selectedPageId)}
                   totalPages={pages.length}
                   clearEditor={clearEditor}
+                  chapterTitle={chapters.find(c => c.id === selectedChapterId)?.title}
                 />
               ) : (
                 <div className="flex flex-col justify-center items-center text-center h-full p-6">
                   <div className="bg-gray-50 rounded-full p-6 mb-4">
                     <Sparkles className="h-8 w-8 text-violet-400" />
                   </div>
+                  {selectedChapterId && (
+                    <h3 className="text-lg font-medium text-violet-600 mb-1">
+                      {chapters.find(c => c.id === selectedChapterId)?.title}
+                    </h3>
+                  )}
                   <h2 className="text-xl font-semibold text-gray-800">{selectedChapterId ? 'Ready to write?' : 'Select a chapter'}</h2>
                   <p className="mt-2 text-gray-500 max-w-xs">{selectedChapterId ? 'Select a page or create a new one to start writing.' : 'Create a new chapter to get started.'}</p>
                   {selectedChapterId && canEdit && <Button onClick={handleAddPage} className="mt-6"><PlusCircle className="h-4 w-4 mr-2" />Add Page</Button>}

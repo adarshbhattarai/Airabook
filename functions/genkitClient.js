@@ -4,7 +4,7 @@ const { googleAI, gemini15Flash, textEmbedding004 } = require('@genkit-ai/google
 
 const ai = genkit({
     plugins: [googleAI()],
-    model: gemini15Flash, // default LLM for ai.generate / flows
+    model: googleAI.model('gemini-2.5-flash'), // default LLM for ai.generate / flows
 });
 
 module.exports = {
