@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Bell, Settings, LogOut, User } from 'lucide-react';
+import { Search, Bell, LogOut, User } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { AppInput } from '@/components/ui/input';
@@ -9,6 +9,7 @@ const AppHeader = () => {
   const { user, appUser, logout } = useAuth();
   const navigate = useNavigate();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const profileMenuRef = useRef(null);
 
@@ -65,29 +66,40 @@ const AppHeader = () => {
       {/* Right: Notifications, Settings, Profile */}
       <div className="flex items-center gap-2">
         {/* Notifications */}
-        <Button
-          variant="appGhost"
-          size="icon"
-          className="h-9 w-9 relative"
-          onClick={() => {
-            // TODO: Open notifications panel
-            console.log('Notifications clicked');
-          }}
-        >
-          <Bell className="h-5 w-5" />
-          {/* Notification badge (optional) */}
-          {/* <span className="absolute top-1 right-1 h-2 w-2 bg-app-iris rounded-full" /> */}
-        </Button>
+        {/* Notifications */}
+        <div className="relative">
+          <Button
+            variant="appGhost"
+            size="icon"
+            className="h-9 w-9 relative"
+            onClick={() => setShowNotifications(!showNotifications)}
+          >
+            <Bell className="h-5 w-5" />
+          </Button>
 
-        {/* Settings */}
-        <Button
-          variant="appGhost"
-          size="icon"
-          className="h-9 w-9"
-          onClick={() => navigate('/settings')}
-        >
-          <Settings className="h-5 w-5" />
-        </Button>
+          {showNotifications && (
+            <>
+              <div
+                className="fixed inset-0 z-40"
+                onClick={() => setShowNotifications(false)}
+              />
+              <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-appCard border border-app-gray-300 py-4 z-50">
+                <div className="px-4 pb-2 border-b border-app-gray-100">
+                  <h3 className="font-semibold text-app-gray-900">Notifications</h3>
+                </div>
+                <div className="px-4 py-8 flex flex-col items-center justify-center text-center">
+                  <div className="h-10 w-10 rounded-full bg-app-gray-50 flex items-center justify-center mb-3 text-app-gray-400">
+                    <Bell className="h-5 w-5" />
+                  </div>
+                  <p className="text-sm font-medium text-app-gray-900">No notifications yet</p>
+                  <p className="text-xs text-app-gray-500 mt-1">
+                    We'll let you know when something important happens.
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
 
         {/* Profile dropdown */}
         <div className="relative" ref={profileMenuRef}>

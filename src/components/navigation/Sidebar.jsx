@@ -1,17 +1,12 @@
 import React from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
   BookOpen,
   Image as ImageIcon,
   StickyNote,
   Heart,
-  Receipt,
-  Settings,
-  User,
-  LogOut,
 } from 'lucide-react';
-import { useAuth } from '@/context/AuthContext';
 
 const sections = [
   {
@@ -27,23 +22,11 @@ const sections = [
     label: 'Support',
     items: [
       { name: '💝 Support Us', icon: Heart, to: '/donate' },
-      { name: 'Transactions', icon: Receipt, to: '/donate/success' },
     ],
   },
 ];
 
 const SidebarContent = ({ onNavigate }) => {
-  const { user, logout, appUser } = useAuth();
-  const navigate = useNavigate();
-
-  const handleLogout = async () => {
-    await logout();
-    navigate('/login');
-    if (onNavigate) onNavigate();
-  };
-
-  const displayName = appUser?.displayName || user?.displayName || 'Your account';
-
   return (
     <div className="flex flex-col h-full">
       <div
@@ -91,35 +74,6 @@ const SidebarContent = ({ onNavigate }) => {
           </div>
         ))}
       </nav>
-
-      <div className="border-t border-app-gray-100 px-3 py-4 space-y-2">
-        <button
-          type="button"
-          className="w-full flex items-center gap-3 px-3 py-2 text-sm rounded-xl text-app-gray-600 hover:bg-app-gray-50"
-          onClick={onNavigate}
-        >
-          <Settings className="h-4 w-4" />
-          <span>Settings</span>
-        </button>
-        <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-app-gray-50">
-          <div className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded-full bg-app-mint text-app-navy flex items-center justify-center text-xs font-semibold">
-              {displayName.charAt(0).toUpperCase()}
-            </div>
-            <span className="text-xs font-medium text-app-gray-900 truncate max-w-[120px]">
-              {displayName}
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="inline-flex items-center justify-center rounded-pill px-2 py-1 text-[11px] font-semibold text-app-gray-600 hover:bg-app-gray-100"
-          >
-            <LogOut className="h-3 w-3 mr-1" />
-            Logout
-          </button>
-        </div>
-      </div>
     </div>
   );
 };

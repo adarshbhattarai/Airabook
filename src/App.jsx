@@ -18,6 +18,7 @@ import DonateSuccess from '@/pages/DonateSuccess';
 import BookDetail from '@/pages/BookDetail';
 import BookView from '@/pages/BookView';
 import AlbumDetail from '@/pages/AlbumDetail';
+import ErrorPage from '@/pages/ErrorPage';
 
 // A wrapper to protect routes that require authentication
 const PrivateRoute = ({ children }) => {
@@ -143,6 +144,8 @@ function App() {
                 </PrivateRoute>
               }
             />
+            <Route path="/error" element={<ErrorPage />} />
+            <Route path="*" element={<Navigate to="/error" replace />} />
           </Routes>
         </main>
         <Toaster />
