@@ -7,13 +7,13 @@ const AppShell = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-screen bg-white text-foreground">
+    <div className="flex min-h-screen bg-background text-foreground transition-colors">
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden bg-background transition-colors">
         <MobileTopBar onMenuClick={() => setSidebarOpen(true)} />
         <AppHeader />
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto bg-background transition-colors">
           {children}
         </main>
       </div>
