@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { SunMedium, Binary } from 'lucide-react';
+import { SunMedium, Binary, MoonStar } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,6 +26,12 @@ const themeOptions = [
     description: 'Green on dark',
     icon: Binary,
   },
+  {
+    value: 'dark',
+    label: 'Dark',
+    description: 'Black with green text',
+    icon: MoonStar,
+  },
 ];
 
 const ThemeToggle = ({ align = 'end', variant = 'ghost', className }) => {
@@ -43,7 +49,7 @@ const ThemeToggle = ({ align = 'end', variant = 'ghost', className }) => {
           variant={variant}
           className={cn(
             'flex items-center gap-2 rounded-full px-3 text-sm font-medium',
-            theme === 'matrix'
+            theme !== 'light'
               ? 'bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20 border border-emerald-400/30'
               : 'text-app-gray-900 hover:bg-app-gray-100',
             className,

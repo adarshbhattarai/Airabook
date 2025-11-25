@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from '
 
 const ThemeContext = createContext();
 const STORAGE_KEY = 'airabook-theme';
-const SUPPORTED_THEMES = ['light', 'matrix'];
+const SUPPORTED_THEMES = ['light', 'matrix', 'dark'];
 
 export const ThemeProvider = ({ children }) => {
   const [theme, setTheme] = useState(() => {
@@ -17,7 +17,7 @@ export const ThemeProvider = ({ children }) => {
     const root = document.documentElement;
     SUPPORTED_THEMES.forEach((value) => root.classList.remove(`theme-${value}`));
     root.classList.add(`theme-${theme}`);
-    root.style.setProperty('color-scheme', theme === 'matrix' ? 'dark' : 'light');
+    root.style.setProperty('color-scheme', theme === 'light' ? 'light' : 'dark');
     localStorage.setItem(STORAGE_KEY, theme);
 
     return () => {

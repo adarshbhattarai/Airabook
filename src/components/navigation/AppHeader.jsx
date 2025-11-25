@@ -21,7 +21,7 @@ const AppHeader = () => {
   const userEmail = appUser?.email || user?.email || '';
   const avatarUrl = user?.photoURL;
   const initial = userName.charAt(0).toUpperCase();
-  const isMatrix = theme === 'matrix';
+  const isNeonTheme = theme !== 'light';
 
   // Close profile menu when clicking outside
   useEffect(() => {
@@ -51,7 +51,7 @@ const AppHeader = () => {
     <header
       className={cn(
         'hidden md:flex h-16 items-center justify-between px-6 shrink-0 border-b bg-card text-foreground border-border',
-        isMatrix && 'shadow-[0_12px_30px_rgba(16,185,129,0.12)]',
+        isNeonTheme && 'shadow-[0_12px_30px_rgba(16,185,129,0.12)]',
       )}
     >
       {/* Left: Empty or subtle branding */}

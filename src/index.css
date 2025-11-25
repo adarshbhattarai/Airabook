@@ -68,6 +68,46 @@
   --body-background: radial-gradient(circle at 20% 20%, rgba(0, 245, 160, 0.08), transparent 30%), radial-gradient(circle at 80% 0%, rgba(110, 247, 200, 0.12), transparent 35%), #050b08;
 }
 
+.theme-dark {
+  --primary: 141 84% 60%;
+  --primary-foreground: 150 24% 10%;
+  --secondary: 150 18% 12%;
+  --secondary-foreground: 136 82% 82%;
+  --muted: 150 18% 14%;
+  --muted-foreground: 136 60% 70%;
+  --accent: 150 20% 16%;
+  --accent-foreground: 136 82% 82%;
+  --destructive: 0 84% 55%;
+  --destructive-foreground: 0 0% 96%;
+  --border: 150 18% 24%;
+  --input: 150 18% 24%;
+  --ring: 141 84% 60%;
+  --background: 0 0% 0%;
+  --foreground: 136 90% 70%;
+  --card: 0 0% 6%;
+  --card-foreground: 136 90% 70%;
+  --popover: 0 0% 6%;
+  --popover-foreground: 136 90% 70%;
+  --chart-1: 141 84% 60%;
+  --chart-2: 160 84% 45%;
+  --chart-3: 98 72% 55%;
+  --chart-4: 132 64% 62%;
+  --chart-5: 165 78% 48%;
+  --app-iris: #00ff7f;
+  --app-iris-hover: #00d46b;
+  --app-violet: #6ef7c8;
+  --app-mint: #60f6ae;
+  --app-gray-50: #050505;
+  --app-gray-100: #0a0a0a;
+  --app-gray-300: #0f1f14;
+  --app-gray-600: #6ee7b7;
+  --app-gray-900: #bbf7d0;
+  --app-navy: #000000;
+  --app-gradient-spotlight: radial-gradient(circle at 20% 20%, rgba(0, 255, 127, 0.25), transparent 35%), radial-gradient(circle at 80% 0%, rgba(110, 247, 200, 0.2), transparent 35%), #000000;
+  --app-gradient-book: linear-gradient(135deg, #0ba360 0%, #00ff7f 100%);
+  --body-background: #000000;
+}
+
 * {
   border-color: hsl(var(--border));
 }
@@ -79,7 +119,8 @@ body {
   color: hsl(var(--foreground));
 }
 
-.theme-matrix body {
+.theme-matrix body,
+.theme-dark body {
   color: hsl(var(--foreground));
 }
 
@@ -102,15 +143,18 @@ body {
   background: linear-gradient(135deg, #7c3aed, #8b5cf6); /* Darker violet on hover */
 }
 
-.theme-matrix ::-webkit-scrollbar-track {
+.theme-matrix ::-webkit-scrollbar-track,
+.theme-dark ::-webkit-scrollbar-track {
   background: #0f1a13;
 }
 
-.theme-matrix ::-webkit-scrollbar-thumb {
+.theme-matrix ::-webkit-scrollbar-thumb,
+.theme-dark ::-webkit-scrollbar-thumb {
   background: linear-gradient(135deg, #22c55e, #10b981);
 }
 
-.theme-matrix ::-webkit-scrollbar-thumb:hover {
+.theme-matrix ::-webkit-scrollbar-thumb:hover,
+.theme-dark ::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(135deg, #16a34a, #0f9f6e);
 }
 
@@ -143,7 +187,8 @@ a:focus-visible {
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-.theme-matrix .glass {
+.theme-matrix .glass,
+.theme-dark .glass {
   background: rgba(12, 22, 17, 0.75);
   border: 1px solid rgba(34, 197, 94, 0.25);
 }
@@ -159,43 +204,69 @@ a:focus-visible {
 }
 
 .theme-matrix body,
+.theme-dark body,
 .theme-matrix p,
+.theme-dark p,
 .theme-matrix span,
+.theme-dark span,
 .theme-matrix h1,
+.theme-dark h1,
 .theme-matrix h2,
+.theme-dark h2,
 .theme-matrix h3,
+.theme-dark h3,
 .theme-matrix h4,
+.theme-dark h4,
 .theme-matrix h5,
+.theme-dark h5,
 .theme-matrix h6,
+.theme-dark h6,
 .theme-matrix label,
+.theme-dark label,
 .theme-matrix li,
-.theme-matrix div {
+.theme-dark li,
+.theme-matrix div,
+.theme-dark div {
   color: hsl(var(--foreground));
 }
 
-.theme-matrix .text-muted-foreground {
+.theme-matrix .text-muted-foreground,
+.theme-dark .text-muted-foreground {
   color: hsl(var(--muted-foreground)) !important;
 }
 
 .theme-matrix .text-gray-700,
+.theme-dark .text-gray-700,
 .theme-matrix .text-gray-800,
+.theme-dark .text-gray-800,
 .theme-matrix .text-gray-900,
+.theme-dark .text-gray-900,
 .theme-matrix .text-app-gray-600,
-.theme-matrix .text-app-gray-900 {
+.theme-dark .text-app-gray-600,
+.theme-matrix .text-app-gray-900,
+.theme-dark .text-app-gray-900 {
   color: hsl(var(--foreground)) !important;
 }
 
 .theme-matrix .bg-white,
+.theme-dark .bg-white,
 .theme-matrix .bg-app-gray-50,
+.theme-dark .bg-app-gray-50,
 .theme-matrix .bg-app-gray-100,
+.theme-dark .bg-app-gray-100,
 .theme-matrix .bg-card,
-.theme-matrix .bg-background {
+.theme-dark .bg-card,
+.theme-matrix .bg-background,
+.theme-dark .bg-background {
   background-color: hsl(var(--card)) !important;
 }
 
 .theme-matrix .border-app-gray-300,
+.theme-dark .border-app-gray-300,
 .theme-matrix .border-app-gray-100,
-.theme-matrix .border-border {
+.theme-dark .border-app-gray-100,
+.theme-matrix .border-border,
+.theme-dark .border-border {
   border-color: hsl(var(--border)) !important;
 }
 
