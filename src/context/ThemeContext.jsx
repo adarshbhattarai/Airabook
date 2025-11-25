@@ -19,6 +19,12 @@ export const ThemeProvider = ({ children }) => {
     root.classList.add(`theme-${theme}`);
     root.style.setProperty('color-scheme', theme === 'matrix' ? 'dark' : 'light');
     localStorage.setItem(STORAGE_KEY, theme);
+
+    return () => {
+      SUPPORTED_THEMES.forEach((value) => root.classList.remove(`theme-${value}`));
+      root.classList.add('theme-light');
+      root.style.setProperty('color-scheme', 'light');
+    };
   }, [theme]);
 
   const value = useMemo(

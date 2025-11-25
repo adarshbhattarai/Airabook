@@ -1,17 +1,9 @@
 import React from 'react';
 import Navbar from '@/components/Navbar';
-import { useTheme } from '@/context/ThemeContext';
-import { cn } from '@/lib/utils';
 
 const MarketingLayout = ({ children }) => {
-  const { theme } = useTheme();
-  const isMatrix = theme === 'matrix';
-
   return (
-    <div
-      className={cn('min-h-screen transition-colors', isMatrix ? 'text-emerald-200' : 'text-foreground')}
-      style={{ background: 'var(--app-gradient-spotlight)' }}
-    >
+    <div className="min-h-screen bg-gradient-to-br from-violet-50 via-rose-50 to-amber-50">
       <Navbar />
       <main>{children}</main>
     </div>

@@ -5,17 +5,12 @@ import { Heart, Menu, X, LogOut, UserPlus, LogIn, User as UserIcon } from 'lucid
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
 import { useAuth } from '@/context/AuthContext';
-import ThemeToggle from '@/components/ThemeToggle';
-import { useTheme } from '@/context/ThemeContext';
-import { cn } from '@/lib/utils';
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { user, appUser, logout } = useAuth();
-  const { theme } = useTheme();
-  const isMatrix = theme === 'matrix';
 
   const handleDonate = () => {
     navigate('/donate');
@@ -43,39 +38,9 @@ const Navbar = () => {
 
   const userName = appUser?.displayName || user?.displayName || 'User';
   const avatarUrl = user?.photoURL;
-  const navClasses = cn(
-    'backdrop-blur-md sticky top-0 z-50 border-b transition-colors',
-    isMatrix
-      ? 'bg-app-gray-100/80 border-emerald-500/30 shadow-[0_10px_30px_rgba(16,185,129,0.2)]'
-      : 'bg-white/80 border-violet-100 shadow-lg',
-  );
-
-  const navLinkClass = (path) => cn(
-    'px-3 py-2 rounded-full text-sm font-medium transition-all duration-200',
-    isMatrix
-      ? 'text-emerald-200 hover:bg-emerald-900/40 hover:text-emerald-100'
-      : 'text-gray-700 hover:bg-violet-50 hover:text-violet-600',
-    location.pathname === path
-      ? isMatrix
-        ? 'bg-emerald-900/50 text-emerald-100 border border-emerald-400/30'
-        : 'bg-violet-100 text-violet-700'
-      : null,
-  );
-
-  const mobileNavLinkClass = (path) => cn(
-    'px-3 py-2 rounded-lg text-base font-medium transition-all duration-200',
-    isMatrix
-      ? 'text-emerald-200 hover:bg-emerald-900/40 hover:text-emerald-100'
-      : 'text-gray-700 hover:bg-violet-50 hover:text-violet-600',
-    location.pathname === path
-      ? isMatrix
-        ? 'bg-emerald-900/50 text-emerald-100 border border-emerald-400/30'
-        : 'bg-violet-100 text-violet-700'
-      : null,
-  );
 
   return (
-    <nav className={navClasses}>
+    <nav className="bg-white/80 backdrop-blur-md shadow-lg sticky top-0 z-50 border-b border-violet-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <div onClick={() => window.location.href = homePath} className="flex items-center space-x-2 cursor-pointer">
@@ -83,15 +48,8 @@ const Navbar = () => {
               whileHover={{ scale: 1.05 }}
               className="flex items-center space-x-2"
             >
-              <Heart className={cn('h-8 w-8 fill-current', isMatrix ? 'text-emerald-400' : 'text-violet-500')} />
-              <span
-                className={cn(
-                  'text-2xl font-bold bg-clip-text text-transparent',
-                  isMatrix
-                    ? 'bg-gradient-to-r from-emerald-400 via-emerald-300 to-emerald-500'
-                    : 'bg-gradient-to-r from-purple-500 to-indigo-500',
-                )}
-              >
+              <Heart className="h-8 w-8 text-violet-500 fill-current" />
+              <span className="text-2xl font-bold bg-gradient-to-r from-purple-500 to-indigo-500 bg-clip-text text-transparent">
                 Airäbook
               </span>
             </motion.div>
@@ -103,20 +61,17 @@ const Navbar = () => {
               <Link
                 key={item.name}
                 to={item.path}
-                className={navLinkClass(item.path)}
+                className={`px-3 py-2 rounded-full text-sm font-medium transition-all duration-200 ${location.pathname === item.path
+                    ? 'bg-violet-100 text-violet-700'
+                    : 'text-gray-700 hover:bg-violet-50 hover:text-violet-600'
+                  }`}
               >
                 {item.name}
               </Link>
             ))}
-            <ThemeToggle />
             <Button
               onClick={handleDonate}
-              className={cn(
-                'px-4 py-2 rounded-full shadow-lg hover:shadow-xl transition-all duration-200',
-                isMatrix
-                  ? 'bg-gradient-to-r from-emerald-500/40 via-emerald-600/50 to-emerald-500/40 text-emerald-50 border border-emerald-400/40'
-                  : 'bg-gradient-to-r from-yellow-400 to-orange-400 hover:from-yellow-500 hover:to-orange-500 text-white',
-              )}
+              className="bg-gradient-to-r from-yellow-400 to-orange-400 hover:from-yellow-500 hover:to-orange-500 text-white px-4 py-2 rounded-full shadow-lg hover:shadow-xl transition-all duration-200"
             >
               💝 Donate
             </Button>
@@ -126,52 +81,22 @@ const Navbar = () => {
                   {avatarUrl ? (
                     <img src={avatarUrl} alt={userName} className="h-8 w-8 rounded-full" />
                   ) : (
-                    <div
-                      className={cn(
-                        'h-8 w-8 rounded-full flex items-center justify-center',
-                        isMatrix ? 'bg-emerald-500/20 text-emerald-200' : 'bg-violet-200',
-                      )}
-                    >
-                      <UserIcon className="h-5 w-5" />
+                    <div className="h-8 w-8 rounded-full bg-violet-200 flex items-center justify-center">
+                      <UserIcon className="h-5 w-5 text-violet-600" />
                     </div>
                   )}
-                  <span className="text-sm font-medium text-foreground">{userName}</span>
+                  <span className="text-sm font-medium text-gray-700">{userName}</span>
                 </div>
-                <Button
-                  onClick={handleLogout}
-                  variant="outline"
-                  size="sm"
-                  className={cn(
-                    'rounded-full',
-                    isMatrix
-                      ? 'border-emerald-400/50 text-emerald-200 hover:bg-emerald-900/40'
-                      : 'border-violet-300 text-violet-600 hover:bg-violet-100 hover:text-violet-700',
-                  )}
-                >
+                <Button onClick={handleLogout} variant="outline" size="sm" className="rounded-full border-violet-300 text-violet-600 hover:bg-violet-100 hover:text-violet-700">
                   <LogOut className="h-4 w-4" />
                 </Button>
               </div>
             ) : (
               <>
-                <Button
-                  asChild
-                  variant="ghost"
-                  className={cn(
-                    'rounded-full',
-                    isMatrix ? 'text-emerald-200 hover:bg-emerald-900/40' : 'text-violet-600 hover:bg-violet-100 hover:text-violet-700',
-                  )}
-                >
+                <Button asChild variant="ghost" className="rounded-full text-violet-600 hover:bg-violet-100 hover:text-violet-700">
                   <Link to="/login"><LogIn className="h-4 w-4 mr-2" />Login</Link>
                 </Button>
-                <Button
-                  asChild
-                  className={cn(
-                    'rounded-full shadow-lg hover:shadow-xl transition-all duration-200',
-                    isMatrix
-                      ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-emerald-50'
-                      : 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white',
-                  )}
-                >
+                <Button asChild className="bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200">
                   <Link to="/signup"><UserPlus className="h-4 w-4 mr-2" />Signup</Link>
                 </Button>
               </>
@@ -183,21 +108,13 @@ const Navbar = () => {
             <Button
               onClick={handleDonate}
               size="sm"
-              className={cn(
-                'rounded-full shadow-md',
-                isMatrix
-                  ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-emerald-50'
-                  : 'bg-gradient-to-r from-yellow-400 to-orange-400 text-white',
-              )}
+              className="bg-gradient-to-r from-yellow-400 to-orange-400 text-white rounded-full shadow-md"
             >
               💝
             </Button>
             <button
               onClick={() => setIsOpen(!isOpen)}
-              className={cn(
-                'transition-colors',
-                isMatrix ? 'text-emerald-200 hover:text-emerald-100' : 'text-gray-700 hover:text-violet-600',
-              )}
+              className="text-gray-700 hover:text-violet-600 transition-colors"
             >
               {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </button>
@@ -210,7 +127,7 @@ const Navbar = () => {
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className={cn('md:hidden py-4 border-t', isMatrix ? 'border-emerald-500/30' : 'border-violet-100')}
+            className="md:hidden py-4 border-t border-violet-100"
           >
             <div className="flex flex-col space-y-2">
               {user && (
@@ -218,57 +135,40 @@ const Navbar = () => {
                   {avatarUrl ? (
                     <img src={avatarUrl} alt={userName} className="h-10 w-10 rounded-full" />
                   ) : (
-                    <div
-                      className={cn(
-                        'h-10 w-10 rounded-full flex items-center justify-center',
-                        isMatrix ? 'bg-emerald-500/20 text-emerald-200' : 'bg-violet-200 text-violet-600',
-                      )}
-                    >
-                      <UserIcon className="h-6 w-6" />
+                    <div className="h-10 w-10 rounded-full bg-violet-200 flex items-center justify-center">
+                      <UserIcon className="h-6 w-6 text-violet-600" />
                     </div>
                   )}
-                  <span className="font-medium text-foreground">{userName}</span>
+                  <span className="font-medium text-gray-800">{userName}</span>
                 </div>
               )}
-              <div className="px-3">
-                <ThemeToggle className="w-full justify-start" />
-              </div>
               {visibleNavItems.map((item) => (
                 <Link
                   key={item.name}
                   to={item.path}
                   onClick={() => setIsOpen(false)}
-                  className={mobileNavLinkClass(item.path)}
+                  className={`px-3 py-2 rounded-lg text-base font-medium transition-all duration-200 ${location.pathname === item.path
+                      ? 'bg-violet-100 text-violet-700'
+                      : 'text-gray-700 hover:bg-violet-50 hover:text-violet-600'
+                    }`}
                 >
                   {item.name}
                 </Link>
               ))}
-              <div className={cn('pt-4 mt-4 border-t flex flex-col space-y-2', isMatrix ? 'border-emerald-500/30' : 'border-violet-200')}>
+              <div className="pt-4 mt-4 border-t border-violet-200 flex flex-col space-y-2">
                 {user ? (
                   <>
-                    <Button
-                      onClick={() => { handleLogout(); setIsOpen(false); }}
-                      variant="outline"
-                      className={cn('w-full justify-center rounded-lg', isMatrix && 'border-emerald-400/40 text-emerald-200 hover:bg-emerald-900/40')}
-                    >
+                    <Button onClick={() => { handleLogout(); setIsOpen(false); }} variant="outline" className="w-full justify-center rounded-lg">
                       <LogOut className="h-4 w-4 mr-2" />
                       Logout
                     </Button>
                   </>
                 ) : (
                   <>
-                    <Button asChild variant="outline" className={cn('w-full justify-center rounded-lg', isMatrix && 'border-emerald-400/40 text-emerald-200 hover:bg-emerald-900/40')}>
+                    <Button asChild variant="outline" className="w-full justify-center rounded-lg">
                       <Link to="/login" onClick={() => setIsOpen(false)}><LogIn className="h-4 w-4 mr-2" />Login</Link>
                     </Button>
-                    <Button
-                      asChild
-                      className={cn(
-                        'w-full justify-center rounded-lg',
-                        isMatrix
-                          ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-emerald-50'
-                          : 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white',
-                      )}
-                    >
+                    <Button asChild className="w-full justify-center bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-lg">
                       <Link to="/signup" onClick={() => setIsOpen(false)}><UserPlus className="h-4 w-4 mr-2" />Signup</Link>
                     </Button>
                   </>
