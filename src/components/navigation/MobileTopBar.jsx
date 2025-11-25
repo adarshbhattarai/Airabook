@@ -61,7 +61,7 @@ const MobileTopBar = ({ onMenuClick }) => {
         <Menu className="h-4 w-4" />
       </button>
 
-      <div className="flex items-center gap-2" ref={profileMenuRef}>
+      <div className="relative flex items-center gap-2" ref={profileMenuRef}>
         <div className="flex flex-col items-end">
           <span className="text-xs font-medium text-muted-foreground">Airäbook</span>
           <span className="text-sm font-semibold text-foreground">{displayName}</span>
@@ -73,36 +73,36 @@ const MobileTopBar = ({ onMenuClick }) => {
           aria-label="Open profile menu"
         >
           {displayName.charAt(0).toUpperCase()}
-
-          {showProfileMenu && (
-            <div
-              className="absolute right-0 mt-12 w-52 bg-card border border-border rounded-xl shadow-appCard text-left py-2 z-50"
-              role="menu"
-            >
-              <div className="px-4 py-3 border-b border-border/70">
-                <p className="text-sm font-semibold text-foreground">{displayName}</p>
-                <p className="text-xs text-muted-foreground">{appUser?.email || user?.email || ''}</p>
-              </div>
-
-              <div className="py-1">
-                {profileMenuItems.map(({ label, icon: Icon, action }) => (
-                  <button
-                    key={action}
-                    onClick={() => handleMenuAction(action)}
-                    className={cn(
-                      'w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-muted transition-colors',
-                      action === 'logout' && 'text-destructive hover:text-destructive hover:bg-destructive/10',
-                    )}
-                    role="menuitem"
-                  >
-                    <Icon className="h-4 w-4" />
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </button>
+
+        {showProfileMenu && (
+          <div
+            className="absolute right-0 top-full mt-2 w-52 bg-card border border-border rounded-xl shadow-appCard text-left py-2 z-50"
+            role="menu"
+          >
+            <div className="px-4 py-3 border-b border-border/70">
+              <p className="text-sm font-semibold text-foreground">{displayName}</p>
+              <p className="text-xs text-muted-foreground">{appUser?.email || user?.email || ''}</p>
+            </div>
+
+            <div className="py-1">
+              {profileMenuItems.map(({ label, icon: Icon, action }) => (
+                <button
+                  key={action}
+                  onClick={() => handleMenuAction(action)}
+                  className={cn(
+                    'w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-muted transition-colors',
+                    action === 'logout' && 'text-destructive hover:text-destructive hover:bg-destructive/10',
+                  )}
+                  role="menuitem"
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </header>
   );
