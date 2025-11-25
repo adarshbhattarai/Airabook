@@ -1009,17 +1009,17 @@ const ChatPanel = () => {
 
   if (isMinimized) {
     return (
-      <div className="shrink-0 bg-white border-l border-gray-200 flex flex-col items-center py-4 px-2 w-12">
+      <div className="shrink-0 bg-card border-l border-border flex flex-col items-center py-4 px-2 w-12">
         <Button
           variant="ghost"
           size="icon"
           onClick={() => setIsMinimized(false)}
-          className="h-8 w-8 text-violet-600 hover:bg-violet-50"
+          className="h-8 w-8 text-app-iris hover:bg-app-iris/10"
           title="Expand AI Assistant"
         >
           <ChevronLeft className="h-4 w-4" />
         </Button>
-        <div className="mt-4 writing-mode-vertical text-xs font-semibold text-gray-500 transform rotate-180">
+        <div className="mt-4 writing-mode-vertical text-xs font-semibold text-muted-foreground transform rotate-180">
           AI Assistant
         </div>
       </div>
@@ -1028,26 +1028,26 @@ const ChatPanel = () => {
 
   return (
     <div
-      className="flex flex-col h-full bg-white border-l border-gray-200 shrink-0 relative transition-all duration-200"
+      className="flex flex-col h-full bg-card border-l border-border shrink-0 relative transition-all duration-200"
       style={{ width: `${panelWidth}px` }}
     >
       {/* Resize handle */}
       <div
-        className={`absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-violet-400 transition-colors ${isResizing ? 'bg-violet-500' : 'bg-transparent'}`}
+        className={`absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-app-iris/40 transition-colors ${isResizing ? 'bg-app-iris/60' : 'bg-transparent'}`}
         onMouseDown={handleMouseDown}
         title="Drag to resize"
       />
 
-      <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-gray-50/50">
+      <div className="p-4 border-b border-border flex items-center justify-between bg-app-gray-50/70">
         <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-violet-600" />
-          <h3 className="font-semibold text-gray-800 text-sm">AI Assistant</h3>
+          <Sparkles className="h-4 w-4 text-app-iris" />
+          <h3 className="font-semibold text-foreground text-sm">AI Assistant</h3>
         </div>
         <Button
           variant="ghost"
           size="icon"
           onClick={() => setIsMinimized(true)}
-          className="h-6 w-6 text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+          className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-app-gray-100"
           title="Minimize"
         >
           <ChevronRight className="h-4 w-4" />
@@ -1058,12 +1058,12 @@ const ChatPanel = () => {
         {messages.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${msg.role === 'user'
-              ? 'bg-violet-600 text-white rounded-br-none'
-              : 'bg-gray-100 text-gray-800 rounded-bl-none'
+              ? 'bg-app-iris text-white rounded-br-none'
+              : 'bg-app-gray-100 text-foreground rounded-bl-none'
               }`}>
               <p>{msg.content}</p>
               {msg.sources && msg.sources.length > 0 && (
-                <div className="mt-2 pt-2 border-t border-gray-200/20 text-xs opacity-80">
+                <div className="mt-2 pt-2 border-t border-border/20 text-xs opacity-80">
                   <p className="font-semibold mb-1">Sources:</p>
                   <ul className="list-disc pl-4 space-y-0.5">
                     {msg.sources.map((source, idx) => (
@@ -1077,16 +1077,16 @@ const ChatPanel = () => {
         ))}
         {isLoading && (
           <div className="flex justify-start">
-            <div className="bg-gray-100 text-gray-800 rounded-2xl rounded-bl-none px-3 py-2 text-sm flex items-center gap-1">
-              <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-              <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            <div className="bg-app-gray-100 text-foreground rounded-2xl rounded-bl-none px-3 py-2 text-sm flex items-center gap-1">
+              <div className="w-1.5 h-1.5 bg-app-gray-300 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <div className="w-1.5 h-1.5 bg-app-gray-300 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <div className="w-1.5 h-1.5 bg-app-gray-300 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
             </div>
           </div>
         )}
       </div>
 
-      <div className="p-3 border-t border-gray-200 bg-white">
+      <div className="p-3 border-t border-border bg-card">
         <div className="relative">
           <Input
             value={input}
@@ -1099,7 +1099,7 @@ const ChatPanel = () => {
           <Button
             size="icon"
             variant="ghost"
-            className="absolute right-1 top-1 h-7 w-7 text-violet-600 hover:bg-violet-50"
+            className="absolute right-1 top-1 h-7 w-7 text-app-iris hover:bg-app-iris/10"
             onClick={handleSend}
             disabled={isLoading || !input.trim()}
           >
@@ -2059,7 +2059,7 @@ const BookDetail = () => {
 
       <div className="flex flex-col h-full overflow-hidden">
         {/* Header */}
-        <div className="shrink-0 py-3 px-4 border-b border-gray-200 bg-white flex items-center justify-between z-10">
+        <div className="shrink-0 py-3 px-4 border-b border-border bg-card flex items-center justify-between z-10">
           <div className="flex items-center gap-4">
             <Button
               variant="appGhost"
@@ -2099,8 +2099,8 @@ const BookDetail = () => {
         {/* Main Content */}
         <div className="flex flex-1 overflow-hidden">
           {/* Left Sidebar: Chapters */}
-          <div className="w-72 bg-gray-50 border-r border-gray-200 flex flex-col shrink-0">
-            <div className="p-3 border-b border-gray-200 bg-white">
+          <div className="w-72 bg-app-gray-50 border-r border-border flex flex-col shrink-0">
+            <div className="p-3 border-b border-border bg-card/80 backdrop-blur-sm">
               <form onSubmit={handleCreateChapter} className="flex items-center space-x-2">
                 <Input
                   value={newChapterTitle}
@@ -2131,7 +2131,7 @@ const BookDetail = () => {
                         setSelectedChapterId(chapter.id);
                         setExpandedChapters(new Set([chapter.id]));
                       }}
-                      className={`w-full text-left p-2 rounded-lg flex items-center justify-between ${editingChapterId === chapter.id ? '' : 'cursor-pointer'} ${selectedChapterId === chapter.id ? 'bg-violet-100 text-violet-900 font-medium' : 'hover:bg-gray-100 text-gray-700'}`}
+                      className={`w-full text-left p-2 rounded-lg flex items-center justify-between ${editingChapterId === chapter.id ? '' : 'cursor-pointer'} ${selectedChapterId === chapter.id ? 'bg-app-iris/10 text-app-iris font-medium' : 'hover:bg-app-gray-100 text-foreground'}`}
                     >
                       <div className="flex items-center flex-1 min-w-0 mr-2">
                         {isOwner && <HoverDeleteMenu onDelete={() => openDeleteModal('chapter', chapter)} />}
@@ -2151,7 +2151,7 @@ const BookDetail = () => {
                               }
                             }}
                             onClick={(e) => e.stopPropagation()}
-                            className="flex-1 ml-1 px-2 py-1 border border-violet-300 rounded text-sm font-medium focus:outline-none focus:ring-2 focus:ring-violet-500"
+                            className="flex-1 ml-1 px-2 py-1 border border-border rounded text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary"
                             autoFocus
                           />
                         ) : (
@@ -2184,7 +2184,7 @@ const BookDetail = () => {
                     {expandedChapters.has(chapter.id) && (
                       <Droppable droppableId={chapter.id} type="PAGE">
                         {(provided) => (
-                          <div ref={provided.innerRef} {...provided.droppableProps} className="ml-3 pl-3 border-l border-gray-200 py-1 space-y-0.5">
+                          <div ref={provided.innerRef} {...provided.droppableProps} className="ml-3 pl-3 border-l border-border py-1 space-y-0.5">
                             {chapter.pagesSummary?.length > 0 ? chapter.pagesSummary.map((pageSummary, index) => (
                               <Draggable key={pageSummary.pageId} draggableId={pageSummary.pageId} index={index}>
                                 {(provided2) => (
@@ -2197,12 +2197,12 @@ const BookDetail = () => {
                                     }}
                                     role="button"
                                     tabIndex={0}
-                                    className={`group w-full text-left p-1.5 rounded-md text-sm flex items-center justify-between cursor-pointer ${selectedPageId === pageSummary.pageId ? 'bg-violet-50 text-violet-700 font-medium' : 'hover:bg-gray-50 text-gray-600'}`}
+                                    className={`group w-full text-left p-1.5 rounded-md text-sm flex items-center justify-between cursor-pointer ${selectedPageId === pageSummary.pageId ? 'bg-app-iris/10 text-app-iris font-medium' : 'hover:bg-app-gray-50 text-app-gray-600'}`}
                                   >
                                     <div className="flex items-center truncate">
                                       <span
                                         {...provided2.dragHandleProps}
-                                        className="mr-2 text-gray-300 hover:text-gray-500 shrink-0 cursor-grab active:cursor-grabbing"
+                                        className="mr-2 text-app-gray-300 hover:text-foreground shrink-0 cursor-grab active:cursor-grabbing"
                                       >
                                         <GripVertical className="h-3 w-3" />
                                       </span>
@@ -2213,7 +2213,7 @@ const BookDetail = () => {
                                   </div>
                                 )}
                               </Draggable>
-                            )) : <div className="p-2 text-xs text-gray-400 italic">No pages</div>}
+                            )) : <div className="p-2 text-xs text-muted-foreground italic">No pages</div>}
                             {provided.placeholder}
                           </div>
                         )}
@@ -2226,7 +2226,7 @@ const BookDetail = () => {
           </div>
 
           {/* Center: Editor */}
-          <div className="flex-1 overflow-y-auto bg-white relative">
+          <div className="flex-1 overflow-y-auto bg-card relative">
             <div className="max-w-4xl mx-auto min-h-full p-8">
               {selectedPageId && pages.find(p => p.id === selectedPageId) ? (
                 <PageEditor
@@ -2247,11 +2247,11 @@ const BookDetail = () => {
                 />
               ) : (
                 <div className="flex flex-col justify-center items-center text-center h-full p-6">
-                  <div className="bg-gray-50 rounded-full p-6 mb-4">
-                    <Sparkles className="h-8 w-8 text-violet-400" />
+                  <div className="bg-app-gray-50 rounded-full p-6 mb-4">
+                    <Sparkles className="h-8 w-8 text-app-iris" />
                   </div>
                   {selectedChapterId && (
-                    <h3 className="text-lg font-medium text-violet-600 mb-1">
+                    <h3 className="text-lg font-medium text-app-iris mb-1">
                       {chapters.find(c => c.id === selectedChapterId)?.title}
                     </h3>
                   )}
