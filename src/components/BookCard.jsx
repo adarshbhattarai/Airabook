@@ -246,26 +246,38 @@ const BookCard = ({ bookId, bookTitle, coverImage, onBookDeleted }) => {
 
                     {/* Cover Image Area */}
                     <Link to={`/book/${bookId}`} className="block flex-1 relative group/image">
-                        <div className="aspect-[3/4] w-full rounded-xl bg-gradient-to-br from-purple-50 via-white to-blue-50 border border-white/60 shadow-inner overflow-hidden relative">
-                            {book.coverImage ? (
-                                <img
-                                    src={convertToEmulatorURL(book.coverImage)}
-                                    alt={book.name}
-                                    className="w-full h-full object-cover transition-transform duration-500 group-hover/image:scale-105"
-                                    onError={(e) => {
-                                        e.target.style.display = 'none';
-                                    }}
-                                />
-                            ) : (
-                                <div className="absolute inset-0 flex items-center justify-center text-app-iris/20">
-                                    <BookOpen className="h-12 w-12" />
-                                </div>
-                            )}
+                        <div className="aspect-[3/4] w-full relative">
+                            <div
+                                className="absolute inset-0 rounded-[18px] bg-gradient-to-br from-app-gray-100 to-app-gray-200 translate-x-1 translate-y-2 shadow-lg shadow-app-gray-200/60"
+                                aria-hidden
+                            />
+                            <div
+                                className="absolute inset-1 rounded-[16px] bg-white border border-app-gray-50 shadow-inner translate-x-0.5 translate-y-1"
+                                aria-hidden
+                            />
+                            <div className="relative h-full rounded-xl bg-gradient-to-br from-purple-50 via-white to-blue-50 border border-white/60 shadow-inner overflow-hidden">
+                                {book.coverImage ? (
+                                    <img
+                                        src={convertToEmulatorURL(book.coverImage)}
+                                        alt={book.name}
+                                        className="w-full h-full object-cover transition-transform duration-500 group-hover/image:scale-105"
+                                        onError={(e) => {
+                                            e.target.style.display = 'none';
+                                        }}
+                                    />
+                                ) : (
+                                    <div className="absolute inset-0 flex items-center justify-center text-app-iris/20">
+                                        <BookOpen className="h-12 w-12" />
+                                    </div>
+                                )}
 
-                            {/* Hover Overlay */}
-                            <div className="absolute inset-0 bg-black/0 group-hover/image:bg-black/10 transition-colors duration-300 flex items-center justify-center opacity-0 group-hover/image:opacity-100">
-                                <div className="bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm text-xs font-medium text-app-gray-900 transform translate-y-2 group-hover/image:translate-y-0 transition-transform duration-300">
-                                    Open Book
+                                <div className="absolute left-0 top-0 h-full w-[10%] bg-gradient-to-r from-black/5 via-black/0 to-transparent pointer-events-none" aria-hidden />
+
+                                {/* Hover Overlay */}
+                                <div className="absolute inset-0 bg-black/0 group-hover/image:bg-black/10 transition-colors duration-300 flex items-center justify-center opacity-0 group-hover/image:opacity-100">
+                                    <div className="bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm text-xs font-medium text-app-gray-900 transform translate-y-2 group-hover/image:translate-y-0 transition-transform duration-300">
+                                        Open Book
+                                    </div>
                                 </div>
                             </div>
                         </div>
