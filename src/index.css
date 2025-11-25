@@ -25,6 +25,47 @@
   --popover: 0 0% 100%;
   --popover-foreground: 222.2 84% 4.9%;
   --radius: 0.5rem;
+  --body-background: linear-gradient(135deg, #f8f0ff 0%, #e8e0ff 50%, #d4e0ff 100%);
+}
+
+.theme-matrix {
+  --primary: 138 84% 60%;
+  --primary-foreground: 160 15% 8%;
+  --secondary: 145 32% 18%;
+  --secondary-foreground: 136 72% 82%;
+  --muted: 145 25% 16%;
+  --muted-foreground: 136 60% 70%;
+  --accent: 150 30% 22%;
+  --accent-foreground: 136 72% 82%;
+  --destructive: 0 84% 55%;
+  --destructive-foreground: 0 0% 96%;
+  --border: 150 24% 28%;
+  --input: 150 24% 28%;
+  --ring: 146 81% 65%;
+  --background: 150 26% 6%;
+  --foreground: 136 82% 82%;
+  --card: 150 22% 10%;
+  --card-foreground: 136 82% 82%;
+  --popover: 150 22% 10%;
+  --popover-foreground: 136 82% 82%;
+  --chart-1: 146 81% 65%;
+  --chart-2: 160 84% 45%;
+  --chart-3: 98 72% 55%;
+  --chart-4: 132 64% 62%;
+  --chart-5: 165 78% 48%;
+  --app-iris: #00f5a0;
+  --app-iris-hover: #00c77a;
+  --app-violet: #6ef7c8;
+  --app-mint: #60f6ae;
+  --app-gray-50: #0b130e;
+  --app-gray-100: #111c15;
+  --app-gray-300: #1a2b21;
+  --app-gray-600: #7be2b8;
+  --app-gray-900: #d1ffe3;
+  --app-navy: #08100c;
+  --app-gradient-spotlight: radial-gradient(circle at 20% 20%, rgba(0, 245, 160, 0.25), transparent 35%), radial-gradient(circle at 80% 0%, rgba(110, 247, 200, 0.2), transparent 35%), #050b08;
+  --app-gradient-book: linear-gradient(135deg, #0ba360 0%, #3cba92 100%);
+  --body-background: radial-gradient(circle at 20% 20%, rgba(0, 245, 160, 0.08), transparent 30%), radial-gradient(circle at 80% 0%, rgba(110, 247, 200, 0.12), transparent 35%), #050b08;
 }
 
 * {
@@ -33,8 +74,12 @@
 
 body {
   font-family: 'Inter', sans-serif;
-  background: linear-gradient(135deg, #f8f0ff 0%, #e8e0ff 50%, #d4e0ff 100%); /* Soft violet gradient */
+  background: var(--body-background); /* Theme-aware background */
   min-height: 100vh;
+  color: hsl(var(--foreground));
+}
+
+.theme-matrix body {
   color: hsl(var(--foreground));
 }
 
@@ -55,6 +100,18 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(135deg, #7c3aed, #8b5cf6); /* Darker violet on hover */
+}
+
+.theme-matrix ::-webkit-scrollbar-track {
+  background: #0f1a13;
+}
+
+.theme-matrix ::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #22c55e, #10b981);
+}
+
+.theme-matrix ::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #16a34a, #0f9f6e);
 }
 
 /* Smooth animations */
@@ -86,6 +143,11 @@ a:focus-visible {
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
+.theme-matrix .glass {
+  background: rgba(12, 22, 17, 0.75);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
 /* Hover animations */
 .hover-lift {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -94,6 +156,47 @@ a:focus-visible {
 .hover-lift:hover {
   transform: translateY(-2px);
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+
+.theme-matrix body,
+.theme-matrix p,
+.theme-matrix span,
+.theme-matrix h1,
+.theme-matrix h2,
+.theme-matrix h3,
+.theme-matrix h4,
+.theme-matrix h5,
+.theme-matrix h6,
+.theme-matrix label,
+.theme-matrix li,
+.theme-matrix div {
+  color: hsl(var(--foreground));
+}
+
+.theme-matrix .text-muted-foreground {
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+.theme-matrix .text-gray-700,
+.theme-matrix .text-gray-800,
+.theme-matrix .text-gray-900,
+.theme-matrix .text-app-gray-600,
+.theme-matrix .text-app-gray-900 {
+  color: hsl(var(--foreground)) !important;
+}
+
+.theme-matrix .bg-white,
+.theme-matrix .bg-app-gray-50,
+.theme-matrix .bg-app-gray-100,
+.theme-matrix .bg-card,
+.theme-matrix .bg-background {
+  background-color: hsl(var(--card)) !important;
+}
+
+.theme-matrix .border-app-gray-300,
+.theme-matrix .border-app-gray-100,
+.theme-matrix .border-border {
+  border-color: hsl(var(--border)) !important;
 }
 
 /* Loading animation */
@@ -191,6 +294,7 @@ a:focus-visible {
 
   --app-gradient-spotlight: linear-gradient(135deg, #c084fc 0%, #ec4899 35%, #8b5cf6 65%, #06b6d4 100%);
   --app-gradient-book: linear-gradient(135deg, #9b8cff 0%, #635bff 100%);
+  --body-background: linear-gradient(135deg, #f8f0ff 0%, #e8e0ff 50%, #d4e0ff 100%);
   }
   .dark {
     --background: 240 10% 3.9%;
@@ -225,6 +329,7 @@ a:focus-visible {
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground;
+    background: var(--body-background);
   }
 }
