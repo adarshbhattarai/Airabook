@@ -27,9 +27,9 @@ export const AppInput = React.forwardRef(({ className, type, ...props }, ref) =>
       ref={ref}
       type={type}
       className={cn(
-        "h-11 rounded-xl border border-app-gray-300 bg-white px-4 py-2.5 text-sm text-app-gray-900 " +
-          "placeholder:text-app-gray-600 focus-visible:outline-none focus-visible:ring-2 " +
-          "focus-visible:ring-app-violet focus-visible:ring-offset-0",
+        "h-11 rounded-xl border border-border bg-card px-4 py-2.5 text-sm text-foreground " +
+          "placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 " +
+          "focus-visible:ring-app-iris focus-visible:ring-offset-0",
         className
       )}
       {...props}
