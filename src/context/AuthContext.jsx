@@ -7,6 +7,8 @@ import {
   sendPasswordResetEmail,
   sendEmailVerification,
   updateProfile,
+  updateEmail,
+  updatePassword,
   GoogleAuthProvider,
   signInWithPopup,
 } from 'firebase/auth';
@@ -161,6 +163,51 @@ export const AuthProvider = ({ children }) => {
     return signOut(auth);
   };
 
+  const updateUserProfile = async ({ displayName, email, photoURL }) => {
+    if (!auth.currentUser) {
+      throw new Error('No user is currently signed in.');
+    }
+
+    const profileUpdates = {};
+
+    if (displayName && displayName !== auth.currentUser.displayName) {
+      profileUpdates.displayName = displayName;
+    }
+
+    if (photoURL && photoURL !== auth.currentUser.photoURL) {
+      profileUpdates.photoURL = photoURL;
+    }
+
+    if (Object.keys(profileUpdates).length > 0) {
+      await updateProfile(auth.currentUser, profileUpdates);
+    }
+
+    if (email && email !== auth.currentUser.email) {
+      await updateEmail(auth.currentUser, email);
+    }
+
+    const userRef = doc(firestore, 'users', auth.currentUser.uid);
+
+    await setDoc(
+      userRef,
+      {
+        displayName: displayName || auth.currentUser.displayName || '',
+        email: email || auth.currentUser.email || '',
+        photoURL: photoURL || auth.currentUser.photoURL || '',
+        updatedAt: new Date(),
+      },
+      { merge: true },
+    );
+  };
+
+  const changePassword = async (newPassword) => {
+    if (!auth.currentUser) {
+      throw new Error('No user is currently signed in.');
+    }
+
+    await updatePassword(auth.currentUser, newPassword);
+  };
+
   const resetPassword = (email) => {
     return sendPasswordResetEmail(auth, email);
   };
@@ -187,6 +234,8 @@ export const AuthProvider = ({ children }) => {
     logout,
     resetPassword,
     resendVerificationEmail,
+    updateUserProfile,
+    changePassword,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
