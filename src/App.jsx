@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { ThemeProvider } from '@/context/ThemeContext';
 import MarketingLayout from '@/layouts/MarketingLayout';
 import AppShell from '@/layouts/AppShell';
 import Home from '@/pages/Home';
@@ -31,6 +32,14 @@ const PrivateRoute = ({ children }) => {
   return user ? children : <Navigate to="/login" />;
 };
 
+const ThemedAppShell = ({ children }) => (
+  <ThemeProvider>
+    <AppShell>
+      {children}
+    </AppShell>
+  </ThemeProvider>
+);
+
 function App() {
   return (
     <AuthProvider>
@@ -48,9 +57,9 @@ function App() {
               path="/dashboard"
               element={
                 <PrivateRoute>
-                  <AppShell>
+                  <ThemedAppShell>
                     <Dashboard />
-                  </AppShell>
+                  </ThemedAppShell>
                 </PrivateRoute>
               }
             />
@@ -58,9 +67,9 @@ function App() {
               path="/books"
               element={
                 <PrivateRoute>
-                  <AppShell>
+                  <ThemedAppShell>
                     <Books />
-                  </AppShell>
+                  </ThemedAppShell>
                 </PrivateRoute>
               }
             />
@@ -68,9 +77,9 @@ function App() {
               path="/media"
               element={
                 <PrivateRoute>
-                  <AppShell>
+                  <ThemedAppShell>
                     <Media />
-                  </AppShell>
+                  </ThemedAppShell>
                 </PrivateRoute>
               }
             />
@@ -78,9 +87,9 @@ function App() {
               path="/media/album/:bookId"
               element={
                 <PrivateRoute>
-                  <AppShell>
+                  <ThemedAppShell>
                     <AlbumDetail />
-                  </AppShell>
+                  </ThemedAppShell>
                 </PrivateRoute>
               }
             />
@@ -88,9 +97,9 @@ function App() {
               path="/notes"
               element={
                 <PrivateRoute>
-                  <AppShell>
+                  <ThemedAppShell>
                     <Notes />
-                  </AppShell>
+                  </ThemedAppShell>
                 </PrivateRoute>
               }
             />
@@ -98,9 +107,9 @@ function App() {
               path="/create-book"
               element={
                 <PrivateRoute>
-                  <AppShell>
+                  <ThemedAppShell>
                     <CreateBook />
-                  </AppShell>
+                  </ThemedAppShell>
                 </PrivateRoute>
               }
             />
@@ -108,9 +117,9 @@ function App() {
               path="/book/:bookId"
               element={
                 <PrivateRoute>
-                  <AppShell>
+                  <ThemedAppShell>
                     <BookDetail />
-                  </AppShell>
+                  </ThemedAppShell>
                 </PrivateRoute>
               }
             />
@@ -118,9 +127,9 @@ function App() {
               path="/book/:bookId/view"
               element={
                 <PrivateRoute>
-                  <AppShell>
+                  <ThemedAppShell>
                     <BookView />
-                  </AppShell>
+                  </ThemedAppShell>
                 </PrivateRoute>
               }
             />
@@ -128,9 +137,9 @@ function App() {
               path="/donate"
               element={
                 <PrivateRoute>
-                  <AppShell>
+                  <ThemedAppShell>
                     <Donate />
-                  </AppShell>
+                  </ThemedAppShell>
                 </PrivateRoute>
               }
             />
@@ -138,9 +147,9 @@ function App() {
               path="/donate/success"
               element={
                 <PrivateRoute>
-                  <AppShell>
+                  <ThemedAppShell>
                     <DonateSuccess />
-                  </AppShell>
+                  </ThemedAppShell>
                 </PrivateRoute>
               }
             />
