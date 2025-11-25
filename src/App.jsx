@@ -20,6 +20,7 @@ import BookDetail from '@/pages/BookDetail';
 import BookView from '@/pages/BookView';
 import AlbumDetail from '@/pages/AlbumDetail';
 import ErrorPage from '@/pages/ErrorPage';
+import ProfileSettings from '@/pages/ProfileSettings';
 
 // A wrapper to protect routes that require authentication
 const PrivateRoute = ({ children }) => {
@@ -149,6 +150,16 @@ function App() {
                 <PrivateRoute>
                   <ThemedAppShell>
                     <DonateSuccess />
+                  </ThemedAppShell>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <PrivateRoute>
+                  <ThemedAppShell>
+                    <ProfileSettings />
                   </ThemedAppShell>
                 </PrivateRoute>
               }
