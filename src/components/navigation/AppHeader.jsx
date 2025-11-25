@@ -50,7 +50,7 @@ const AppHeader = () => {
   return (
     <header
       className={cn(
-        'hidden md:flex h-16 items-center justify-between px-6 shrink-0 border-b bg-card text-foreground border-border',
+        'hidden md:flex h-16 items-center justify-between px-6 shrink-0 border-b bg-card text-foreground border-border relative z-30',
         isNeonTheme && 'shadow-[0_12px_30px_rgba(16,185,129,0.12)]',
       )}
     >

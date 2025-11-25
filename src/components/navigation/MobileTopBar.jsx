@@ -52,7 +52,7 @@ const MobileTopBar = ({ onMenuClick }) => {
   };
 
   return (
-    <header className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border bg-card/90 backdrop-blur-sm text-foreground">
+    <header className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border bg-card/90 backdrop-blur-sm text-foreground relative z-30">
       <button
         type="button"
         onClick={onMenuClick}
