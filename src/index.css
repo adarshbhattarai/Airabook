@@ -5,7 +5,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 :root {
-  --primary: 257 72% 79%; /* Violet primary */
+  --primary: 257 72% 79%;
+  /* Violet primary */
   --primary-foreground: 355 7% 97%;
   --secondary: 210 40% 96%;
   --secondary-foreground: 222.2 84% 4.9%;
@@ -17,7 +18,8 @@
   --destructive-foreground: 210 40% 98%;
   --border: 214.3 31.8% 91.4%;
   --input: 214.3 31.8% 91.4%;
-  --ring: 257 72% 79%; /* Violet ring */
+  --ring: 257 72% 79%;
+  /* Violet ring */
   --background: 0 0% 100%;
   --foreground: 222.2 84% 4.9%;
   --card: 0 0% 100%;
@@ -33,7 +35,7 @@
 
 body {
   font-family: 'Inter', sans-serif;
-  background: linear-gradient(135deg, #f8f0ff 0%, #e8e0ff 50%, #d4e0ff 100%); /* Soft violet gradient */
+  background: hsl(var(--background));
   min-height: 100vh;
   color: hsl(var(--foreground));
 }
@@ -49,12 +51,14 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(135deg, #8b5cf6, #a78bfa); /* Violet scrollbar */
+  background: linear-gradient(135deg, #8b5cf6, #a78bfa);
+  /* Violet scrollbar */
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(135deg, #7c3aed, #8b5cf6); /* Darker violet on hover */
+  background: linear-gradient(135deg, #7c3aed, #8b5cf6);
+  /* Darker violet on hover */
 }
 
 /* Smooth animations */
@@ -73,7 +77,8 @@ a:focus-visible {
 
 /* Custom gradient text */
 .gradient-text {
-  background: linear-gradient(135deg, #8b5cf6, #a78bfa); /* Violet gradient text */
+  background: linear-gradient(135deg, #8b5cf6, #a78bfa);
+  /* Violet gradient text */
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -98,9 +103,12 @@ a:focus-visible {
 
 /* Loading animation */
 @keyframes pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0.5;
   }
@@ -112,19 +120,23 @@ a:focus-visible {
 
 /* Custom button styles */
 .btn-primary {
-  background: linear-gradient(135deg, #8b5cf6, #a78bfa); /* Violet button */
+  background: linear-gradient(135deg, #8b5cf6, #a78bfa);
+  /* Violet button */
   color: white;
   border: none;
   border-radius: 9999px;
   padding: 0.75rem 1.5rem;
   font-weight: 500;
   transition: all 0.2s ease;
-  box-shadow: 0 4px 14px 0 rgba(139, 92, 246, 0.3); /* Violet shadow */
+  box-shadow: 0 4px 14px 0 rgba(139, 92, 246, 0.3);
+  /* Violet shadow */
 }
 
 .btn-primary:hover {
-  background: linear-gradient(135deg, #7c3aed, #8b5cf6); /* Darker violet on hover */
-  box-shadow: 0 6px 20px 0 rgba(139, 92, 246, 0.4); /* Darker violet shadow */
+  background: linear-gradient(135deg, #7c3aed, #8b5cf6);
+  /* Darker violet on hover */
+  box-shadow: 0 6px 20px 0 rgba(139, 92, 246, 0.4);
+  /* Darker violet shadow */
   transform: translateY(-1px);
 }
 
@@ -134,7 +146,7 @@ a:focus-visible {
     font-size: 2.5rem;
     line-height: 1.2;
   }
-  
+
   h2 {
     font-size: 2rem;
     line-height: 1.3;
@@ -189,9 +201,10 @@ a:focus-visible {
     --app-gray-900: #151a2d;
     --app-navy: #0f172a;
 
-  --app-gradient-spotlight: linear-gradient(135deg, #c084fc 0%, #ec4899 35%, #8b5cf6 65%, #06b6d4 100%);
-  --app-gradient-book: linear-gradient(135deg, #9b8cff 0%, #635bff 100%);
+    --app-gradient-spotlight: linear-gradient(135deg, #c084fc 0%, #ec4899 35%, #8b5cf6 65%, #06b6d4 100%);
+    --app-gradient-book: linear-gradient(135deg, #9b8cff 0%, #635bff 100%);
   }
+
   .dark {
     --background: 240 10% 3.9%;
     --foreground: 0 0% 98%;
@@ -224,6 +237,7 @@ a:focus-visible {
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
   }
