@@ -68,7 +68,7 @@ const Dashboard = () => {
     <div className="flex flex-col h-[calc(100vh-4rem)] bg-white relative overflow-hidden">
       {/* Chat History Area */}
       <div className={`flex-1 overflow-y-auto p-4 sm:p-8 transition-opacity duration-500 ${isChatStarted ? 'opacity-100' : 'opacity-0'}`}>
-        <div className="max-w-3xl mx-auto space-y-6 pb-32">
+        <div className="max-w-3xl mx-auto space-y-6 pb-48">
           {messages.map((msg, idx) => (
             <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div
@@ -119,7 +119,7 @@ const Dashboard = () => {
             : 'top-1/2 -translate-y-1/2'}
         `}
       >
-        <div className="max-w-4xl mx-auto px-4 sm:px-8 w-full">
+        <div className="max-w-5xl mx-auto px-4 sm:px-8 w-full">
           {/* Header - Only visible when NOT chat started */}
           <div className={`text-center space-y-2 mb-8 transition-opacity duration-300 ${isChatStarted ? 'opacity-0 hidden' : 'opacity-100'}`}>
             <h1 className="text-3xl sm:text-4xl font-semibold text-app-gray-900 tracking-tight">
@@ -142,7 +142,7 @@ const Dashboard = () => {
                   placeholder={isChatStarted ? "Reply to Airabook..." : "e.g. A children's book about a brave little toaster who travels to Mars..."}
                   className={`
                     flex-1 w-full p-6 text-lg text-app-gray-900 placeholder:text-app-gray-400 resize-none focus:outline-none bg-transparent
-                    ${isChatStarted ? 'min-h-[60px] max-h-[150px]' : 'min-h-[160px]'}
+                    ${isChatStarted ? 'min-h-[50px] max-h-[120px]' : 'min-h-[140px]'}
                   `}
                   disabled={isSubmitting}
                   autoFocus

@@ -27,7 +27,11 @@ const PrivateRoute = ({ children }) => {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return <div>Loading...</div>; // Or a spinner
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-white">
+        <div className="w-8 h-8 border-4 border-app-iris/30 border-t-app-iris rounded-full animate-spin"></div>
+      </div>
+    );
   }
 
   return user ? children : <Navigate to="/login" />;

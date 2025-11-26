@@ -958,7 +958,11 @@ const ChatPanel = () => {
 
     try {
       const queryBookFlowFn = httpsCallable(functions, 'queryBookFlow');
-      const result = await queryBookFlowFn({ query: userQuery });
+
+      // Construct history including the new user message
+      const history = [...messages, { role: 'user', content: userQuery }];
+
+      const result = await queryBookFlowFn({ messages: history });
 
       const { answer, sources } = result.data;
 

@@ -72,7 +72,7 @@ const queryBookFlowRaw = ai.defineFlow(
         name: 'queryBookFlow',
         inputSchema: z.object({
             messages: z.array(z.object({
-                role: z.enum(['user', 'model', 'system']),
+                role: z.enum(['user', 'model', 'system', 'assistant']),
                 content: z.string(),
             })),
         }),
@@ -143,7 +143,7 @@ const queryBookFlowRaw = ai.defineFlow(
 
         // Construct history for the model (excluding the last message which is the current prompt)
         const history = messages.slice(0, -1).map(m => ({
-            role: m.role,
+            role: m.role === 'assistant' ? 'model' : m.role,
             content: [{ text: m.content }]
         }));
 
