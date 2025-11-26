@@ -1,19 +1,17 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow read/write access to all documents for development
-    match /{document=**} {
-      allow read, write: if true;
+    function isAdminRequest() {
+      return request.auth != null && request.auth.token.admin == true;
     }
-
     // Users collection
     match /users/{userId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
-      allow create: if false; // Only backend (Admin SDK) can create users
-      allow update: if request.auth != null && request.auth.uid == userId && 
+      allow read: if isAdminRequest() || (request.auth != null && request.auth.uid == userId);
+      allow create: if isAdminRequest(); // Only backend (Admin SDK/Admin claim) can create users
+      allow update: if isAdminRequest() || (request.auth != null && request.auth.uid == userId &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(
           ['photoURL', 'displayName', 'displayNameLower', 'writingContext', 'language', 'useLanguageForBooks', 'updatedAt']
-        );
+        ));
     }
 
     // Books collection with public/private and co-author support
@@ -41,39 +39,39 @@ service cloud.firestore {
       }
 
       // Read access: owner, co-authors, or public books
-      allow read: if request.auth != null && hasAccess();
+      allow read: if isAdminRequest() || (request.auth != null && hasAccess());
 
       // Create access: authenticated users (book creation)
-      allow create: if request.auth != null;
+      allow create: if isAdminRequest() || request.auth != null;
 
       // Update access:
       // - Owner: full access
       // - Co-author: can update pages/chapters but not isPublic, members, or delete chapters
-      allow update: if request.auth != null && (
+      allow update: if isAdminRequest() || (request.auth != null && (
         isOwner() || 
         (isCoAuthor() && 
          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isPublic', 'members', 'ownerId']) &&
          request.resource.data.isPublic == resource.data.isPublic &&
          request.resource.data.members == resource.data.members &&
          request.resource.data.ownerId == resource.data.ownerId)
-      );
+      ));
 
       // Delete access: only owner
-      allow delete: if request.auth != null && isOwner();
+      allow delete: if isAdminRequest() || (request.auth != null && isOwner());
 
       // Chapters subcollection
       match /chapters/{chapterId} {
-        allow read: if request.auth != null && hasAccess();
-        allow create: if request.auth != null && (isOwner() || isCoAuthor());
-        allow update: if request.auth != null && (isOwner() || isCoAuthor());
-        allow delete: if request.auth != null && isOwner(); // Only owner can delete chapters
+        allow read: if isAdminRequest() || (request.auth != null && hasAccess());
+        allow create: if isAdminRequest() || (request.auth != null && (isOwner() || isCoAuthor()));
+        allow update: if isAdminRequest() || (request.auth != null && (isOwner() || isCoAuthor()));
+        allow delete: if isAdminRequest() || (request.auth != null && isOwner()); // Only owner can delete chapters
 
         // Pages subcollection
         match /pages/{pageId} {
-          allow read: if request.auth != null && hasAccess();
-          allow create: if request.auth != null && (isOwner() || isCoAuthor());
-          allow update: if request.auth != null && (isOwner() || isCoAuthor());
-          allow delete: if request.auth != null && (isOwner() || isCoAuthor());
+          allow read: if isAdminRequest() || (request.auth != null && hasAccess());
+          allow create: if isAdminRequest() || (request.auth != null && (isOwner() || isCoAuthor()));
+          allow update: if isAdminRequest() || (request.auth != null && (isOwner() || isCoAuthor()));
+          allow delete: if isAdminRequest() || (request.auth != null && (isOwner() || isCoAuthor()));
         }
       }
     }
@@ -90,10 +88,10 @@ service cloud.firestore {
         return request.auth != null && request.auth.token.email == resource.data.email;
       }
 
-      allow read: if request.auth != null && (isInviter() || isInvitee());
-      allow create: if request.auth != null; // Book owner creates invites
-      allow update: if request.auth != null && isInvitee(); // Only invitee can accept
-      allow delete: if request.auth != null && (isInviter() || isInvitee());
+      allow read: if isAdminRequest() || (request.auth != null && (isInviter() || isInvitee()));
+      allow create: if isAdminRequest() || request.auth != null; // Book owner creates invites
+      allow update: if isAdminRequest() || (request.auth != null && isInvitee()); // Only invitee can accept
+      allow delete: if isAdminRequest() || (request.auth != null && (isInviter() || isInvitee()));
     }
 
     // Albums collection - single document per album (no subcollections)
@@ -108,16 +106,16 @@ service cloud.firestore {
         );
       }
 
-      allow read: if request.auth != null && hasAlbumAccess();
+      allow read: if isAdminRequest() || (request.auth != null && hasAlbumAccess());
 
-      allow create: if request.auth != null && 
-        request.resource.data.accessPermission.ownerId == request.auth.uid;
+      allow create: if isAdminRequest() || (request.auth != null && 
+        request.resource.data.accessPermission.ownerId == request.auth.uid);
 
-      allow update: if request.auth != null &&
-        resource.data.accessPermission.ownerId == request.auth.uid;
+      allow update: if isAdminRequest() || (request.auth != null &&
+        resource.data.accessPermission.ownerId == request.auth.uid);
 
-      allow delete: if request.auth != null &&
-        resource.data.accessPermission.ownerId == request.auth.uid;
+      allow delete: if isAdminRequest() || (request.auth != null &&
+        resource.data.accessPermission.ownerId == request.auth.uid);
     }
   }
 }

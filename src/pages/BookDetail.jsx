@@ -681,108 +681,117 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
             />
           </div>
         </div>
-        <div className="flex justify-between items-center">
-          <div className="flex items-center space-x-2">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          {/* Page navigation */}
+          <div className="flex items-center space-x-2 shrink-0">
             <Button variant="outline" size="icon" onClick={() => onNavigate('prev')} disabled={pageIndex === 0}>
               <ArrowLeft className="h-4 w-4" />
             </Button>
-            <span className="text-sm font-medium text-gray-600">
+            <span className="text-sm font-medium text-gray-600 whitespace-nowrap">
               Page {pageIndex + 1} of {totalPages}
             </span>
             <Button variant="outline" size="icon" onClick={() => onNavigate('next')} disabled={pageIndex === totalPages - 1}>
               <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
-          <div className="flex items-center space-x-2">
+
+          {/* AI controls + Save */}
+          <div className="flex flex-wrap items-center gap-2">
             {isAutoSaving && (
-              <span className="text-xs text-gray-500 flex items-center">
+              <span className="text-xs text-gray-500 flex items-center shrink-0">
                 <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500 mr-1"></div>
                 Auto-saving...
               </span>
             )}
-            <div className="flex items-center gap-2">
-              <div className="relative flex items-center style-dropdown-container">
-                <Input
-                  type="text"
-                  value={aiStyle}
-                  onChange={(e) => setAiStyle(e.target.value)}
-                  maxLength={25}
-                  placeholder="Custom style or choose preset..."
-                  className="text-sm w-48 h-9 rounded-r-none border-r-0 pr-2"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setShowStyleDropdown(!showStyleDropdown);
-                  }}
-                  className="h-9 rounded-l-none px-2"
-                >
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-                {showStyleDropdown && (
-                  <div className="absolute top-full right-0 mt-1 z-50 bg-white border rounded-md shadow-lg min-w-[200px]">
-                    <div className="py-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAiStyle('Improve clarity');
-                          setShowStyleDropdown(false);
-                        }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
-                      >
-                        Improve clarity
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAiStyle('Warm & supportive');
-                          setShowStyleDropdown(false);
-                        }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
-                      >
-                        Warm & supportive
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAiStyle('Concise summary');
-                          setShowStyleDropdown(false);
-                        }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
-                      >
-                        Concise summary
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAiStyle('Fix grammar only');
-                          setShowStyleDropdown(false);
-                        }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
-                      >
-                        Fix grammar only
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
+
+            {/* AI style input + dropdown */}
+            <div className="relative flex items-center style-dropdown-container min-w-0">
+              <Input
+                type="text"
+                value={aiStyle}
+                onChange={(e) => setAiStyle(e.target.value)}
+                maxLength={25}
+                placeholder="Custom style or choose pre"
+                className="text-sm h-9 rounded-r-none border-r-0 pr-2 min-w-0 w-full max-w-[180px]"
+              />
               <Button
                 type="button"
-                variant="secondary"
+                variant="outline"
                 size="sm"
-                disabled={aiBusy || !stripHtml(note)?.trim() || !aiStyle?.trim()}
-                onClick={callRewrite}
-                className="flex items-center gap-1"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setShowStyleDropdown(!showStyleDropdown);
+                }}
+                className="h-9 rounded-l-none px-2 shrink-0"
               >
-                <Sparkles className="h-4 w-4" />
-                {aiBusy ? 'Rewriting...' : 'Rewrite with AI'}
+                <ChevronDown className="h-4 w-4" />
               </Button>
+              {showStyleDropdown && (
+                <div className="absolute top-full right-0 mt-1 z-50 bg-white border rounded-md shadow-lg min-w-[200px]">
+                  <div className="py-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAiStyle('Improve clarity');
+                        setShowStyleDropdown(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
+                    >
+                      Improve clarity
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAiStyle('Warm & supportive');
+                        setShowStyleDropdown(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
+                    >
+                      Warm & supportive
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAiStyle('Concise summary');
+                        setShowStyleDropdown(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
+                    >
+                      Concise summary
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAiStyle('Fix grammar only');
+                        setShowStyleDropdown(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
+                    >
+                      Fix grammar only
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-            <Button onClick={handleSave} disabled={isSaving}>{isSaving ? 'Saving...' : 'Save'}</Button>
+
+            {/* Rewrite button */}
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={aiBusy || !stripHtml(note)?.trim() || !aiStyle?.trim()}
+              onClick={callRewrite}
+              className="flex items-center gap-1 shrink-0 whitespace-nowrap"
+            >
+              <Sparkles className="h-4 w-4" />
+              {aiBusy ? 'Rewriting...' : 'Rewrite with AI'}
+            </Button>
+
+            {/* Save button */}
+            <Button onClick={handleSave} disabled={isSaving} className="shrink-0">
+              {isSaving ? 'Saving...' : 'Save'}
+            </Button>
           </div>
         </div>
       </div>
