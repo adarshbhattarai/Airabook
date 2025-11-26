@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import { AppInput } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/use-toast';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage } from '@/lib/firebase';
 import { defaultAvatars } from '@/constants/avatars';
 
 const ProfileSettings = () => {
@@ -38,17 +40,43 @@ const ProfileSettings = () => {
 
   const selectedAvatar = useMemo(() => customAvatar || currentAvatar, [customAvatar, currentAvatar]);
 
-  const handleAvatarFile = (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  const [isUploading, setIsUploading] = useState(false);
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      if (typeof e.target?.result === 'string') {
-        setCustomAvatar(e.target.result);
-      }
-    };
-    reader.readAsDataURL(file);
+  const handleAvatarFile = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file || !user) return;
+
+    try {
+      setIsUploading(true);
+      // Create a reference to 'userId/avatars/timestamp_filename'
+      const timestamp = Date.now();
+      const storagePath = `${user.uid}/avatars/${timestamp}_${file.name}`;
+      const storageRef = ref(storage, storagePath);
+
+      // Upload the file
+      const snapshot = await uploadBytes(storageRef, file);
+
+      // Get the download URL
+      const downloadURL = await getDownloadURL(snapshot.ref);
+
+      // Update state with the new URL
+      setCustomAvatar(downloadURL);
+      setCurrentAvatar(''); // Clear preset selection if any
+
+      toast({
+        title: 'Avatar uploaded',
+        description: 'Your new avatar is ready to be saved.',
+      });
+    } catch (error) {
+      console.error("Error uploading avatar:", error);
+      toast({
+        title: 'Upload failed',
+        description: 'Failed to upload avatar image. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleProfileSave = async (event) => {
@@ -222,11 +250,11 @@ const ProfileSettings = () => {
         <div className="mt-8 flex justify-center">
           <Button
             type="submit"
-            disabled={isSavingProfile}
+            disabled={isSavingProfile || isUploading}
             size="lg"
             className="bg-primary hover:bg-primary/90 text-primary-foreground min-w-[200px]"
           >
-            {isSavingProfile ? 'Saving Changes...' : 'Save Changes'}
+            {isSavingProfile ? 'Saving Changes...' : isUploading ? 'Uploading...' : 'Save Changes'}
           </Button>
         </div>
       </form>

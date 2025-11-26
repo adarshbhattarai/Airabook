@@ -8,7 +8,7 @@ if (!admin.apps.length) {
     // Get current project ID dynamically from environment
     const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'airabook-dev';
     const STORAGE_BUCKET = `${PROJECT_ID}.appspot.com`;
-    
+
     admin.initializeApp({
       storageBucket: STORAGE_BUCKET,
     });
@@ -29,7 +29,7 @@ const db = admin.firestore();
  */
 function parseStoragePath(storagePath) {
   const parts = storagePath.split('/');
-  
+
   if (parts.length < 6) {
     throw new Error(`Invalid storage path format: ${storagePath}`);
   }
@@ -38,11 +38,11 @@ function parseStoragePath(storagePath) {
   const bookId = parts[1];
   const chapterId = parts[2];
   const pageId = parts[3];
-  
+
   if (parts[4] !== 'media') {
     throw new Error(`Expected 'media' in path, got: ${parts[4]}`);
   }
-  
+
   const type = parts[5]; // 'image' or 'video'
   const filename = parts.slice(6).join('/'); // Handle filenames with paths
 
@@ -68,7 +68,7 @@ async function validateBookAccess(userId, bookId) {
   }
 
   const bookData = bookDoc.data();
-  
+
   // Check if user is the owner
   if (bookData.ownerId === userId) {
     return true;
@@ -125,10 +125,10 @@ async function getOrCreateAlbum(bookId, userId) {
  */
 async function getDownloadURL(bucket, storagePath) {
   // Check if running in emulator
-  const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true' || 
-                     process.env.FIREBASE_AUTH_EMULATOR_HOST ||
-                     process.env.STORAGE_EMULATOR_HOST ||
-                     process.env.FIREBASE_STORAGE_EMULATOR_HOST;
+  const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true' ||
+    process.env.FIREBASE_AUTH_EMULATOR_HOST ||
+    process.env.STORAGE_EMULATOR_HOST ||
+    process.env.FIREBASE_STORAGE_EMULATOR_HOST;
 
   if (isEmulator) {
     // Generate emulator URL format: http://127.0.0.1:9199/v0/b/{bucket}/o/{encodedPath}?alt=media&token={token}
@@ -188,7 +188,7 @@ async function updateAlbumWithMedia(albumId, downloadURL, mediaType, storagePath
   // Update media count
   const currentImages = albumData.images || [];
   const currentVideos = albumData.videos || [];
-  const newCount = mediaType === 'image' 
+  const newCount = mediaType === 'image'
     ? currentImages.length + 1 + currentVideos.length
     : currentImages.length + currentVideos.length + 1;
   updateData.mediaCount = newCount;
@@ -201,7 +201,7 @@ async function updateAlbumWithMedia(albumId, downloadURL, mediaType, storagePath
 
   await albumRef.update(updateData);
   console.log(`✅ Updated album ${albumId} with new ${mediaType}: count=${newCount}`);
-  
+
   return {
     coverImage: updateData.coverImage || albumData.coverImage,
     mediaCount: newCount,
@@ -306,14 +306,49 @@ async function updateUserAccessibleAlbums(userId, albumId, albumName, coverImage
  * Updates albums/{albumId} document with URL in images/videos array
  */
 exports.onMediaUpload = onObjectFinalized(
-  { 
+  {
     region: "us-central1"
   },
   async (event) => {
     const storagePath = event.data.name;
     const bucket = event.data.bucket;
-    
+
     console.log(`📸 Storage trigger fired for: ${storagePath}`);
+
+    // --- AVATAR CLEANUP LOGIC ---
+    // Check for avatar upload: {userId}/avatars/{filename}
+    const avatarMatch = storagePath.match(/^([^/]+)\/avatars\/(.+)$/);
+    if (avatarMatch) {
+      const userId = avatarMatch[1];
+      console.log(`👤 Avatar upload detected for user: ${userId}`);
+
+      try {
+        const bucketObj = admin.storage().bucket(bucket);
+        // List all files in the user's avatar directory
+        const [files] = await bucketObj.getFiles({ prefix: `${userId}/avatars/` });
+
+        // Delete all files EXCEPT the one currently being processed
+        const deletePromises = files
+          .filter(file => file.name !== storagePath)
+          .map(file => {
+            console.log(`🗑️ Deleting old avatar: ${file.name}`);
+            return file.delete();
+          });
+
+        if (deletePromises.length > 0) {
+          await Promise.all(deletePromises);
+          console.log(`✅ Cleanup complete: Deleted ${deletePromises.length} old avatar(s) for user ${userId}`);
+        } else {
+          console.log(`✨ No old avatars to delete.`);
+        }
+
+        return null; // Stop processing (avatars are not book media)
+      } catch (error) {
+        console.error("❌ Error cleaning up avatars:", error);
+        return null;
+      }
+    }
+    // -----------------------------
 
     // Skip if not a media file
     if (!storagePath || (!storagePath.includes('/media/image/') && !storagePath.includes('/media/video/'))) {
@@ -325,7 +360,7 @@ exports.onMediaUpload = onObjectFinalized(
       // Parse storage path to extract metadata
       const metadata = parseStoragePath(storagePath);
       metadata.storagePath = storagePath; // Store full path
-      
+
       console.log(`📋 Parsed metadata:`, metadata);
 
       // Validate user has access to the book
@@ -360,7 +395,7 @@ exports.onMediaUpload = onObjectFinalized(
       );
 
       console.log(`✅ Successfully processed media upload: ${storagePath} -> albums/${albumId}`);
-      
+
       return { success: true, albumId };
 
     } catch (error) {
@@ -377,12 +412,12 @@ exports.onMediaUpload = onObjectFinalized(
  * Removes URL from albums/{albumId} document arrays
  */
 exports.onMediaDelete = onObjectDeleted(
-  { 
+  {
     region: "us-central1"
   },
   async (event) => {
     const storagePath = event.data.name;
-    
+
     console.log(`🗑️  Storage delete trigger fired for: ${storagePath}`);
 
     // Skip if not a media file
@@ -394,7 +429,7 @@ exports.onMediaDelete = onObjectDeleted(
     try {
       // Parse storage path to extract metadata
       const metadata = parseStoragePath(storagePath);
-      
+
       console.log(`📋 Parsed deletion metadata:`, metadata);
 
       const albumRef = db.collection('albums').doc(metadata.bookId);
@@ -408,7 +443,7 @@ exports.onMediaDelete = onObjectDeleted(
       const albumData = albumDoc.data();
       const images = albumData.images || [];
       const videos = albumData.videos || [];
-      
+
       // Find the URL that matches this storage path
       const updateData = {
         updatedAt: FieldValue.serverTimestamp(),
@@ -422,12 +457,12 @@ exports.onMediaDelete = onObjectDeleted(
           const itemObj = typeof item === 'string' ? { url: item } : item;
           return itemObj.storagePath === storagePath || itemObj.url?.includes(metadata.chapterId);
         });
-        
+
         if (!mediaItemToRemove && images.length > 0) {
           // Fallback: remove last image if can't find match
           mediaItemToRemove = images[images.length - 1];
         }
-        
+
         if (mediaItemToRemove) {
           const itemUrl = typeof mediaItemToRemove === 'string' ? mediaItemToRemove : mediaItemToRemove.url;
           updateData.images = FieldValue.arrayRemove(mediaItemToRemove);
@@ -436,10 +471,10 @@ exports.onMediaDelete = onObjectDeleted(
             return itemObj.url !== itemUrl;
           });
           updateData.mediaCount = remainingImages.length + videos.length;
-          
+
           // Update cover image if deleted image was cover
           if (albumData.coverImage === itemUrl) {
-            const nextImage = remainingImages.length > 0 
+            const nextImage = remainingImages.length > 0
               ? (typeof remainingImages[0] === 'string' ? remainingImages[0] : remainingImages[0].url)
               : null;
             updateData.coverImage = nextImage;
@@ -451,12 +486,12 @@ exports.onMediaDelete = onObjectDeleted(
           const itemObj = typeof item === 'string' ? { url: item } : item;
           return itemObj.storagePath === storagePath || itemObj.url?.includes(metadata.chapterId);
         });
-        
+
         if (!mediaItemToRemove && videos.length > 0) {
           // Fallback: remove last video if can't find match
           mediaItemToRemove = videos[videos.length - 1];
         }
-        
+
         if (mediaItemToRemove) {
           updateData.videos = FieldValue.arrayRemove(mediaItemToRemove);
           const remainingVideos = videos.filter(item => {
@@ -467,7 +502,7 @@ exports.onMediaDelete = onObjectDeleted(
           updateData.mediaCount = images.length + remainingVideos.length;
         }
       }
-      
+
       if (!mediaItemToRemove) {
         console.log(`⚠️  Could not find media item to remove for storage path: ${storagePath}`);
         return null;
@@ -481,7 +516,7 @@ exports.onMediaDelete = onObjectDeleted(
       // Update user's accessibleBookIds and accessibleAlbums
       const newCoverImage = updateData.coverImage !== undefined ? updateData.coverImage : albumData.coverImage;
       await updateUserAccessibleBookIds(metadata.userId, metadata.bookId, newCoverImage);
-      
+
       const albumName = albumData.name || 'Untitled Album';
       await updateUserAccessibleAlbums(
         metadata.userId,
