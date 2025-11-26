@@ -224,7 +224,7 @@ const ProfileSettings = () => {
             type="submit"
             disabled={isSavingProfile}
             size="lg"
-            className="bg-blue-600 hover:bg-blue-700 text-white min-w-[200px]"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground min-w-[200px]"
           >
             {isSavingProfile ? 'Saving Changes...' : 'Save Changes'}
           </Button>
