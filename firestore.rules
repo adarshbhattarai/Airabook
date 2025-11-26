@@ -8,7 +8,12 @@ service cloud.firestore {
 
     // Users collection
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if false; // Only backend (Admin SDK) can create users
+      allow update: if request.auth != null && request.auth.uid == userId && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+          ['photoURL', 'displayName', 'displayNameLower', 'writingContext', 'language', 'useLanguageForBooks', 'updatedAt']
+        );
     }
 
     // Books collection with public/private and co-author support
