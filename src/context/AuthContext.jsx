@@ -118,6 +118,10 @@ export const AuthProvider = ({ children }) => {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(userCredential.user, { displayName: name });
 
+      // Send verification email
+      await sendEmailVerification(userCredential.user);
+      console.log("📧 Verification email sent to:", email);
+
       console.log("✅ Signup successful, user created:", userCredential.user.uid);
       console.log("⏳ Waiting for backend trigger to create Firestore document...");
 
