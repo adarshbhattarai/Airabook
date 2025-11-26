@@ -3,6 +3,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { AppInput } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
+import { Switch } from '@/components/ui/switch';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '@/lib/firebase';
 import { defaultAvatars } from '@/constants/avatars';
@@ -221,29 +222,19 @@ const ProfileSettings = () => {
                     ))}
                   </select>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 flex flex-col justify-end">
                   <label className="block text-sm font-medium text-foreground">Language preference</label>
-                  <div className="rounded-2xl border border-border p-3 space-y-2">
-                    <label className="flex items-center gap-3 text-sm text-foreground">
-                      <input
-                        type="radio"
-                        name="languagePreference"
-                        checked={!useLanguageForBooks}
-                        onChange={() => setUseLanguageForBooks(false)}
-                        className="accent-primary"
-                      />
-                      Use default (English)
-                    </label>
-                    <label className="flex items-center gap-3 text-sm text-foreground">
-                      <input
-                        type="radio"
-                        name="languagePreference"
-                        checked={useLanguageForBooks}
-                        onChange={() => setUseLanguageForBooks(true)}
-                        className="accent-primary"
-                      />
-                      Use selected language
-                    </label>
+                  <div className="flex items-center gap-3 rounded-2xl border border-border p-3">
+                    <span className={`text-sm ${!useLanguageForBooks ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+                      Default (English)
+                    </span>
+                    <Switch
+                      checked={useLanguageForBooks}
+                      onCheckedChange={setUseLanguageForBooks}
+                    />
+                    <span className={`text-sm ${useLanguageForBooks ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+                      Use selected
+                    </span>
                   </div>
                 </div>
               </div>
