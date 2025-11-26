@@ -223,7 +223,7 @@ const Donate = () => {
             <Button
               onClick={handleCheckout}
               disabled={loading || !resolvedAmount}
-              variant="appPrimary"
+              variant="appSuccess"
               className="inline-flex items-center gap-2 px-8 py-3 text-base"
             >
               <Coffee className="h-5 w-5" />

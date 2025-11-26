@@ -789,7 +789,7 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
             </Button>
 
             {/* Save button */}
-            <Button onClick={handleSave} disabled={isSaving} className="shrink-0">
+            <Button onClick={handleSave} disabled={isSaving} variant="appSuccess" className="shrink-0">
               {isSaving ? 'Saving...' : 'Save'}
             </Button>
           </div>

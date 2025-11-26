@@ -307,7 +307,8 @@ const ProfileSettings = () => {
             <Button
               type="submit"
               disabled={!hasUnsavedChanges || isSavingProfile || isUploading}
-              className="min-w-[160px] bg-[#2ecc71] text-white hover:bg-[#29b765] focus-visible:ring-[#2ecc71]"
+              variant="appSuccess"
+              className="min-w-[160px]"
             >
               {isSavingProfile ? (
                 'Saving Changes...'

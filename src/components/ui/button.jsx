@@ -23,6 +23,8 @@ const buttonVariants = cva(
           'border border-app-iris text-app-iris bg-transparent hover:bg-app-iris hover:text-white',
         appGhost:
           'text-app-gray-600 hover:bg-app-gray-100',
+        appSuccess:
+          'bg-[var(--app-action)] text-white hover:bg-[var(--app-action-hover)] focus-visible:ring-[var(--app-action-ring)] shadow-appCard rounded-pill',
 			},
 			size: {
 				default: 'h-10 px-4 py-2',

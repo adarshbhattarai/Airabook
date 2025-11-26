@@ -26,6 +26,10 @@
   --popover-foreground: 222.2 84% 4.9%;
   --radius: 0.5rem;
   --body-background: linear-gradient(135deg, #f8f0ff 0%, #e8e0ff 50%, #d4e0ff 100%);
+  /* Action button colors - blue for light mode */
+  --app-action: #635bff;
+  --app-action-hover: #5046e5;
+  --app-action-ring: #635bff;
 }
 
 .theme-matrix {
@@ -66,6 +70,10 @@
   --app-gradient-spotlight: radial-gradient(circle at 20% 20%, rgba(0, 245, 160, 0.25), transparent 35%), radial-gradient(circle at 80% 0%, rgba(110, 247, 200, 0.2), transparent 35%), #050b08;
   --app-gradient-book: linear-gradient(135deg, #0ba360 0%, #3cba92 100%);
   --body-background: radial-gradient(circle at 20% 20%, rgba(0, 245, 160, 0.08), transparent 30%), radial-gradient(circle at 80% 0%, rgba(110, 247, 200, 0.12), transparent 35%), #050b08;
+  /* Action button colors - green for matrix mode */
+  --app-action: #2ecc71;
+  --app-action-hover: #29b765;
+  --app-action-ring: #2ecc71;
 }
 
 .theme-dark {
@@ -106,6 +114,10 @@
   --app-gradient-spotlight: radial-gradient(circle at 20% 20%, rgba(0, 255, 127, 0.25), transparent 35%), radial-gradient(circle at 80% 0%, rgba(110, 247, 200, 0.2), transparent 35%), #000000;
   --app-gradient-book: linear-gradient(135deg, #0ba360 0%, #00ff7f 100%);
   --body-background: #000000;
+  /* Action button colors - green for dark mode */
+  --app-action: #2ecc71;
+  --app-action-hover: #29b765;
+  --app-action-ring: #2ecc71;
 }
 
 * {
