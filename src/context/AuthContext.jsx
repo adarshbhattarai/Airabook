@@ -167,7 +167,7 @@ export const AuthProvider = ({ children }) => {
     return signOut(auth);
   };
 
-  const updateUserProfile = async ({ displayName, email, photoURL }) => {
+  const updateUserProfile = async ({ displayName, email, photoURL, ...additionalData }) => {
     if (!auth.currentUser) {
       throw new Error('No user is currently signed in.');
     }
@@ -199,6 +199,7 @@ export const AuthProvider = ({ children }) => {
         email: email || auth.currentUser.email || '',
         photoURL: photoURL || auth.currentUser.photoURL || '',
         updatedAt: new Date(),
+        ...additionalData, // Save any additional fields (writingContext, language, etc.)
       },
       { merge: true },
     );

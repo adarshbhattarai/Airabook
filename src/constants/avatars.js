@@ -1,18 +1,26 @@
 export const defaultAvatars = [
   {
-    label: 'Aurora',
-    url: 'https://images.unsplash.com/photo-1520554303700-541444efb94e?auto=format&fit=crop&w=240&q=80',
+    label: 'Boy 1',
+    url: '/avatars/boy1.png',
   },
   {
-    label: 'Mountains',
-    url: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=240&q=80',
+    label: 'Boy 2',
+    url: '/avatars/boy2.png',
   },
   {
-    label: 'City',
-    url: 'https://images.unsplash.com/photo-1467269204594-9661b134dd2b?auto=format&fit=crop&w=240&q=80',
+    label: 'Boy 3',
+    url: '/avatars/boy3.png',
   },
   {
-    label: 'Ocean',
-    url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=240&q=80',
+    label: 'Girl 1',
+    url: '/avatars/girl1.png',
+  },
+  {
+    label: 'Girl 2',
+    url: '/avatars/girl2.png',
+  },
+  {
+    label: 'Girl 3',
+    url: '/avatars/girl3.png',
   },
 ];

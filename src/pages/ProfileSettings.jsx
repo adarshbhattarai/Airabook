@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { AppInput } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/use-toast';
 import { defaultAvatars } from '@/constants/avatars';
 
@@ -13,19 +14,26 @@ const ProfileSettings = () => {
   const [email, setEmail] = useState('');
   const [currentAvatar, setCurrentAvatar] = useState('');
   const [customAvatar, setCustomAvatar] = useState('');
-  const [password, setPassword] = useState('');
-  const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [writingContext, setWritingContext] = useState('');
+  const [language, setLanguage] = useState('English');
+  const [useLanguageForBooks, setUseLanguageForBooks] = useState(false);
+
   const [isSavingProfile, setIsSavingProfile] = useState(false);
-  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
   useEffect(() => {
     const activeDisplayName = appUser?.displayName || user?.displayName || '';
     const activeEmail = appUser?.email || user?.email || '';
     const activeAvatar = user?.photoURL || '';
+    const activeWritingContext = appUser?.writingContext || '';
+    const activeLanguage = appUser?.language || 'English';
+    const activeUseLanguageForBooks = appUser?.useLanguageForBooks || false;
 
     setDisplayName(activeDisplayName);
     setEmail(activeEmail);
     setCurrentAvatar(activeAvatar);
+    setWritingContext(activeWritingContext);
+    setLanguage(activeLanguage);
+    setUseLanguageForBooks(activeUseLanguageForBooks);
   }, [appUser, user]);
 
   const selectedAvatar = useMemo(() => customAvatar || currentAvatar, [customAvatar, currentAvatar]);
@@ -52,6 +60,9 @@ const ProfileSettings = () => {
         displayName,
         email,
         photoURL: selectedAvatar,
+        writingContext,
+        language,
+        useLanguageForBooks,
       });
 
       toast({
@@ -69,39 +80,10 @@ const ProfileSettings = () => {
     }
   };
 
-  const handlePasswordSave = async (event) => {
-    event.preventDefault();
-
-    if (!password || password !== passwordConfirm) {
-      toast({
-        title: 'Passwords must match',
-        description: 'Enter and confirm the same password to continue.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setIsUpdatingPassword(true);
-
-    try {
-      await changePassword(password);
-      setPassword('');
-      setPasswordConfirm('');
-
-      toast({
-        title: 'Password updated',
-        description: 'Your password has been changed successfully.',
-      });
-    } catch (error) {
-      toast({
-        title: 'Unable to change password',
-        description: error.message,
-        variant: 'destructive',
-      });
-    } finally {
-      setIsUpdatingPassword(false);
-    }
-  };
+  const languages = [
+    "English", "Nepalese", "Spanish", "French", "German", "Italian", "Portuguese",
+    "Dutch", "Russian", "Chinese", "Japanese", "Korean", "Hindi", "Arabic",
+  ];
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
@@ -112,140 +94,142 @@ const ProfileSettings = () => {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <section className="bg-card border border-border rounded-2xl shadow-appCard p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-lg font-semibold text-foreground">Profile</h2>
-                <p className="text-sm text-muted-foreground">Update your basic account information.</p>
-              </div>
-            </div>
-
-            <form onSubmit={handleProfileSave} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Display name</label>
-                <AppInput
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="Your name"
-                  required
-                />
+      <form onSubmit={handleProfileSave}>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+            <section className="bg-card border border-border rounded-2xl shadow-appCard p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">Profile</h2>
+                  <p className="text-sm text-muted-foreground">Update your basic account information.</p>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Email</label>
-                <AppInput
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  required
-                />
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1">Display name</label>
+                    <AppInput
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      placeholder="Your name"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1">Email</label>
+                    <AppInput
+                      type="email"
+                      value={email}
+                      disabled
+                      className="bg-muted text-muted-foreground cursor-not-allowed"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Writing Context</label>
+                  <textarea
+                    value={writingContext}
+                    onChange={(e) => setWritingContext(e.target.value)}
+                    placeholder="Describe your writing style, preferred genres, or any context for the AI..."
+                    className="w-full min-h-[100px] rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1">Preferred Book Writing Language</label>
+                    <select
+                      value={language}
+                      onChange={(e) => setLanguage(e.target.value)}
+                      className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    >
+                      {languages.map(lang => (
+                        <option key={lang} value={lang}>{lang}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center justify-end pt-8 gap-3">
+                    <span className={`text-sm ${!useLanguageForBooks ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+                      Default (English)
+                    </span>
+                    <Switch
+                      checked={useLanguageForBooks}
+                      onCheckedChange={setUseLanguageForBooks}
+                    />
+                    <span className={`text-sm ${useLanguageForBooks ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+                      Use Selected Language
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <div className="space-y-6">
+            <section className="bg-card border border-border rounded-2xl shadow-appCard p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">Avatar</h2>
+                  <p className="text-sm text-muted-foreground">Pick a preset.</p>
+                </div>
               </div>
 
-              <Button type="submit" disabled={isSavingProfile}>
-                {isSavingProfile ? 'Saving...' : 'Save changes'}
-              </Button>
-            </form>
-          </section>
-
-          <section className="bg-card border border-border rounded-2xl shadow-appCard p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-lg font-semibold text-foreground">Password</h2>
-                <p className="text-sm text-muted-foreground">Choose a strong password to protect your account.</p>
-              </div>
-            </div>
-
-            <form onSubmit={handlePasswordSave} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">New password</label>
-                <AppInput
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                />
+              <div className="flex items-center gap-4 mb-4">
+                <div className="h-16 w-16 rounded-full overflow-hidden bg-muted flex items-center justify-center border border-border">
+                  {selectedAvatar ? (
+                    <img src={selectedAvatar} alt="Selected avatar" className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="text-sm text-muted-foreground">No photo</span>
+                  )}
+                </div>
+                <div className="space-y-2 text-sm text-muted-foreground">
+                  <p>Current avatar preview</p>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Confirm new password</label>
-                <AppInput
-                  type="password"
-                  value={passwordConfirm}
-                  onChange={(e) => setPasswordConfirm(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                />
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                {defaultAvatars.map((avatar) => (
+                  <button
+                    type="button"
+                    key={avatar.url}
+                    onClick={() => {
+                      setCurrentAvatar(avatar.url);
+                      setCustomAvatar('');
+                    }}
+                    className={`flex items-center gap-3 p-2 rounded-xl border transition-colors ${currentAvatar === avatar.url ? 'border-primary bg-primary/5' : 'border-border hover:border-primary'
+                      }`}
+                  >
+                    <img src={avatar.url} alt={avatar.label} className="h-10 w-10 rounded-lg object-cover" />
+                    <span className="text-sm text-foreground">{avatar.label}</span>
+                  </button>
+                ))}
               </div>
 
-              <Button type="submit" disabled={isUpdatingPassword}>
-                {isUpdatingPassword ? 'Updating...' : 'Update password'}
-              </Button>
-            </form>
-          </section>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Upload a photo</label>
+                  <AppInput type="file" accept="image/*" onChange={handleAvatarFile} />
+                </div>
+              </div>
+            </section>
+          </div>
         </div>
 
-        <div className="space-y-6">
-          <section className="bg-card border border-border rounded-2xl shadow-appCard p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-lg font-semibold text-foreground">Avatar</h2>
-                <p className="text-sm text-muted-foreground">Pick a preset or upload your own photo.</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-4 mb-4">
-              <div className="h-16 w-16 rounded-full overflow-hidden bg-muted flex items-center justify-center border border-border">
-                {selectedAvatar ? (
-                  <img src={selectedAvatar} alt="Selected avatar" className="h-full w-full object-cover" />
-                ) : (
-                  <span className="text-sm text-muted-foreground">No photo</span>
-                )}
-              </div>
-              <div className="space-y-2 text-sm text-muted-foreground">
-                <p>Current avatar preview</p>
-                <p className="text-xs">Upload a new image to override the presets.</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              {defaultAvatars.map((avatar) => (
-                <button
-                  type="button"
-                  key={avatar.url}
-                  onClick={() => {
-                    setCurrentAvatar(avatar.url);
-                    setCustomAvatar('');
-                  }}
-                  className="flex items-center gap-3 p-2 rounded-xl border border-border hover:border-primary transition-colors"
-                >
-                  <img src={avatar.url} alt={avatar.label} className="h-10 w-10 rounded-lg object-cover" />
-                  <span className="text-sm text-foreground">{avatar.label}</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Upload a photo</label>
-                <AppInput type="file" accept="image/*" onChange={handleAvatarFile} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Or use an image URL</label>
-                <AppInput
-                  type="url"
-                  placeholder="https://example.com/avatar.jpg"
-                  value={customAvatar}
-                  onChange={(e) => setCustomAvatar(e.target.value)}
-                />
-              </div>
-            </div>
-          </section>
+        <div className="mt-8 flex justify-center">
+          <Button
+            type="submit"
+            disabled={isSavingProfile}
+            size="lg"
+            className="bg-blue-600 hover:bg-blue-700 text-white min-w-[200px]"
+          >
+            {isSavingProfile ? 'Saving Changes...' : 'Save Changes'}
+          </Button>
         </div>
-      </div>
+      </form>
     </div>
   );
 };
