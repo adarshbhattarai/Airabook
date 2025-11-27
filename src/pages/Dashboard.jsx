@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Send, Sparkles } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -6,26 +7,27 @@ import { functions } from '@/lib/firebase';
 import { httpsCallable } from 'firebase/functions';
 
 const Dashboard = () => {
+  const location = useLocation();
   const { appUser } = useAuth();
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState([]);
   const [isChatStarted, setIsChatStarted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const messagesEndRef = React.useRef(null);
+  const hasSubmittedInitialPrompt = React.useRef(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  React.useEffect(() => {
+  useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!prompt.trim() || isSubmitting) return;
+  const submitPrompt = async (promptText) => {
+    if (!promptText.trim() || isSubmitting) return;
 
-    const userMessage = { role: 'user', content: prompt };
+    const userMessage = { role: 'user', content: promptText };
     setMessages(prev => [...prev, userMessage]);
     setPrompt('');
     setIsChatStarted(true);
@@ -55,6 +57,21 @@ const Dashboard = () => {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  useEffect(() => {
+    if (location.state?.prompt && !hasSubmittedInitialPrompt.current) {
+      const initialPrompt = location.state.prompt;
+      hasSubmittedInitialPrompt.current = true;
+      submitPrompt(initialPrompt);
+      // Optional: clear location state
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    submitPrompt(prompt);
   };
 
   const handleKeyDown = (e) => {

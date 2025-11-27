@@ -6,6 +6,7 @@ import { ThemeProvider } from '@/context/ThemeContext';
 import MarketingLayout from '@/layouts/MarketingLayout';
 import AppShell from '@/layouts/AppShell';
 import Home from '@/pages/Home';
+import AiraHome from '@/pages/AiraHome';
 import Login from '@/pages/Login';
 import Signup from '@/pages/Signup';
 import ForgotPassword from '@/pages/ForgotPassword';
@@ -52,6 +53,7 @@ function App() {
         <main>
           <Routes>
             {/* Public / marketing routes */}
+            <Route path="/aira" element={<MarketingLayout><AiraHome /></MarketingLayout>} />
             <Route path="/" element={<MarketingLayout><Home /></MarketingLayout>} />
             <Route path="/signup" element={<MarketingLayout><Signup /></MarketingLayout>} />
             <Route path="/login" element={<MarketingLayout><Login /></MarketingLayout>} />
