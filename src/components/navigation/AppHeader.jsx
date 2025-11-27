@@ -43,8 +43,13 @@ const AppHeader = () => {
 
   const handleSearch = (e) => {
     e.preventDefault();
-    // TODO: Implement search functionality
-    console.log('Search query:', searchQuery);
+    if (!searchQuery.trim()) return;
+
+    // Navigate to dashboard with search query as state
+    navigate('/dashboard', { state: { prompt: searchQuery } });
+
+    // Clear search input
+    setSearchQuery('');
   };
 
   return (

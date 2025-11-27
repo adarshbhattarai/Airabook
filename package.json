@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "local": "vite --mode localemulator",
+    "emulator": "firebase emulators:start --project local --inspect-functions",
     "dev": "vite --mode development",
     "start": "npm run local",
     "build": "vite build",
