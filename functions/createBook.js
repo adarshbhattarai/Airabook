@@ -3,6 +3,7 @@ const logger = require("firebase-functions/logger");
 
 const admin = require("firebase-admin");
 const FieldValue = require("firebase-admin/firestore").FieldValue;
+const { assertAndIncrementCounter } = require("./utils/limits");
 
 // Firebase Admin should be initialized by index.js
 // If not initialized, initialize with default settings (with console.log since logger might not be ready)
@@ -195,7 +196,7 @@ exports.createBook = onCall(
     const { title, creationType, promptMode, prompt } = data;
     const userId = auth.uid;
 
-    
+    let reservedBookSlot = false;
 
     try {
       // Validate input
@@ -233,12 +234,18 @@ exports.createBook = onCall(
       }
 
       const currentBookCount = userData?.accessibleBookIds?.length || 0;
-      if (currentBookCount >= 10) {
-        throw new HttpsError(
-          "resource-exhausted",
-          "You have reached the maximum number of books (10)."
-        );
-      }
+      logger.log(`📚 Current book count (legacy): ${currentBookCount}`);
+
+      // Enforce plan-based book limit
+      await assertAndIncrementCounter(
+        db,
+        userId,
+        "books",
+        1,
+        undefined,
+        "You have reached your book limit for this plan."
+      );
+      reservedBookSlot = true;
 
       // Duplicate title check for this user
       logger.log(`🔍 Checking for duplicate title: "${titleNormalized}" for user ${userId}`);
@@ -432,6 +439,13 @@ exports.createBook = onCall(
         message: `Book "${title}" created successfully with ${createdChapters.length} chapters!`,
       };
     } catch (error) {
+      if (reservedBookSlot) {
+        try {
+          await assertAndIncrementCounter(db, auth.uid, "books", -1);
+        } catch (revertErr) {
+          logger.error("Failed to revert book counter after error:", revertErr);
+        }
+      }
       logger.error("Error creating book:", error);
       logger.error("Error stack:", error.stack);
       // Re-throw HttpsError as-is if it's already one

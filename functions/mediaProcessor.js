@@ -1,6 +1,7 @@
 const { onObjectFinalized, onObjectDeleted } = require("firebase-functions/v2/storage");
 const admin = require("firebase-admin");
 const FieldValue = require("firebase-admin/firestore").FieldValue;
+const { addStorageUsage } = require("./utils/limits");
 
 // Ensure Firebase Admin is initialized (may be initialized by index.js)
 if (!admin.apps.length) {
@@ -525,6 +526,16 @@ exports.onMediaDelete = onObjectDeleted(
         newCoverImage,
         updateData.mediaCount
       );
+
+      const sizeBytes = parseInt(event.data?.size || "0", 10) || 0;
+      if (sizeBytes > 0) {
+        try {
+          await addStorageUsage(db, metadata.userId, -sizeBytes);
+          console.log(`📉 Decremented storage usage by ${sizeBytes} bytes for user ${metadata.userId}`);
+        } catch (usageErr) {
+          console.error("⚠️ Failed to update storage usage after delete:", usageErr);
+        }
+      }
 
       return { success: true };
     } catch (error) {
