@@ -34,7 +34,13 @@ const Navbar = () => {
     // { name: 'Notes', path: '/notes', public: false },
   ];
 
-  const visibleNavItems = navItems.filter(item => item.public || user);
+  const hiddenPaths = ['/', '/login', '/signup'];
+  const isHiddenPage = hiddenPaths.includes(location.pathname);
+
+  const visibleNavItems = navItems.filter(item => {
+    if (isHiddenPage && item.path === homePath) return false;
+    return item.public || user;
+  });
 
   const userName = appUser?.displayName || user?.displayName || 'User';
   const avatarUrl = user?.photoURL;
@@ -62,19 +68,21 @@ const Navbar = () => {
                 key={item.name}
                 to={item.path}
                 className={`px-3 py-2 rounded-full text-sm font-medium transition-all duration-200 ${location.pathname === item.path
-                    ? 'bg-violet-100 text-violet-700'
-                    : 'text-gray-700 hover:bg-violet-50 hover:text-violet-600'
+                  ? 'bg-violet-100 text-violet-700'
+                  : 'text-gray-700 hover:bg-violet-50 hover:text-violet-600'
                   }`}
               >
                 {item.name}
               </Link>
             ))}
-            <Button
-              onClick={handleDonate}
-              className="bg-gradient-to-r from-yellow-400 to-orange-400 hover:from-yellow-500 hover:to-orange-500 text-white px-4 py-2 rounded-full shadow-lg hover:shadow-xl transition-all duration-200"
-            >
-              💝 Donate
-            </Button>
+            {!isHiddenPage && (
+              <Button
+                onClick={handleDonate}
+                className="bg-gradient-to-r from-yellow-400 to-orange-400 hover:from-yellow-500 hover:to-orange-500 text-white px-4 py-2 rounded-full shadow-lg hover:shadow-xl transition-all duration-200"
+              >
+                💝 Donate
+              </Button>
+            )}
             {user ? (
               <div className="flex items-center space-x-4">
                 <div className="flex items-center space-x-2">
@@ -105,13 +113,15 @@ const Navbar = () => {
 
           {/* Mobile menu button */}
           <div className="md:hidden flex items-center gap-2">
-            <Button
-              onClick={handleDonate}
-              size="sm"
-              className="bg-gradient-to-r from-yellow-400 to-orange-400 text-white rounded-full shadow-md"
-            >
-              💝
-            </Button>
+            {!isHiddenPage && (
+              <Button
+                onClick={handleDonate}
+                size="sm"
+                className="bg-gradient-to-r from-yellow-400 to-orange-400 text-white rounded-full shadow-md"
+              >
+                💝
+              </Button>
+            )}
             <button
               onClick={() => setIsOpen(!isOpen)}
               className="text-gray-700 hover:text-violet-600 transition-colors"
@@ -148,8 +158,8 @@ const Navbar = () => {
                   to={item.path}
                   onClick={() => setIsOpen(false)}
                   className={`px-3 py-2 rounded-lg text-base font-medium transition-all duration-200 ${location.pathname === item.path
-                      ? 'bg-violet-100 text-violet-700'
-                      : 'text-gray-700 hover:bg-violet-50 hover:text-violet-600'
+                    ? 'bg-violet-100 text-violet-700'
+                    : 'text-gray-700 hover:bg-violet-50 hover:text-violet-600'
                     }`}
                 >
                   {item.name}
