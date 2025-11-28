@@ -45,8 +45,9 @@ exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
         if (cfg.godUsers.has(emailLower) || cfg.godUsers.has(uid)) {
             planTier = 'god';
         } else {
-            const earlySnap = await db.collection('users').orderBy('createdAt').limit(50).get();
-            if (earlySnap.size < 50) {
+            // Use count aggregation instead of fetching all documents
+            const countSnap = await db.collection('users').count().get();
+            if (countSnap.data().count < 50) {
                 planTier = 'early';
             }
         }

@@ -236,16 +236,6 @@ exports.createBook = onCall(
       const currentBookCount = userData?.accessibleBookIds?.length || 0;
       logger.log(`📚 Current book count (legacy): ${currentBookCount}`);
 
-      // Enforce plan-based book limit
-      await assertAndIncrementCounter(
-        db,
-        userId,
-        "books",
-        1,
-        undefined,
-        "You have reached your book limit for this plan."
-      );
-      reservedBookSlot = true;
 
       // Duplicate title check for this user
       logger.log(`🔍 Checking for duplicate title: "${titleNormalized}" for user ${userId}`);
@@ -267,6 +257,17 @@ exports.createBook = onCall(
           "You already have a book with this title."
         );
       }
+
+       // Enforce plan-based book limit
+       await assertAndIncrementCounter(
+        db,
+        userId,
+        "books",
+        1,
+        undefined,
+        "You have reached your book limit for this plan."
+      );
+      reservedBookSlot = true;
 
       // Decide chapters + description
       let chapters = [];
