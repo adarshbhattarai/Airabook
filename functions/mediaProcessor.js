@@ -313,6 +313,10 @@ exports.onMediaUpload = onObjectFinalized(
   async (event) => {
     const storagePath = event.data.name;
     const bucket = event.data.bucket;
+    const metaSize = parseInt(event.data?.size || "0", 10) || 0;
+    const quotaCounted =
+      event.data?.metadata?.metadata?.quotaCounted === "true" ||
+      event.data?.metadata?.customMetadata?.quotaCounted === "true";
 
     console.log(`📸 Storage trigger fired for: ${storagePath}`);
 
@@ -394,6 +398,15 @@ exports.onMediaUpload = onObjectFinalized(
         albumUpdate.coverImage,
         albumUpdate.mediaCount
       );
+
+      if (!quotaCounted && metaSize > 0) {
+        try {
+          await addStorageUsage(db, metadata.userId, metaSize);
+          console.log(`📈 Added ${metaSize} bytes to storage usage for ${metadata.userId}`);
+        } catch (usageErr) {
+          console.error("⚠️ Failed to add storage usage on media upload:", usageErr);
+        }
+      }
 
       console.log(`✅ Successfully processed media upload: ${storagePath} -> albums/${albumId}`);
 

@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { doc, collection, getDocs, writeBatch, updateDoc, getDoc } from 'firebase/firestore';
-import { firestore, storage } from '@/lib/firebase';
-import { ref, deleteObject } from 'firebase/storage';
+import { firestore } from '@/lib/firebase';
 import { BookOpen, Loader2, Trash2, Eye, Pencil, MoreVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
@@ -115,25 +114,10 @@ const BookCard = ({ bookId, bookTitle, coverImage, onBookDeleted }) => {
             const bookRef = doc(firestore, 'books', bookId);
             batch.delete(bookRef);
 
-            // Delete the album document
-            const albumRef = doc(firestore, 'albums', bookId);
-            batch.delete(albumRef);
-
             // Commit all Firestore deletions
             await batch.commit();
 
-            // Delete all media files from storage
-            if (storagePathsToDelete.length > 0) {
-                const deletePromises = storagePathsToDelete.map(storagePath => {
-                    const mediaRef = ref(storage, storagePath);
-                    return deleteObject(mediaRef).catch(error => {
-                        console.warn(`Failed to delete media file ${storagePath}:`, error);
-                    });
-                });
-                await Promise.all(deletePromises);
-            }
-
-            // Remove book from user's accessibleBookIds and accessibleAlbums
+            // Remove book from user's accessibleBookIds (keep albums/media intact)
             if (user) {
                 try {
                     const userRef = doc(firestore, 'users', user.uid);
@@ -142,7 +126,6 @@ const BookCard = ({ bookId, bookTitle, coverImage, onBookDeleted }) => {
                     if (userDoc.exists()) {
                         const userData = userDoc.data();
                         let accessibleBookIds = userData.accessibleBookIds || [];
-                        let accessibleAlbums = userData.accessibleAlbums || [];
 
                         // Remove book from accessibleBookIds (handle both old and new formats)
                         accessibleBookIds = accessibleBookIds.filter(item => {
@@ -152,12 +135,8 @@ const BookCard = ({ bookId, bookTitle, coverImage, onBookDeleted }) => {
                             return item.bookId !== bookId;
                         });
 
-                        // Remove album from accessibleAlbums
-                        accessibleAlbums = accessibleAlbums.filter(item => item.id !== bookId);
-
                         await updateDoc(userRef, {
                             accessibleBookIds,
-                            accessibleAlbums,
                         });
                     }
                 } catch (error) {

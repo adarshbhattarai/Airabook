@@ -96,6 +96,7 @@ const { createPage } = require("./createPage");
 const { updatePage } = require("./updatePage");
 const { onUserCreate } = require("./onUserCreate");
 const { onBookDeleted, onPageDeleted, onChapterDeleted } = require("./usageTriggers");
+const { deleteMediaAsset, deleteAlbumAssets } = require("./deleteMedia");
 
 exports.helloWorld = onRequest({ region: "us-central1" }, (request, response) => {
   logger.info("Hello logs!", { structuredData: true });
@@ -117,6 +118,8 @@ exports.onUserCreate = onUserCreate;
 exports.onBookDeleted = onBookDeleted;
 exports.onPageDeleted = onPageDeleted;
 exports.onChapterDeleted = onChapterDeleted;
+exports.deleteMediaAsset = deleteMediaAsset;
+exports.deleteAlbumAssets = deleteAlbumAssets;
 
 // Genkit RAG Flow
 const { queryBookFlow } = require("./genkit");

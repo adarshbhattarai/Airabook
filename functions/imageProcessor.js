@@ -88,7 +88,12 @@ function handleBusboyEvents(busboy, uid, res, db) {
           // Upload to Storage
           const [file] = await bucket.upload(filepath, {
             destination: `media/${uid}/${filename}`,
-            metadata: { contentType: mimetype },
+            metadata: {
+              contentType: mimetype,
+              metadata: {
+                quotaCounted: "true",
+              },
+            },
           });
 
           const [meta] = await file.getMetadata();

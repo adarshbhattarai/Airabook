@@ -4,7 +4,7 @@ import {
   doc, getDoc, collection, getDocs, addDoc, deleteDoc, updateDoc, writeBatch, query, orderBy, arrayUnion, arrayRemove, where, limit
 } from 'firebase/firestore';
 import { firestore, storage, functions } from '@/lib/firebase';
-import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -363,14 +363,6 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
 
   const handleMediaDelete = async (mediaItemToDelete) => {
     if (!window.confirm(`Are you sure you want to delete "${mediaItemToDelete.name}"?`)) return;
-
-    const storageRefItem = ref(storage, mediaItemToDelete.storagePath);
-    try {
-      await deleteObject(storageRefItem);
-    } catch {
-      toast({ title: 'Deletion Error', description: 'Could not delete file from storage.', variant: 'destructive' });
-      return;
-    }
 
     const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', page.id);
     try {
@@ -1557,23 +1549,6 @@ const BookDetail = () => {
 
   const handleDeletePage = async (chapterId, pageId, pageIndex) => {
     const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', pageId);
-    const pageSnap = await getDoc(pageRef);
-
-    if (pageSnap.exists()) {
-      const pageData = pageSnap.data();
-      if (pageData.media && pageData.media.length > 0) {
-        const deletePromises = pageData.media.map(mediaItem => {
-          const mediaRef = ref(storage, mediaItem.storagePath);
-          return deleteObject(mediaRef);
-        });
-        try {
-          await Promise.all(deletePromises);
-          toast({ title: 'Media Cleaned', description: 'Associated media files deleted.' });
-        } catch {
-          toast({ title: 'Storage Error', description: 'Could not delete all associated media. Please check storage.', variant: 'destructive' });
-        }
-      }
-    }
 
     const batch = writeBatch(firestore);
     batch.delete(pageRef);
