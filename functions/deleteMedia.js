@@ -208,15 +208,23 @@ exports.deleteAlbumAssets = onCall({ region: "us-central1" }, async (request) =>
   const bucket = admin.storage().bucket();
   const sizeByUser = {};
 
+  const resolveOwnerUid = (pathUserId) => {
+    if (pathUserId && pathUserId !== "media") return pathUserId;
+    if (bookData?.ownerId) return bookData.ownerId;
+    if (album?.accessPermission?.ownerId) return album.accessPermission.ownerId;
+    return auth.uid;
+  };
+
   // Delete storage files and collect sizes per uploader (parsed from storage path)
   for (const sp of storagePaths) {
     const pathUserId = sp.split("/")[0];
+    const targetUid = resolveOwnerUid(pathUserId);
     try {
       const file = bucket.file(sp);
       const [meta] = await file.getMetadata();
       const sizeBytes = parseInt(meta.size || "0", 10) || 0;
       if (sizeBytes > 0) {
-        sizeByUser[pathUserId] = (sizeByUser[pathUserId] || 0) + sizeBytes;
+        sizeByUser[targetUid] = (sizeByUser[targetUid] || 0) + sizeBytes;
       }
       await file.delete({ ignoreNotFound: true });
     } catch (err) {
