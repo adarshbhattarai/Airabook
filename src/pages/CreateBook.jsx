@@ -115,6 +115,7 @@ const CreateBook = () => {
 
       const payload = {
         title: title,
+        subtitle: subtitle.trim() || undefined,
         creationType: creationType,
         promptMode: creationType === 0 ? promptMode : false,
         prompt: (creationType === 0 && promptMode && prompt.trim()) ? prompt : undefined,
@@ -141,6 +142,7 @@ const CreateBook = () => {
         prefetchedBook: {
           id: bookId,
           babyName: title.trim(), // Ensure this matches BookDetail expectation
+          subtitle: subtitle.trim() || null,
           titleLower: title.trim().toLowerCase(),
           description: result.data.description,
           chapterCount: result.data.chaptersCount || 0,

@@ -108,6 +108,7 @@ exports.helloWorld = onRequest({ region: "us-central1" }, (request, response) =>
 exports.uploadMedia = uploadMedia;
 exports.rewriteNote = rewriteNote;
 exports.createBook = createBook;
+exports.updateBook = updateBook;
 exports.onMediaUpload = onMediaUpload;
 exports.onMediaDelete = onMediaDelete;
 exports.inviteCoAuthor = inviteCoAuthor;

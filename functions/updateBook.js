@@ -29,14 +29,14 @@ exports.updateBook = onCall({ region: "us-central1" }, async (request) => {
         );
     }
 
-    const { bookId, title, coverImageUrl } = data;
+    const { bookId, title, subtitle, coverImageUrl } = data;
 
     if (!bookId) {
         throw new HttpsError("invalid-argument", "Book ID is required.");
     }
 
     // At least one field to update
-    if (!title && coverImageUrl === undefined) {
+    if (!title && subtitle === undefined && coverImageUrl === undefined) {
         throw new HttpsError("invalid-argument", "Nothing to update.");
     }
 
@@ -66,6 +66,10 @@ exports.updateBook = onCall({ region: "us-central1" }, async (request) => {
         if (title) {
             updates.babyName = title.trim();
             updates.titleLower = title.trim().toLowerCase();
+        }
+
+        if (subtitle !== undefined) {
+            updates.subtitle = subtitle ? subtitle.trim() : null;
         }
 
         if (coverImageUrl !== undefined) {

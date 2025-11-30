@@ -14,6 +14,7 @@ const EditBookModal = ({ isOpen, onClose, book, onUpdate }) => {
     const { user } = useAuth();
     const { toast } = useToast();
     const [title, setTitle] = useState('');
+    const [subtitle, setSubtitle] = useState('');
     const [coverImageFile, setCoverImageFile] = useState(null);
     const [coverImagePreview, setCoverImagePreview] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -22,6 +23,7 @@ const EditBookModal = ({ isOpen, onClose, book, onUpdate }) => {
     useEffect(() => {
         if (book && isOpen) {
             setTitle(book.babyName || book.title || '');
+            setSubtitle(book.subtitle || '');
             setCoverImagePreview(book.coverImageUrl || null);
             setCoverImageFile(null);
             setImageRemoved(false);
@@ -76,6 +78,7 @@ const EditBookModal = ({ isOpen, onClose, book, onUpdate }) => {
             await updateBookFn({
                 bookId: book.id,
                 title: title.trim(),
+                subtitle: subtitle.trim() || null,
                 coverImageUrl: newCoverImageUrl
             });
 
@@ -87,6 +90,7 @@ const EditBookModal = ({ isOpen, onClose, book, onUpdate }) => {
                     ...book,
                     babyName: title.trim(),
                     title: title.trim(),
+                    subtitle: subtitle.trim() || null,
                     coverImageUrl: newCoverImageUrl !== undefined ? newCoverImageUrl : book.coverImageUrl
                 });
             }
@@ -118,6 +122,21 @@ const EditBookModal = ({ isOpen, onClose, book, onUpdate }) => {
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
                             placeholder="Enter book title"
+                            className="h-11"
+                        />
+                    </div>
+
+                    {/* Subtitle Input */}
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                            <Label htmlFor="subtitle" className="text-base">Subtitle</Label>
+                            <span className="text-xs text-app-gray-500">Optional</span>
+                        </div>
+                        <Input
+                            id="subtitle"
+                            value={subtitle}
+                            onChange={(e) => setSubtitle(e.target.value)}
+                            placeholder="A short phrase to add flavor"
                             className="h-11"
                         />
                     </div>

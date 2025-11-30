@@ -202,7 +202,7 @@ exports.createBook = onCall(
 
     logger.log("✅ User authenticated:", auth.uid);
 
-    const { title, creationType, promptMode, prompt, coverImageUrl } = data;
+    const { title, subtitle, creationType, promptMode, prompt, coverImageUrl } = data;
     const userId = auth.uid;
 
     let reservedBookSlot = false;
@@ -308,6 +308,7 @@ exports.createBook = onCall(
       logger.log(`📝 Creating book document`);
       const bookData = {
         babyName: titleNormalized,
+        subtitle: subtitle?.trim() || null,
         titleLower,
         creationType,
         description: bookDescription,
