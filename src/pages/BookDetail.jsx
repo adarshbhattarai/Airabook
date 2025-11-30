@@ -174,7 +174,9 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
   const [aiPreviewOpen, setAiPreviewOpen] = useState(false);
   const [aiPreviewText, setAiPreviewText] = useState('');
   const [isAutoSaving, setIsAutoSaving] = useState(false);
+
   const [pendingNote, setPendingNote] = useState(null);
+  const [mediaToDelete, setMediaToDelete] = useState(null);
 
   const quillRef = useRef(null);
   const { user } = useAuth();
@@ -361,19 +363,25 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
     );
   };
 
-  const handleMediaDelete = async (mediaItemToDelete) => {
-    if (!window.confirm(`Are you sure you want to delete "${mediaItemToDelete.name}"?`)) return;
+  const handleMediaDelete = (mediaItemToDelete) => {
+    setMediaToDelete(mediaItemToDelete);
+  };
+
+  const confirmMediaDelete = async () => {
+    if (!mediaToDelete) return;
 
     const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', page.id);
     try {
-      await updateDoc(pageRef, { media: arrayRemove(mediaItemToDelete) });
+      await updateDoc(pageRef, { media: arrayRemove(mediaToDelete) });
       onPageUpdate({
         ...page,
-        media: (page.media || []).filter(m => m.storagePath !== mediaItemToDelete.storagePath),
+        media: (page.media || []).filter(m => m.storagePath !== mediaToDelete.storagePath),
       });
       toast({ title: 'Success', description: 'Media deleted.' });
     } catch {
       toast({ title: 'Deletion Error', description: 'Could not update page details.', variant: 'destructive' });
+    } finally {
+      setMediaToDelete(null);
     }
   };
 
@@ -933,6 +941,15 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Confirmation Modal for Media Deletion */}
+      <ConfirmationModal
+        isOpen={!!mediaToDelete}
+        onClose={() => setMediaToDelete(null)}
+        onConfirm={confirmMediaDelete}
+        title="Remove Media"
+        description="Removing this media only deletes the reference from this page. The file remains in your Assets Registry. To permanently delete the file and free up storage space, please remove it from the Assets Registry."
+      />
     </div>
   );
 };
