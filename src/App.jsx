@@ -12,7 +12,7 @@ import Signup from '@/pages/Signup';
 import ForgotPassword from '@/pages/ForgotPassword';
 import Dashboard from '@/pages/Dashboard';
 import Books from '@/pages/Books';
-import Media from '@/pages/Media';
+import AssetRegistry from '@/pages/Media';
 import Notes from '@/pages/Notes';
 import CreateBook from '@/pages/CreateBook';
 import Donate from '@/pages/Donate';
@@ -85,7 +85,7 @@ function App() {
               element={
                 <PrivateRoute>
                   <ThemedAppShell>
-                    <Media />
+                    <AssetRegistry />
                   </ThemedAppShell>
                 </PrivateRoute>
               }

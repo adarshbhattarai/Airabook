@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Image as ImageIcon, Video, Loader2 } from 'lucide-react';
+import { ArrowLeft, Image as ImageIcon, Video, Loader2, Trash2 } from 'lucide-react';
 import { Helmet } from 'react-helmet';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/context/AuthContext';
 import { doc, getDoc } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
+import { httpsCallable, getFunctions } from 'firebase/functions';
 import {
   Dialog,
   DialogContent,
@@ -85,6 +86,9 @@ const AlbumDetail = () => {
   const [previewIndex, setPreviewIndex] = useState(0);
   const [previewType, setPreviewType] = useState('image'); // 'image' or 'video'
   const [allMedia, setAllMedia] = useState([]); // Combined images and videos for preview
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [confirmingAlbumDelete, setConfirmingAlbumDelete] = useState(false);
+  const functions = getFunctions();
 
   useEffect(() => {
     const fetchAlbum = async () => {
@@ -145,11 +149,19 @@ const AlbumDetail = () => {
         // Handle both old string format and new object format {url, storagePath}
         const images = (albumData.images || []).map(item => {
           const url = typeof item === 'string' ? item : item.url;
-          return { url: convertToEmulatorURL(url), type: 'image' };
+          return {
+            url: convertToEmulatorURL(url),
+            storagePath: typeof item === 'string' ? null : item.storagePath,
+            type: 'image'
+          };
         });
         const videos = (albumData.videos || []).map(item => {
           const url = typeof item === 'string' ? item : item.url;
-          return { url: convertToEmulatorURL(url), type: 'video' };
+          return {
+            url: convertToEmulatorURL(url),
+            storagePath: typeof item === 'string' ? null : item.storagePath,
+            type: 'video'
+          };
         });
         setAllMedia([...images, ...videos]);
         
@@ -191,6 +203,63 @@ const AlbumDetail = () => {
   };
 
   const closePreview = () => setPreviewOpen(false);
+  const requestDelete = () => setConfirmingDelete(true);
+  const cancelDelete = () => setConfirmingDelete(false);
+  const requestAlbumDelete = () => setConfirmingAlbumDelete(true);
+  const cancelAlbumDelete = () => setConfirmingAlbumDelete(false);
+
+  const handleDelete = async () => {
+    const item = allMedia[previewIndex];
+    if (!item || !item.storagePath) {
+      toast({ title: 'Delete failed', description: 'Missing media reference.', variant: 'destructive' });
+      setConfirmingDelete(false);
+      return;
+    }
+
+    try {
+      const call = httpsCallable(functions, 'deleteMediaAsset');
+      await call({ storagePath: item.storagePath, bookId });
+      toast({ title: 'Media deleted' });
+      setConfirmingDelete(false);
+      setPreviewOpen(false);
+      // Refresh album
+      const albumRef = doc(firestore, 'albums', bookId);
+      const albumSnap = await getDoc(albumRef);
+      if (albumSnap.exists()) {
+        const albumData = { id: albumSnap.id, ...albumSnap.data() };
+        setAlbum(albumData);
+        const images = (albumData.images || []).map(m => ({
+          url: convertToEmulatorURL(typeof m === 'string' ? m : m.url),
+          storagePath: typeof m === 'string' ? null : m.storagePath,
+          type: 'image',
+        }));
+        const videos = (albumData.videos || []).map(m => ({
+          url: convertToEmulatorURL(typeof m === 'string' ? m : m.url),
+          storagePath: typeof m === 'string' ? null : m.storagePath,
+          type: 'video',
+        }));
+        setAllMedia([...images, ...videos]);
+      }
+    } catch (err) {
+      console.error('Delete media failed:', err);
+      toast({ title: 'Delete failed', description: err?.message || 'Could not delete media.', variant: 'destructive' });
+      setConfirmingDelete(false);
+    }
+  };
+
+  const handleDeleteAlbum = async () => {
+    try {
+      const call = httpsCallable(functions, 'deleteAlbumAssets');
+      await call({ bookId });
+      toast({ title: 'Album deleted' });
+      setConfirmingAlbumDelete(false);
+      navigate('/media');
+    } catch (err) {
+      console.error('Delete album failed:', err);
+      toast({ title: 'Delete failed', description: err?.message || 'Could not delete album.', variant: 'destructive' });
+      setConfirmingAlbumDelete(false);
+    }
+  };
 
   const goPrev = () => {
     if (allMedia.length === 0) return;
@@ -223,12 +292,18 @@ const AlbumDetail = () => {
   // Convert URLs to emulator format if needed
   const images = (album?.images || []).map(item => {
     const url = typeof item === 'string' ? item : item.url;
-    return convertToEmulatorURL(url);
-  }).filter(url => url); // Filter out null/undefined URLs
+    return {
+      url: convertToEmulatorURL(url),
+      storagePath: typeof item === 'string' ? null : item.storagePath,
+    };
+  }).filter(item => item.url); // Filter out null/undefined URLs
   const videos = (album?.videos || []).map(item => {
     const url = typeof item === 'string' ? item : item.url;
-    return convertToEmulatorURL(url);
-  }).filter(url => url); // Filter out null/undefined URLs
+    return {
+      url: convertToEmulatorURL(url),
+      storagePath: typeof item === 'string' ? null : item.storagePath,
+    };
+  }).filter(item => item.url); // Filter out null/undefined URLs
   const hasMedia = images.length > 0 || videos.length > 0;
 
   if (loading || !album) {
@@ -266,6 +341,15 @@ const AlbumDetail = () => {
                 : `${album.mediaCount || 0} ${(album.mediaCount || 0) === 1 ? 'item' : 'items'}`}
             </p>
           </div>
+          <div className="flex gap-2">
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={requestAlbumDelete}
+            >
+              Delete album
+            </Button>
+          </div>
         </div>
 
         {/* Media Grid */}
@@ -288,9 +372,9 @@ const AlbumDetail = () => {
                   animate={{ opacity: 1 }}
                   className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"
                 >
-                  {images.map((url, index) => (
+                  {images.map((item, index) => (
                     <motion.div
-                      key={`image-${index}-${url}`}
+                      key={`image-${index}-${item.url}`}
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ duration: 0.3, delay: index * 0.05 }}
@@ -298,11 +382,11 @@ const AlbumDetail = () => {
                       className="relative aspect-square bg-gray-200 rounded-lg overflow-hidden cursor-pointer group hover:shadow-xl transition-all duration-300"
                     >
                       <img
-                        src={url}
+                        src={item.url}
                         alt={`Image ${index + 1}`}
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                         onError={(e) => {
-                          console.error('Failed to load image:', url);
+                          console.error('Failed to load image:', item.url);
                           e.target.style.display = 'none';
                         }}
                       />
@@ -311,6 +395,19 @@ const AlbumDetail = () => {
                           View
                         </div>
                       </div>
+                      {item.storagePath && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPreviewIndex(index);
+                            setPreviewType('image');
+                            requestDelete();
+                          }}
+                          className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 group-hover:bg-red-600 transition-all"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
                     </motion.div>
                   ))}
                 </motion.div>
@@ -326,9 +423,9 @@ const AlbumDetail = () => {
                   animate={{ opacity: 1 }}
                   className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"
                 >
-                  {videos.map((url, index) => (
+                  {videos.map((item, index) => (
                     <motion.div
-                      key={`video-${index}-${url}`}
+                      key={`video-${index}-${item.url}`}
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ duration: 0.3, delay: index * 0.05 }}
@@ -336,10 +433,10 @@ const AlbumDetail = () => {
                       className="relative aspect-square bg-gray-200 rounded-lg overflow-hidden cursor-pointer group hover:shadow-xl transition-all duration-300"
                     >
                       <video
-                        src={url}
+                        src={item.url}
                         className="w-full h-full object-cover"
                         onError={(e) => {
-                          console.error('Failed to load video:', url);
+                          console.error('Failed to load video:', item.url);
                           e.target.style.display = 'none';
                         }}
                       />
@@ -351,6 +448,19 @@ const AlbumDetail = () => {
                           View
                         </div>
                       </div>
+                      {item.storagePath && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPreviewIndex(images.length + index);
+                            setPreviewType('video');
+                            requestDelete();
+                          }}
+                          className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 group-hover:bg-red-600 transition-all"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
                     </motion.div>
                   ))}
                 </motion.div>
@@ -371,7 +481,7 @@ const AlbumDetail = () => {
               >
                 ✕
               </button>
-              
+
               {previewItem.type === 'image' ? (
                 <img
                   src={previewItem.url}
@@ -411,6 +521,38 @@ const AlbumDetail = () => {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm Delete */}
+      <Dialog open={confirmingDelete} onOpenChange={(open) => !open && cancelDelete()}>
+        <DialogContent className="max-w-md p-6 bg-white rounded-2xl shadow-xl">
+          <div className="space-y-3 text-left">
+            <h3 className="text-lg font-semibold text-app-gray-900">Delete media?</h3>
+            <p className="text-sm text-app-gray-700">
+              Are you sure you want to delete this media? This will permanently remove it from all books and album references and delete it from storage.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={cancelDelete}>Cancel</Button>
+              <Button variant="destructive" onClick={handleDelete}>Delete</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm Album Delete */}
+      <Dialog open={confirmingAlbumDelete} onOpenChange={(open) => !open && cancelAlbumDelete()}>
+        <DialogContent className="max-w-md p-6 bg-white rounded-2xl shadow-xl">
+          <div className="space-y-3 text-left">
+            <h3 className="text-lg font-semibold text-app-gray-900">Delete album?</h3>
+            <p className="text-sm text-app-gray-700">
+              Are you sure you want to delete this album? This will remove all media from this album, delete files from storage, and remove references from books.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={cancelAlbumDelete}>Cancel</Button>
+              <Button variant="destructive" onClick={handleDeleteAlbum}>Delete</Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

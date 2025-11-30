@@ -3,6 +3,7 @@ const { z } = require('genkit');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 const { generateEmbeddings } = require('./utils/embeddingsClient');
+const { consumeApiCallQuota } = require('./utils/limits');
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
     admin.initializeApp();
@@ -180,6 +181,7 @@ const queryBookFlow = onCall(
         if (!request.auth) {
             throw new HttpsError('unauthenticated', 'User must be authenticated.');
         }
+        await consumeApiCallQuota(db, request.auth.uid, 1);
 
         try {
             // Invoke the flow with auth context

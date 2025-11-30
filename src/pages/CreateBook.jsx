@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { functions, auth } from '@/lib/firebase';
+import { functions, auth, storage } from '@/lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -12,7 +13,7 @@ import TwoColumnLayout from '@/layouts/TwoColumnLayout';
 import InfoCard from '@/components/app/InfoCard';
 import SummaryCard from '@/components/app/SummaryCard';
 import BookCardPreview from '@/components/previews/BookCardPreview';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Upload, X, Image as ImageIcon } from 'lucide-react';
 
 const CreateBook = () => {
   const [title, setTitle] = useState('');
@@ -20,10 +21,33 @@ const CreateBook = () => {
   const [creationType, setCreationType] = useState(0); // 0 = auto-generate, 1 = start blank
   const [promptMode, setPromptMode] = useState(false); // false = baby journal, true = custom prompt
   const [prompt, setPrompt] = useState('');
+  const [coverImageFile, setCoverImageFile] = useState(null);
+  const [coverImagePreview, setCoverImagePreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        toast({ title: "Error", description: "Image size should be less than 5MB.", variant: "destructive" });
+        return;
+      }
+      setCoverImageFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setCoverImagePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeImage = () => {
+    setCoverImageFile(null);
+    setCoverImagePreview(null);
+  };
 
   const handleCreateBook = async (e) => {
     e.preventDefault();
@@ -31,7 +55,7 @@ const CreateBook = () => {
     console.log("👤 User:", user ? user.uid : "No user");
     console.log("📝 Book title:", title);
     console.log("🔧 Creation type:", creationType);
-    
+
     if (!title.trim()) {
       toast({ title: "Error", description: "Book title cannot be empty.", variant: "destructive" });
       return;
@@ -42,15 +66,15 @@ const CreateBook = () => {
       toast({ title: "Error", description: "Please provide a prompt or disable prompt mode.", variant: "destructive" });
       return;
     }
-    
+
     if (creationType === 0 && promptMode && prompt.length > 500) {
       toast({ title: "Error", description: "Prompt cannot exceed 500 characters.", variant: "destructive" });
       return;
     }
-    
+
     if (!user) {
-        toast({ title: "Error", description: "You must be logged in to create a book.", variant: "destructive" });
-        return;
+      toast({ title: "Error", description: "You must be logged in to create a book.", variant: "destructive" });
+      return;
     }
 
     setLoading(true);
@@ -59,28 +83,46 @@ const CreateBook = () => {
       console.log("📞 CreateBook: Calling Firebase function...");
       console.log("🔧 Functions instance:", functions);
       console.log("🌐 Functions region:", functions.app.options.region);
-      
+
       // Debug: Check current user and token
       console.log("🔐 Current Firebase User:", auth.currentUser);
       console.log("🔐 User UID:", auth.currentUser?.uid);
       console.log("🔐 User Email:", auth.currentUser?.email);
-      
+
       // Force refresh the ID token
       const idToken = await auth.currentUser.getIdToken(true);
       console.log("🎫 Fresh ID Token obtained:", idToken ? "Token exists" : "No token");
       console.log("🎫 Token length:", idToken?.length);
-      
+
+      let coverImageUrl = null;
+      if (coverImageFile) {
+        try {
+          const filename = `${Date.now()}_${coverImageFile.name}`;
+          const storageRef = ref(storage, `users/${user.uid}/covers/${filename}`);
+          console.log("📤 Uploading cover image...");
+          const snapshot = await uploadBytes(storageRef, coverImageFile);
+          coverImageUrl = await getDownloadURL(snapshot.ref);
+          console.log("✅ Cover image uploaded:", coverImageUrl);
+        } catch (uploadError) {
+          console.error("❌ Error uploading cover image:", uploadError);
+          toast({ title: "Warning", description: "Failed to upload cover image. Book will be created without it.", variant: "destructive" });
+          // Continue without cover image
+        }
+      }
+
       const createBookFunction = httpsCallable(functions, 'createBook');
       console.log("✅ CreateBook: Function reference created");
-      
+
       const payload = {
         title: title,
+        subtitle: subtitle.trim() || undefined,
         creationType: creationType,
         promptMode: creationType === 0 ? promptMode : false,
         prompt: (creationType === 0 && promptMode && prompt.trim()) ? prompt : undefined,
+        coverImageUrl: coverImageUrl,
       };
       console.log("📦 CreateBook: Payload:", payload);
-      
+
       const functionStartTime = performance.now();
       const result = await createBookFunction(payload);
       const functionEndTime = performance.now();
@@ -91,21 +133,24 @@ const CreateBook = () => {
       if (!bookId) {
         throw new Error("Function did not return a book ID.");
       }
-      
+
       // Navigate immediately with prefetched data to avoid slow Firestore queries
       const navStartTime = performance.now();
       console.log("🚀 Navigating to book detail page with prefetched data...");
-      
+
       const navState = {
         prefetchedBook: {
           id: bookId,
           babyName: title.trim(), // Ensure this matches BookDetail expectation
+          subtitle: subtitle.trim() || null,
           titleLower: title.trim().toLowerCase(),
           description: result.data.description,
           chapterCount: result.data.chaptersCount || 0,
           ownerId: user.uid,
           isPublic: false,
-          createdAt: new Date().toISOString(), 
+          coverImageUrl: coverImageUrl,
+          createdAt: new Date().toISOString(),
+          ownerId: user.uid, // Ensure isOwner check passes in BookDetail
           members: { [user.uid]: 'Owner' } // Important for permission checks
         },
         prefetchedChapters: (result.data.chapters || []).map(ch => ({
@@ -117,7 +162,7 @@ const CreateBook = () => {
         })),
         skipFetch: true,
       };
-      
+
       console.log("📦 Navigation State:", navState);
 
       navigate(`/book/${bookId}`, {
@@ -125,7 +170,7 @@ const CreateBook = () => {
       });
       const navEndTime = performance.now();
       console.log(`⏱️ Navigation took: ${(navEndTime - navStartTime).toFixed(2)}ms`);
-      
+
       // Show toast after navigation
       toast({
         title: "Book created",
@@ -137,7 +182,7 @@ const CreateBook = () => {
       console.error("❌ CreateBook: Error code:", error.code);
       console.error("❌ CreateBook: Error message:", error.message);
       console.error("❌ CreateBook: Error details:", error.details);
-      
+
       toast({
         title: "Error",
         description: `Book could not be created: ${error.message}`,
@@ -165,6 +210,51 @@ const CreateBook = () => {
             <InfoCard>
               <form className="space-y-6" onSubmit={handleCreateBook}>
                 <div className="space-y-4">
+                  {/* Cover Image Upload */}
+                  <div>
+                    <label className="text-xs font-semibold text-app-gray-600 uppercase tracking-wide block mb-2">
+                      Cover Image (Optional)
+                    </label>
+                    <div className="flex items-start gap-4">
+                      <div className="relative group">
+                        <div className={`w-24 h-32 rounded-lg border-2 border-dashed border-app-gray-300 flex flex-col items-center justify-center overflow-hidden bg-app-gray-50 transition-colors ${!coverImagePreview ? 'hover:bg-app-gray-100 hover:border-app-violet/50' : 'border-solid border-app-gray-200'}`}>
+                          {coverImagePreview ? (
+                            <img src={coverImagePreview} alt="Cover preview" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="text-center p-2">
+                              <ImageIcon className="w-6 h-6 text-app-gray-400 mx-auto mb-1" />
+                              <span className="text-[10px] text-app-gray-500">Upload</span>
+                            </div>
+                          )}
+
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleImageChange}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            title={coverImagePreview ? "Change cover image" : "Upload cover image"}
+                          />
+                        </div>
+
+                        {coverImagePreview && (
+                          <button
+                            type="button"
+                            onClick={removeImage}
+                            className="absolute -top-2 -right-2 bg-white rounded-full p-1 shadow-md border border-app-gray-200 text-app-gray-500 hover:text-red-500 transition-colors"
+                            title="Remove image"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex-1 text-xs text-app-gray-500 pt-2">
+                        <p>Add a personal touch with a cover photo.</p>
+                        <p className="mt-1">Recommended size: Portrait (3:4 ratio).</p>
+                      </div>
+                    </div>
+                  </div>
+
                   <div>
                     <label
                       htmlFor="book-title"
@@ -264,7 +354,7 @@ const CreateBook = () => {
                           </span>
                         </div>
                       </div>
-                      
+
                       {!promptMode && (
                         <div className="mt-3 p-3 bg-white/60 rounded-md border border-app-violet/10">
                           <p className="text-xs text-app-gray-600">
@@ -272,7 +362,7 @@ const CreateBook = () => {
                           </p>
                         </div>
                       )}
-                      
+
                       {promptMode && (
                         <div className="mt-3 transition-all">
                           <label htmlFor="prompt" className="text-xs font-semibold text-app-gray-600 mb-2 block">
@@ -339,14 +429,14 @@ const CreateBook = () => {
         }
         right={
           <div className="space-y-6">
-            <BookCardPreview title={title} subtitle={subtitle} />
+            <BookCardPreview title={title} subtitle={subtitle} coverImage={coverImagePreview} />
             <SummaryCard
               title="What we'll set up"
               rows={[
                 { label: 'Book title', value: title.trim() || 'Not set yet' },
-                { 
-                  label: 'Mode', 
-                  value: creationType === 0 
+                {
+                  label: 'Mode',
+                  value: creationType === 0
                     ? (promptMode ? 'AI-assisted (Custom)' : 'AI-assisted (Baby Journal)')
                     : 'Start Blank'
                 },

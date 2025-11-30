@@ -4,7 +4,7 @@ import {
   doc, getDoc, collection, getDocs, addDoc, deleteDoc, updateDoc, writeBatch, query, orderBy, arrayUnion, arrayRemove, where, limit
 } from 'firebase/firestore';
 import { firestore, storage, functions } from '@/lib/firebase';
-import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,12 +13,13 @@ import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import {
-  Trash2, PlusCircle, ChevronRight, ChevronDown, ArrowLeft, ArrowRight, UploadCloud, GripVertical, MoreVertical, ChevronLeft, Sparkles, Globe, Users, UserPlus, X, Send
+  Trash2, PlusCircle, ChevronRight, ChevronDown, ArrowLeft, ArrowRight, UploadCloud, GripVertical, MoreVertical, ChevronLeft, Sparkles, Globe, Users, UserPlus, X, Send, Edit
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
 } from '@/components/ui/dialog';
 import { httpsCallable } from 'firebase/functions';
+import EditBookModal from '@/components/EditBookModal';
 
 // --- UTILITY FOR FRACTIONAL INDEXING ---
 const getMidpointString = (prev = '', next = '') => {
@@ -87,7 +88,7 @@ const quillFormats = [
 
 // --- REUSABLE UI COMPONENTS ---
 
-const HoverDeleteMenu = ({ onDelete }) => {
+const HoverDeleteMenu = ({ onDelete, side = 'left' }) => {
   const [isOpen, setIsOpen] = useState(false);
   const rootRef = useRef(null);
 
@@ -124,7 +125,7 @@ const HoverDeleteMenu = ({ onDelete }) => {
       </Button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-1 w-28 bg-white rounded-md shadow-lg z-20 border">
+        <div className={`absolute top-full mt-1 w-28 bg-white rounded-md shadow-2xl z-[9999] border ${side === 'right' ? 'right-0' : 'left-0'}`}>
           <Button
             type="button"
             variant="ghost"
@@ -174,7 +175,9 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
   const [aiPreviewOpen, setAiPreviewOpen] = useState(false);
   const [aiPreviewText, setAiPreviewText] = useState('');
   const [isAutoSaving, setIsAutoSaving] = useState(false);
+
   const [pendingNote, setPendingNote] = useState(null);
+  const [mediaToDelete, setMediaToDelete] = useState(null);
 
   const quillRef = useRef(null);
   const { user } = useAuth();
@@ -361,27 +364,25 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
     );
   };
 
-  const handleMediaDelete = async (mediaItemToDelete) => {
-    if (!window.confirm(`Are you sure you want to delete "${mediaItemToDelete.name}"?`)) return;
+  const handleMediaDelete = (mediaItemToDelete) => {
+    setMediaToDelete(mediaItemToDelete);
+  };
 
-    const storageRefItem = ref(storage, mediaItemToDelete.storagePath);
-    try {
-      await deleteObject(storageRefItem);
-    } catch {
-      toast({ title: 'Deletion Error', description: 'Could not delete file from storage.', variant: 'destructive' });
-      return;
-    }
+  const confirmMediaDelete = async () => {
+    if (!mediaToDelete) return;
 
     const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', page.id);
     try {
-      await updateDoc(pageRef, { media: arrayRemove(mediaItemToDelete) });
+      await updateDoc(pageRef, { media: arrayRemove(mediaToDelete) });
       onPageUpdate({
         ...page,
-        media: (page.media || []).filter(m => m.storagePath !== mediaItemToDelete.storagePath),
+        media: (page.media || []).filter(m => m.storagePath !== mediaToDelete.storagePath),
       });
       toast({ title: 'Success', description: 'Media deleted.' });
     } catch {
       toast({ title: 'Deletion Error', description: 'Could not update page details.', variant: 'destructive' });
+    } finally {
+      setMediaToDelete(null);
     }
   };
 
@@ -941,6 +942,15 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Confirmation Modal for Media Deletion */}
+      <ConfirmationModal
+        isOpen={!!mediaToDelete}
+        onClose={() => setMediaToDelete(null)}
+        onConfirm={confirmMediaDelete}
+        title="Remove Media"
+        description="Removing this media only deletes the reference from this page. The file remains in your Assets Registry. To permanently delete the file and free up storage space, please remove it from the Assets Registry."
+      />
     </div>
   );
 };
@@ -1168,6 +1178,7 @@ const BookDetail = () => {
   const [saveConfirmOpen, setSaveConfirmOpen] = useState(false);
   const [pendingChapterEdit, setPendingChapterEdit] = useState(null);
   const [publishModalOpen, setPublishModalOpen] = useState(false);
+  const [editBookModalOpen, setEditBookModalOpen] = useState(false);
   const [coAuthorModalOpen, setCoAuthorModalOpen] = useState(false);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -1288,9 +1299,17 @@ const BookDetail = () => {
   }, [bookId]);
 
   // Permission checks
-  const isOwner = book?.ownerId === user?.uid;
+  // Permission checks
+  const isOwner = book?.ownerId === user?.uid || book?.members?.[user?.uid] === 'Owner';
   const isCoAuthor = book?.members?.[user?.uid] === 'Co-author';
   const canEdit = isOwner || isCoAuthor;
+
+  console.log('👤 Auth Check:', {
+    userId: user?.uid,
+    bookOwnerId: book?.ownerId,
+    isOwner,
+    members: book?.members
+  });
 
   // User search function
   const searchUsers = useCallback(async (searchTerm) => {
@@ -1489,6 +1508,10 @@ const BookDetail = () => {
       .map(([uid]) => uid)
     : [];
 
+  const handleBookUpdate = (updatedBook) => {
+    setBook(prev => ({ ...prev, ...updatedBook }));
+  };
+
   // Fetch co-author user details
   useEffect(() => {
     const fetchCoAuthorDetails = async () => {
@@ -1526,7 +1549,7 @@ const BookDetail = () => {
       title: `Delete ${type}?`,
       description: type === 'chapter'
         ? `Are you sure you want to permanently delete "${data.title}" and all its pages? This action cannot be undone.`
-        : `Are you sure you want to permanently delete this page? This action cannot be undone.`,
+        : `Are you sure you want to permanently delete "${data.shortNote || 'Untitled Page'}"? This action cannot be undone.`,
     });
   };
   const closeModal = () => setModalState({ isOpen: false });
@@ -1557,23 +1580,6 @@ const BookDetail = () => {
 
   const handleDeletePage = async (chapterId, pageId, pageIndex) => {
     const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', pageId);
-    const pageSnap = await getDoc(pageRef);
-
-    if (pageSnap.exists()) {
-      const pageData = pageSnap.data();
-      if (pageData.media && pageData.media.length > 0) {
-        const deletePromises = pageData.media.map(mediaItem => {
-          const mediaRef = ref(storage, mediaItem.storagePath);
-          return deleteObject(mediaRef);
-        });
-        try {
-          await Promise.all(deletePromises);
-          toast({ title: 'Media Cleaned', description: 'Associated media files deleted.' });
-        } catch {
-          toast({ title: 'Storage Error', description: 'Could not delete all associated media. Please check storage.', variant: 'destructive' });
-        }
-      }
-    }
 
     const batch = writeBatch(firestore);
     batch.delete(pageRef);
@@ -1976,6 +1982,13 @@ const BookDetail = () => {
         </DialogContent>
       </Dialog>
 
+      <EditBookModal
+        isOpen={editBookModalOpen}
+        onClose={() => setEditBookModalOpen(false)}
+        book={book}
+        onUpdate={handleBookUpdate}
+      />
+
       {/* Co-Author Invitation Modal */}
       <Dialog open={coAuthorModalOpen} onOpenChange={setCoAuthorModalOpen}>
         <DialogContent className="w-full max-w-lg p-6 bg-white rounded-2xl shadow-lg">
@@ -2082,29 +2095,51 @@ const BookDetail = () => {
               <ArrowLeft className="h-4 w-4" />
               Back
             </Button>
+            {book?.coverImageUrl && (
+              <img
+                src={book.coverImageUrl}
+                alt="Cover"
+                className="h-8 w-8 rounded object-cover border border-gray-200"
+              />
+            )}
             <h1 className="text-lg font-semibold text-app-gray-900 truncate max-w-md" title={book?.babyName}>
               {book?.babyName}
             </h1>
+            {isOwner && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setEditBookModalOpen(true)}
+                className="ml-2 h-6 w-6 text-app-gray-400 hover:text-app-gray-900"
+                title="Edit book details"
+              >
+                <Edit className="h-3 w-3" />
+              </Button>
+            )}
           </div>
 
           {isOwner && (
             <div className="flex items-center gap-2">
-              <Button
-                variant={book?.isPublic ? 'appPrimary' : 'appGhost'}
-                onClick={() => setPublishModalOpen(true)}
-                className="flex items-center gap-2 h-8 text-xs"
-              >
-                <Globe className="h-3 w-3" />
-                {book?.isPublic ? 'Unpublish' : 'Publish'}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setCoAuthorModalOpen(true)}
-                className="flex items-center gap-2 h-8 text-xs"
-              >
-                <Users className="h-3 w-3" />
-                Co-Authors
-              </Button>
+              <span title="Currently Disabled, Coming Soon">
+                <Button
+                  variant="appGhost"
+                  disabled
+                  className="flex items-center gap-2 h-8 text-xs pointer-events-none"
+                >
+                  <Globe className="h-3 w-3" />
+                  Publish
+                </Button>
+              </span>
+              <span title="Currently Disabled, Coming Soon">
+                <Button
+                  variant="outline"
+                  disabled
+                  className="flex items-center gap-2 h-8 text-xs pointer-events-none"
+                >
+                  <Users className="h-3 w-3" />
+                  Co-Authors
+                </Button>
+              </span>
             </div>
           )}
         </div>
@@ -2112,7 +2147,7 @@ const BookDetail = () => {
         {/* Main Content */}
         <div className="flex flex-1 overflow-hidden">
           {/* Left Sidebar: Chapters */}
-          <div className="w-72 bg-app-gray-50 border-r border-border flex flex-col shrink-0">
+          <div className="w-72 bg-app-gray-50 border-r border-border flex flex-col shrink-0 overflow-visible relative z-20">
             <div className="p-3 border-b border-border bg-card/80 backdrop-blur-sm">
               <form onSubmit={handleCreateChapter} className="flex items-center space-x-2">
                 <Input
@@ -2128,7 +2163,7 @@ const BookDetail = () => {
               </form>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-2">
+            <div className="flex-1 overflow-y-auto overflow-x-visible p-2">
               <div className="space-y-1">
                 {[...chapters].sort((a, b) => a.order.localeCompare(b.order)).map(chapter => (
                   <div key={chapter.id} className="group">
@@ -2222,7 +2257,7 @@ const BookDetail = () => {
                                       <span className="truncate text-xs">{pageSummary.shortNote || 'Untitled Page'}</span>
                                     </div>
 
-                                    {canEdit && <HoverDeleteMenu onDelete={() => openDeleteModal('page', { ...pageSummary, chapterId: chapter.id, pageIndex: index })} />}
+                                    {canEdit && <HoverDeleteMenu side="right" onDelete={() => openDeleteModal('page', { ...pageSummary, chapterId: chapter.id, pageIndex: index })} />}
                                   </div>
                                 )}
                               </Draggable>

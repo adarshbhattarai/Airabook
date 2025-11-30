@@ -4,11 +4,13 @@ const path = require("path");
 const os = require("os");
 const fs = require("fs");
 const BusBoy = require("busboy");
+const { assertStorageAllowance, addStorageUsage } = require("./utils/limits");
 
 // Make sure Admin SDK is initialized (safe even if done elsewhere)
 if (!admin.apps.length) {
   admin.initializeApp();
 }
+const db = admin.firestore();
 
 const ALLOWED_MIME_PREFIXES = ["image/", "video/"];
 
@@ -19,8 +21,9 @@ const ALLOWED_MIME_PREFIXES = ["image/", "video/"];
  * @param {BusBoy} busboy
  * @param {string} uid - Firebase Auth user ID
  * @param {import("express").Response} res
+ * @param {FirebaseFirestore.Firestore} db
  */
-function handleBusboyEvents(busboy, uid, res) {
+function handleBusboyEvents(busboy, uid, res, db) {
   const tmpdir = os.tmpdir();
   const writePromises = [];
   const uploads = {};
@@ -63,14 +66,39 @@ function handleBusboyEvents(busboy, uid, res) {
     try {
       await Promise.all(writePromises);
 
+      // Compute total incoming size from temp files
+      let totalSizeBytes = 0;
+      for (const { filepath } of Object.values(uploads)) {
+        try {
+          const stat = fs.statSync(filepath);
+          totalSizeBytes += stat.size || 0;
+        } catch (err) {
+          console.warn("Could not stat temp upload:", err?.message);
+        }
+      }
+
+      if (totalSizeBytes > 0) {
+        await assertStorageAllowance(db, uid, totalSizeBytes);
+      }
+
       const bucket = admin.storage().bucket();
+      let uploadedTotal = 0;
       const uploadTasks = Object.entries(uploads).map(
         async ([filename, { filepath, mimetype }]) => {
           // Upload to Storage
           const [file] = await bucket.upload(filepath, {
             destination: `media/${uid}/${filename}`,
-            metadata: { contentType: mimetype },
+            metadata: {
+              contentType: mimetype,
+              metadata: {
+                quotaCounted: "true",
+              },
+            },
           });
+
+          const [meta] = await file.getMetadata();
+          const sizeBytes = parseInt(meta?.size || "0", 10) || 0;
+          uploadedTotal += sizeBytes;
 
           // Make signed URL
           const [publicUrl] = await file.getSignedUrl({
@@ -91,10 +119,15 @@ function handleBusboyEvents(busboy, uid, res) {
       );
 
       await Promise.all(uploadTasks);
+      if (uploadedTotal > 0) {
+        await addStorageUsage(db, uid, uploadedTotal);
+      }
+
       res.status(200).send("Files uploaded successfully.");
     } catch (error) {
       console.error("Error uploading files:", error);
-      res.status(500).send("Error uploading files.");
+      const status = error?.code === "resource-exhausted" ? 403 : 500;
+      res.status(status).send(error?.message || "Error uploading files.");
     }
   });
 }
@@ -125,7 +158,7 @@ exports.uploadMedia = onRequest(async (req, res) => {
   }
 
   const busboy = new BusBoy({ headers: req.headers });
-  handleBusboyEvents(busboy, uid, res);
+  handleBusboyEvents(busboy, uid, res, db);
   busboy.end(req.rawBody);
 });
 

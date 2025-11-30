@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Camera, Video, Upload, BookOpen, Image as ImageIcon } from 'lucide-react';
+import { Camera, Video, Upload, BookOpen, Image as ImageIcon, MoreVertical, Trash2, Eye } from 'lucide-react';
 import { Helmet } from 'react-helmet';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/context/AuthContext';
 import AppLoader from '@/components/app/AppLoader';
+import { httpsCallable, getFunctions } from 'firebase/functions';
 
 /**
  * Convert storage URL to emulator format if running in emulator mode
@@ -51,12 +53,16 @@ const convertToEmulatorURL = (url) => {
   return url;
 };
 
-const Media = () => {
+const AssetRegistry = () => {
   const [albums, setAlbums] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [menuOpenId, setMenuOpenId] = useState(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [targetAlbum, setTargetAlbum] = useState(null);
   const { user, appUser } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const functions = getFunctions();
 
   useEffect(() => {
     const fetchAlbums = async () => {
@@ -93,6 +99,36 @@ const Media = () => {
     });
   };
 
+  const openMenu = (albumId) => {
+    setMenuOpenId(prev => (prev === albumId ? null : albumId));
+  };
+
+  const requestDelete = (album) => {
+    setTargetAlbum(album);
+    setConfirmingDelete(true);
+    setMenuOpenId(null);
+  };
+
+  const cancelDelete = () => {
+    setConfirmingDelete(false);
+    setTargetAlbum(null);
+  };
+
+  const handleDeleteAlbum = async () => {
+    if (!targetAlbum) return;
+    try {
+      const call = httpsCallable(functions, 'deleteAlbumAssets');
+      await call({ bookId: targetAlbum.id });
+      toast({ title: 'Album deleted' });
+      setAlbums((prev) => prev.filter((a) => a.id !== targetAlbum.id));
+    } catch (err) {
+      console.error('Album delete failed:', err);
+      toast({ title: 'Delete failed', description: err?.message || 'Could not delete album.', variant: 'destructive' });
+    } finally {
+      cancelDelete();
+    }
+  };
+
   if (loading || !appUser) {
     return <AppLoader message="Loading your albums..." />;
   }
@@ -100,8 +136,8 @@ const Media = () => {
   return (
     <div className="py-6 px-4 sm:px-6 lg:px-8">
       <Helmet>
-        <title>Media Gallery - Baby Aira</title>
-        <meta name="description" content="Browse through your photo and video albums. Watch precious moments captured with love." />
+        <title>Asset Registry - Baby Aira</title>
+        <meta name="description" content="Browse and manage your photo and video assets attached to your books." />
       </Helmet>
 
       <div className="max-w-7xl mx-auto">
@@ -113,11 +149,11 @@ const Media = () => {
           className="mb-8"
         >
           <h1 className="text-[28px] font-semibold text-app-gray-900 leading-tight">
-            Media gallery
+            Asset registry
           </h1>
-          <p className="mt-2 text-sm text-app-gray-600 max-w-md">
-            Browse photo and video albums attached to your books.
-          </p>
+            <p className="mt-2 text-sm text-app-gray-600 max-w-md">
+            Browse and manage photo and video assets attached to your books.
+            </p>
         </motion.div>
 
         {/* Albums Grid */}
@@ -153,56 +189,106 @@ const Media = () => {
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, delay: index * 0.05 }}
-                onClick={() => navigate(`/media/album/${album.id}`)}
-                className="bg-white rounded-2xl overflow-hidden shadow-appSoft border border-app-gray-100 hover:shadow-appCard transition-all duration-200 cursor-pointer group"
+                className="bg-white rounded-2xl overflow-hidden shadow-appSoft border border-app-gray-100 hover:shadow-appCard transition-all duration-200 group relative"
               >
-                <div className="relative aspect-square bg-app-gray-100">
-                  {album.coverImage ? (
-                    <img
-                      src={convertToEmulatorURL(album.coverImage)}
-                      alt={album.name || 'Album cover'}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      onError={(e) => {
-                        console.error('Failed to load cover image:', album.coverImage);
-                        e.target.style.display = 'none';
+                <button
+                  className="absolute top-2 right-2 z-10 rounded-full p-2 hover:bg-app-gray-100"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openMenu(album.id);
+                  }}
+                >
+                  <MoreVertical className="h-4 w-4 text-app-gray-700" />
+                </button>
+                {menuOpenId === album.id && (
+                  <div className="absolute top-10 right-2 z-20 bg-white border border-app-gray-100 rounded-lg shadow-appSoft w-36">
+                    <button
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-app-gray-50 flex items-center gap-2"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/media/album/${album.id}`);
                       }}
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-app-iris">
-                      <BookOpen className="h-12 w-12" />
-                    </div>
-                  )}
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/15 transition-all duration-200 flex items-center justify-center">
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity text-white font-semibold text-sm">
-                      View Album
-                    </div>
+                    >
+                      <Eye className="h-4 w-4" /> Open
+                    </button>
+                    <button
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-red-50 text-red-600 flex items-center gap-2"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        requestDelete(album);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" /> Delete
+                    </button>
                   </div>
-                  {(album.mediaCount || 0) > 0 && (
-                    <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm rounded-full px-2.5 py-1 flex items-center gap-1.5 shadow-appSoft">
-                      <ImageIcon className="h-3.5 w-3.5 text-app-iris" />
-                      <span className="text-xs font-medium text-app-gray-900">
-                        {album.mediaCount || 0}
-                      </span>
+                )}
+                <div
+                  onClick={() => navigate(`/media/album/${album.id}`)}
+                  className="cursor-pointer"
+                >
+                  <div className="relative aspect-square bg-app-gray-100">
+                    {album.coverImage ? (
+                      <img
+                        src={convertToEmulatorURL(album.coverImage)}
+                        alt={album.name || 'Album cover'}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        onError={(e) => {
+                          console.error('Failed to load cover image:', album.coverImage);
+                          e.target.style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-app-iris">
+                        <BookOpen className="h-12 w-12" />
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/15 transition-all duration-200 flex items-center justify-center">
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity text-white font-semibold text-sm">
+                        View Album
+                      </div>
                     </div>
-                  )}
-                </div>
-                <div className="p-4">
-                  <h3 className="text-sm font-semibold text-app-gray-900 mb-1 truncate">
-                    {album.name || 'Untitled Album'}
-                  </h3>
-                  <p className="text-xs text-app-gray-600">
-                    {(album.mediaCount || 0) === 0
-                      ? 'No media yet'
-                      : `${album.mediaCount || 0} ${(album.mediaCount || 0) === 1 ? 'item' : 'items'}`}
-                  </p>
+                    {(album.mediaCount || 0) > 0 && (
+                      <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm rounded-full px-2.5 py-1 flex items-center gap-1.5 shadow-appSoft">
+                        <ImageIcon className="h-3.5 w-3.5 text-app-iris" />
+                        <span className="text-xs font-medium text-app-gray-900">
+                          {album.mediaCount || 0}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-4">
+                    <h3 className="text-sm font-semibold text-app-gray-900 mb-1 truncate">
+                      {album.name || 'Untitled Album'}
+                    </h3>
+                    <p className="text-xs text-app-gray-600">
+                      {(album.mediaCount || 0) === 0
+                        ? 'No media yet'
+                        : `${album.mediaCount || 0} ${(album.mediaCount || 0) === 1 ? 'item' : 'items'}`}
+                    </p>
+                  </div>
                 </div>
               </motion.div>
             ))}
           </motion.div>
         )}
       </div>
+      {/* Confirm Album Delete */}
+      <Dialog open={confirmingDelete} onOpenChange={(open) => !open && cancelDelete()}>
+        <DialogContent className="max-w-md p-6 bg-white rounded-2xl shadow-xl">
+          <div className="space-y-3 text-left">
+            <h3 className="text-lg font-semibold text-app-gray-900">Delete album?</h3>
+            <p className="text-sm text-app-gray-700">
+              Are you sure you want to delete this album? This will remove all media, delete files from storage, and remove references from books.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={cancelDelete}>Cancel</Button>
+              <Button variant="destructive" onClick={handleDeleteAlbum}>Delete</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
 
-export default Media;
+export default AssetRegistry;

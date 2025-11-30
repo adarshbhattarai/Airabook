@@ -30,7 +30,7 @@ const Navbar = () => {
 
   const navItems = [
     { name: 'Home', path: homePath, public: true },
-    { name: 'Media', path: '/media', public: false },
+    { name: 'Asset Registry', path: '/media', public: false },
     // { name: 'Notes', path: '/notes', public: false },
   ];
 

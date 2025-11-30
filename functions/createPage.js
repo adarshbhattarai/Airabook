@@ -5,6 +5,7 @@ const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
 const admin = require('firebase-admin');
 const FieldValue = require('firebase-admin/firestore').FieldValue;
+const { assertAndIncrementCounter } = require('./utils/limits');
 
 const { extractTextFromHtml, generateEmbeddings } = require('./utils/embeddingsClient');
 const { updateChapterPageSummary } = require('./utils/chapterUtils');
@@ -20,6 +21,7 @@ exports.createPage = onCall(
     { region: 'us-central1' },
     async (request) => {
         const { data, auth } = request;
+        let reservedPageSlot = false;
 
         logger.log('📄 createPage called at:', new Date().toISOString());
         logger.log('📦 Request data:', JSON.stringify(data, null, 2));
@@ -62,6 +64,16 @@ exports.createPage = onCall(
             if (!chapterDoc.exists) {
                 throw new HttpsError('not-found', 'Chapter not found.');
             }
+
+            await assertAndIncrementCounter(
+                db,
+                userId,
+                'pages',
+                1,
+                undefined,
+                'You have reached your page limit for this plan.'
+            );
+            reservedPageSlot = true;
 
             // Extract plain text from HTML
             const plainText = extractTextFromHtml(note || '');
@@ -125,6 +137,13 @@ exports.createPage = onCall(
             };
 
         } catch (error) {
+            if (reservedPageSlot) {
+                try {
+                    await assertAndIncrementCounter(db, userId, 'pages', -1);
+                } catch (revertErr) {
+                    logger.error('⚠️ Failed to revert page counter after error:', revertErr);
+                }
+            }
             logger.error('❌ Error creating page:', error);
             if (error instanceof HttpsError) {
                 throw error;

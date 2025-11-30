@@ -1,7 +1,7 @@
 import React from 'react';
 import PreviewCard from '@/components/app/PreviewCard';
 
-const BookCardPreview = ({ title, subtitle }) => {
+const BookCardPreview = ({ title, subtitle, coverImage }) => {
   const trimmedTitle = (title || '').trim();
   const displayTitle = trimmedTitle || 'Your new book';
   const initial = (trimmedTitle.charAt(0) || 'A').toUpperCase();
@@ -40,8 +40,14 @@ const BookCardPreview = ({ title, subtitle }) => {
             </p>
           )}
 
-          {/* "Empty book" body with colorful gradient - taller for book proportion */}
-          <div className="mt-4 h-64 md:h-80 rounded-xl bg-gradient-to-br from-purple-100/80 via-pink-100/60 to-blue-100/70 border border-white/50 backdrop-blur-sm shadow-inner" />
+          {/* Cover Image or Default Gradient */}
+          {coverImage ? (
+            <div className="mt-4 h-64 md:h-80 rounded-xl overflow-hidden border border-white/50 shadow-inner">
+              <img src={coverImage} alt="Book cover" className="w-full h-full object-cover" />
+            </div>
+          ) : (
+            <div className="mt-4 h-64 md:h-80 rounded-xl bg-gradient-to-br from-purple-100/80 via-pink-100/60 to-blue-100/70 border border-white/50 backdrop-blur-sm shadow-inner" />
+          )}
         </div>
       </div>
     </PreviewCard>

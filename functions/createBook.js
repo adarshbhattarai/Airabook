@@ -3,6 +3,7 @@ const logger = require("firebase-functions/logger");
 
 const admin = require("firebase-admin");
 const FieldValue = require("firebase-admin/firestore").FieldValue;
+const { assertAndIncrementCounter } = require("./utils/limits");
 
 // Firebase Admin should be initialized by index.js
 // If not initialized, initialize with default settings (with console.log since logger might not be ready)
@@ -11,7 +12,7 @@ if (!admin.apps.length) {
     // Get current project ID dynamically from environment
     const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'airabook-dev';
     const STORAGE_BUCKET = `${PROJECT_ID}.appspot.com`;
-    
+
     admin.initializeApp({
       storageBucket: STORAGE_BUCKET,
     });
@@ -23,7 +24,7 @@ if (!admin.apps.length) {
 }
 
 // Initialize AI utilities
-try { require("dotenv").config(); } catch (_) {}
+try { require("dotenv").config(); } catch (_) { }
 const { callAI } = require("./utils/aiClient");
 const {
   buildChapterGenerationPrompt,
@@ -126,6 +127,14 @@ function validateCreateBookRequest(data) {
       "prompt must be 500 characters or less."
     );
   }
+
+  // Optional coverImageUrl validation
+  if (data.coverImageUrl && typeof data.coverImageUrl !== "string") {
+    throw new HttpsError(
+      "invalid-argument",
+      "coverImageUrl must be a string URL."
+    );
+  }
 }
 
 // --- MAIN CALLABLE: createBook -----------------------------------------------
@@ -139,14 +148,14 @@ exports.createBook = onCall(
     console.log("=".repeat(80));
     console.log("🔥 createBook function called at:", new Date().toISOString());
     console.log("=".repeat(80));
-    
+
     const { data, auth, rawRequest } = request; // v2 shape
-    
+
     // Log request details
     console.log("📦 Request data:", safeStringify(data));
     console.log("🔐 Auth context:", safeStringify(auth));
     console.log("🌐 Raw request available:", !!rawRequest);
-    
+
     // Log auth token details if present
     if (rawRequest?.headers) {
       console.log("📋 Request headers:");
@@ -166,11 +175,12 @@ exports.createBook = onCall(
             ? data.prompt.substring(0, 100) + "..."
             : data.prompt
           : undefined,
+        coverImageUrl: data?.coverImageUrl ? "Provided" : undefined,
       })
     );
 
     logger.log("👤 Auth context:", auth ? safeStringify(auth) : "No auth");
-    
+
     // Detailed auth logging
     if (auth) {
       console.log("✅ Auth object found:");
@@ -192,10 +202,10 @@ exports.createBook = onCall(
 
     logger.log("✅ User authenticated:", auth.uid);
 
-    const { title, creationType, promptMode, prompt } = data;
+    const { title, subtitle, creationType, promptMode, prompt, coverImageUrl } = data;
     const userId = auth.uid;
 
-    
+    let reservedBookSlot = false;
 
     try {
       // Validate input
@@ -219,7 +229,7 @@ exports.createBook = onCall(
       logger.log(`📖 Getting user document: users/${userId}`);
       const userRef = db.collection("users").doc(userId);
       const userDoc = await userRef.get();
-      
+
       let userData = {};
       if (userDoc.exists) {
         userData = userDoc.data();
@@ -233,12 +243,8 @@ exports.createBook = onCall(
       }
 
       const currentBookCount = userData?.accessibleBookIds?.length || 0;
-      if (currentBookCount >= 10) {
-        throw new HttpsError(
-          "resource-exhausted",
-          "You have reached the maximum number of books (10)."
-        );
-      }
+      logger.log(`📚 Current book count (legacy): ${currentBookCount}`);
+
 
       // Duplicate title check for this user
       logger.log(`🔍 Checking for duplicate title: "${titleNormalized}" for user ${userId}`);
@@ -260,6 +266,17 @@ exports.createBook = onCall(
           "You already have a book with this title."
         );
       }
+
+      // Enforce plan-based book limit
+      await assertAndIncrementCounter(
+        db,
+        userId,
+        "books",
+        1,
+        undefined,
+        "You have reached your book limit for this plan."
+      );
+      reservedBookSlot = true;
 
       // Decide chapters + description
       let chapters = [];
@@ -291,6 +308,7 @@ exports.createBook = onCall(
       logger.log(`📝 Creating book document`);
       const bookData = {
         babyName: titleNormalized,
+        subtitle: subtitle?.trim() || null,
         titleLower,
         creationType,
         description: bookDescription,
@@ -299,7 +317,7 @@ exports.createBook = onCall(
           [userId]: "Owner",
         },
         chapterCount: chapters.length,
-        coverImageUrl: null,
+        coverImageUrl: coverImageUrl || null,
         isPublic: false,
         tags:
           creationType === 0
@@ -354,7 +372,7 @@ exports.createBook = onCall(
         name: titleNormalized,
         type: "book",
         bookId: bookRef.id,
-        coverImage: null,
+        coverImage: coverImageUrl || null,
         images: [],
         videos: [],
         accessPermission: {
@@ -389,7 +407,7 @@ exports.createBook = onCall(
         accessibleBookIds.push({
           bookId: bookRef.id,
           title: titleNormalized,
-          coverImage: null,
+          coverImage: coverImageUrl || null,
         });
       }
 
@@ -397,7 +415,7 @@ exports.createBook = onCall(
       if (!accessibleAlbums.some((a) => a.id === bookRef.id)) {
         accessibleAlbums.push({
           id: bookRef.id,
-          coverImage: null,
+          coverImage: coverImageUrl || null,
           type: "book",
           name: titleNormalized,
           mediaCount: 0,
@@ -432,6 +450,13 @@ exports.createBook = onCall(
         message: `Book "${title}" created successfully with ${createdChapters.length} chapters!`,
       };
     } catch (error) {
+      if (reservedBookSlot) {
+        try {
+          await assertAndIncrementCounter(db, auth.uid, "books", -1);
+        } catch (revertErr) {
+          logger.error("Failed to revert book counter after error:", revertErr);
+        }
+      }
       logger.error("Error creating book:", error);
       logger.error("Error stack:", error.stack);
       // Re-throw HttpsError as-is if it's already one
