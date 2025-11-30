@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { doc, collection, getDocs, writeBatch, updateDoc, getDoc } from 'firebase/firestore';
-import { firestore, storage } from '@/lib/firebase';
-import { ref, deleteObject } from 'firebase/storage';
+import { firestore } from '@/lib/firebase';
 import { BookOpen, Loader2, Trash2, Eye, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
@@ -14,31 +13,31 @@ import { useAuth } from '@/context/AuthContext';
  */
 const convertToEmulatorURL = (url) => {
   if (!url) return url;
-  
+
   const useEmulator = import.meta.env.VITE_USE_EMULATOR === 'true';
-  
+
   if (!useEmulator) {
     return url;
   }
-  
+
   if (url.includes('127.0.0.1:9199') || url.includes('localhost:9199')) {
     return url;
   }
-  
+
   if (url.includes('storage.googleapis.com')) {
     try {
       const urlObj = new URL(url);
       const pathParts = urlObj.pathname.split('/').filter(p => p);
-      
+
       if (pathParts.length >= 1) {
         const bucket = pathParts[0];
         const storagePath = pathParts.slice(1).join('/');
-        
+
         let emulatorBucket = bucket;
         if (bucket.endsWith('.appspot.com')) {
           emulatorBucket = bucket.replace('.appspot.com', '.firebasestorage.app');
         }
-        
+
         const encodedPath = encodeURIComponent(storagePath);
         const token = urlObj.searchParams.get('token') || 'emulator-token';
         return `http://127.0.0.1:9199/v0/b/${emulatorBucket}/o/${encodedPath}?alt=media&token=${token}`;
@@ -48,7 +47,7 @@ const convertToEmulatorURL = (url) => {
       return url;
     }
   }
-  
+
   return url;
 };
 
@@ -75,18 +74,18 @@ const BookItem = ({ bookId, bookTitle, coverImage, onBookDeleted }) => {
       // Get all chapters for this book
       const chaptersRef = collection(firestore, 'books', bookId, 'chapters');
       const chaptersSnap = await getDocs(chaptersRef);
-      
+
       const batch = writeBatch(firestore);
       const storagePathsToDelete = [];
 
       // Process each chapter
       for (const chapterDoc of chaptersSnap.docs) {
         const chapterId = chapterDoc.id;
-        
+
         // Get all pages for this chapter
         const pagesRef = collection(firestore, 'books', bookId, 'chapters', chapterId, 'pages');
         const pagesSnap = await getDocs(pagesRef);
-        
+
         // Process each page and collect media storage paths
         for (const pageDoc of pagesSnap.docs) {
           const pageData = pageDoc.data();
@@ -100,7 +99,7 @@ const BookItem = ({ bookId, bookTitle, coverImage, onBookDeleted }) => {
           // Add page to batch delete
           batch.delete(pageDoc.ref);
         }
-        
+
         // Add chapter to batch delete
         batch.delete(chapterDoc.ref);
       }
@@ -109,34 +108,18 @@ const BookItem = ({ bookId, bookTitle, coverImage, onBookDeleted }) => {
       const bookRef = doc(firestore, 'books', bookId);
       batch.delete(bookRef);
 
-      // Delete the album document
-      const albumRef = doc(firestore, 'albums', bookId);
-      batch.delete(albumRef);
-
       // Commit all Firestore deletions
       await batch.commit();
 
-      // Delete all media files from storage
-      if (storagePathsToDelete.length > 0) {
-        const deletePromises = storagePathsToDelete.map(storagePath => {
-          const mediaRef = ref(storage, storagePath);
-          return deleteObject(mediaRef).catch(error => {
-            console.warn(`Failed to delete media file ${storagePath}:`, error);
-          });
-        });
-        await Promise.all(deletePromises);
-      }
-
-      // Remove book from user's accessibleBookIds and accessibleAlbums
+      // Remove book from user's accessibleBookIds (keep albums/media intact)
       if (user) {
         try {
           const userRef = doc(firestore, 'users', user.uid);
           const userDoc = await getDoc(userRef);
-          
+
           if (userDoc.exists()) {
             const userData = userDoc.data();
             let accessibleBookIds = userData.accessibleBookIds || [];
-            let accessibleAlbums = userData.accessibleAlbums || [];
 
             // Remove book from accessibleBookIds (handle both old and new formats)
             accessibleBookIds = accessibleBookIds.filter(item => {
@@ -146,12 +129,8 @@ const BookItem = ({ bookId, bookTitle, coverImage, onBookDeleted }) => {
               return item.bookId !== bookId;
             });
 
-            // Remove album from accessibleAlbums
-            accessibleAlbums = accessibleAlbums.filter(item => item.id !== bookId);
-
             await updateDoc(userRef, {
               accessibleBookIds,
-              accessibleAlbums,
             });
           }
         } catch (error) {
@@ -184,13 +163,13 @@ const BookItem = ({ bookId, bookTitle, coverImage, onBookDeleted }) => {
 
   return (
     <div className={`relative bg-white p-5 rounded-2xl shadow-appSoft border border-app-gray-100 hover:shadow-appCard hover:border-app-iris/40 transition-all duration-200 ${isDeleting ? 'pointer-events-none' : ''}`}>
-      <Link 
-        to={`/book/${bookId}`} 
+      <Link
+        to={`/book/${bookId}`}
         className="flex items-center gap-4 pr-28"
       >
         {book.coverImage ? (
-          <img 
-            src={convertToEmulatorURL(book.coverImage)} 
+          <img
+            src={convertToEmulatorURL(book.coverImage)}
             alt={book.name}
             className="h-14 w-14 object-cover rounded-xl border border-app-gray-100"
             onError={(e) => {
@@ -256,7 +235,7 @@ const BookItem = ({ bookId, bookTitle, coverImage, onBookDeleted }) => {
           </Button>
         </div>
       )}
-      
+
       {/* Loading overlay for delete */}
       {isDeleting && (
         <div className="absolute inset-0 bg-white/80 backdrop-blur-sm rounded-2xl flex items-center justify-center">
@@ -273,7 +252,7 @@ const BookItem = ({ bookId, bookTitle, coverImage, onBookDeleted }) => {
           <DialogHeader>
             <DialogTitle className="text-2xl font-bold text-gray-800">Delete book?</DialogTitle>
             <DialogDescription className="mt-2 text-gray-600">
-              This will permanently delete "{book.name}" and all its chapters, pages, and media. This action cannot be undone.
+              This will permanently delete "{book.name}" and all its chapters, pages, and media references. The media files will remain in your Asset Registry. To permanently delete the files and free up storage space, please remove them from the Asset Registry.
             </DialogDescription>
           </DialogHeader>
           <div className="mt-6 flex justify-center space-x-4">
@@ -282,7 +261,7 @@ const BookItem = ({ bookId, bookTitle, coverImage, onBookDeleted }) => {
           </div>
         </DialogContent>
       </Dialog>
-      </div>
+    </div>
   );
 };
 

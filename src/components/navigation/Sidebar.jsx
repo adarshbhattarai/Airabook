@@ -14,7 +14,7 @@ const sections = [
     items: [
       { name: 'Dashboard', icon: LayoutDashboard, to: '/dashboard' },
       { name: 'Books', icon: BookOpen, to: '/books' },
-      { name: 'Media', icon: ImageIcon, to: '/media' },
+      { name: 'Asset Registry', icon: ImageIcon, to: '/media' },
       // { name: 'Notes', icon: StickyNote, to: '/notes' },
     ],
   },

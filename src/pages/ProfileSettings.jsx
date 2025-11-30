@@ -156,7 +156,7 @@ const ProfileSettings = () => {
     <div className="max-w-5xl mx-auto px-4 pb-24 pt-8 space-y-6">
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold text-foreground">Profile Settings</h1>
+        <h1 className="text-2xl font-semibold text-foreground">Profile Settings</h1>
           {hasUnsavedChanges && (
             <span className="flex items-center gap-1 text-xs font-medium text-amber-400">
               <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
@@ -174,54 +174,54 @@ const ProfileSettings = () => {
           <section className="lg:col-span-2 space-y-6 rounded-3xl border border-border bg-card p-6 shadow-appCard">
             <div className="text-xs font-semibold uppercase tracking-[0.4em] text-muted-foreground">
               Account
-            </div>
+                </div>
             <div className="space-y-6">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">Display name</label>
-                  <AppInput
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="Your name"
-                    required
-                  />
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1">Display name</label>
+                    <AppInput
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      placeholder="Your name"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1">Email</label>
+                    <AppInput
+                      type="email"
+                      value={email}
+                      disabled
+                      className="bg-muted text-muted-foreground cursor-not-allowed"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">Email</label>
-                  <AppInput
-                    type="email"
-                    value={email}
-                    disabled
-                    className="bg-muted text-muted-foreground cursor-not-allowed"
-                  />
-                </div>
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Writing Context</label>
-                <textarea
-                  value={writingContext}
-                  onChange={(e) => setWritingContext(e.target.value)}
-                  placeholder="Describe your writing style, preferred genres, or any context for the AI..."
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Writing Context</label>
+                  <textarea
+                    value={writingContext}
+                    onChange={(e) => setWritingContext(e.target.value)}
+                    placeholder="Describe your writing style, preferred genres, or any context for the AI..."
                   className="w-full min-h-[120px] rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                />
-              </div>
+                  />
+                </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-foreground">Preferred Writing Language</label>
-                  <select
-                    value={language}
-                    onChange={(e) => setLanguage(e.target.value)}
-                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  >
+                    <select
+                      value={language}
+                      onChange={(e) => setLanguage(e.target.value)}
+                      className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    >
                     {languages.map((lang) => (
                       <option key={lang} value={lang}>
                         {lang}
                       </option>
-                    ))}
-                  </select>
-                </div>
+                      ))}
+                    </select>
+                  </div>
                 <div className="space-y-2 flex flex-col justify-end">
                   <label className="block text-sm font-medium text-foreground">Language preference</label>
                   <div className="flex items-center gap-3 rounded-2xl border border-border p-3">
@@ -236,29 +236,29 @@ const ProfileSettings = () => {
                       Use selected
                     </span>
                   </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </section>
+            </section>
 
           <section className="space-y-6 rounded-3xl border border-border bg-card p-6 shadow-appCard">
             <div className="text-xs font-semibold uppercase tracking-[0.4em] text-muted-foreground">
               Avatar
-            </div>
+              </div>
 
             <div className="flex items-center gap-4">
               <div className="h-20 w-20 rounded-full overflow-hidden bg-muted flex items-center justify-center border border-border">
-                {selectedAvatar ? (
-                  <img src={selectedAvatar} alt="Selected avatar" className="h-full w-full object-cover" />
-                ) : (
+                  {selectedAvatar ? (
+                    <img src={selectedAvatar} alt="Selected avatar" className="h-full w-full object-cover" />
+                  ) : (
                   <span className="text-xs text-muted-foreground">No photo</span>
-                )}
-              </div>
+                  )}
+                </div>
               <div className="text-sm text-muted-foreground">
                 <p className="font-medium text-foreground">Current avatar</p>
                 <p>Choose a preset or upload a photo.</p>
+                </div>
               </div>
-            </div>
 
             <div className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">Presets</p>
@@ -273,21 +273,21 @@ const ProfileSettings = () => {
                     }}
                     className={`flex items-center gap-3 rounded-2xl border p-2 transition-colors ${
                       currentAvatar === avatar.url && !customAvatar ? 'border-primary bg-primary/5' : 'border-border hover:border-primary'
-                    }`}
+                      }`}
                   >
                     <img src={avatar.url} alt={avatar.label} className="h-10 w-10 rounded-lg object-cover" />
                     <span className="text-sm text-foreground">{avatar.label}</span>
                   </button>
                 ))}
               </div>
-            </div>
+              </div>
 
             <div className="space-y-2">
               <label className="block text-sm font-medium text-foreground">Upload a photo</label>
-              <AppInput type="file" accept="image/*" onChange={handleAvatarFile} />
+                  <AppInput type="file" accept="image/*" onChange={handleAvatarFile} />
               {isUploading && <p className="text-xs text-muted-foreground">Uploading...</p>}
-            </div>
-          </section>
+              </div>
+            </section>
         </div>
 
         <div className="sticky bottom-4 left-0 right-0 rounded-2xl border border-border bg-background/95 px-4 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 shadow-[0_-15px_45px_rgba(0,0,0,0.25)] flex flex-wrap items-center justify-between gap-4">
@@ -304,12 +304,12 @@ const ProfileSettings = () => {
             >
               Cancel
             </Button>
-            <Button
-              type="submit"
+          <Button
+            type="submit"
               disabled={!hasUnsavedChanges || isSavingProfile || isUploading}
               variant="appSuccess"
               className="min-w-[160px]"
-            >
+          >
               {isSavingProfile ? (
                 'Saving Changes...'
               ) : isUploading ? (
@@ -320,7 +320,7 @@ const ProfileSettings = () => {
                   <span aria-hidden="true">&gt;</span>
                 </span>
               )}
-            </Button>
+          </Button>
           </div>
         </div>
       </form>

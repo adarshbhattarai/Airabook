@@ -1,4 +1,6 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const admin = require("firebase-admin");
+const { consumeApiCallQuota } = require("./utils/limits");
 
 // Load env for emulator/local
 try {
@@ -9,6 +11,12 @@ try {
 const { callAI } = require("./utils/aiClient");
 const { buildRewritePrompt } = require("./utils/prompts");
 const LOCATION = "us-central1";
+
+// Ensure Admin is ready for quota reads
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
+const db = admin.firestore();
 
 /**
  * Callable function to rewrite a note with a given style/prompt.
@@ -88,6 +96,8 @@ exports.rewriteNote = onCall({ region: LOCATION }, async (request) => {
     const effectiveMax = Number.isFinite(numericMax)
       ? Math.max(32, Math.min(1024, numericMax))
       : undefined;
+
+    await consumeApiCallQuota(db, auth.uid, 1);
 
     const rewritten = await callAI(builtPrompt, {
       maxTokens: effectiveMax,

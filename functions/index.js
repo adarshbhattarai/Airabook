@@ -84,9 +84,11 @@ if (!admin.apps.length) {
 // Get default Firestore instance
 const db = admin.firestore();
 
+
 const { uploadMedia } = require("./imageProcessor");
 const { rewriteNote } = require("./textGenerator");
 const { createBook } = require("./createBook");
+const { updateBook } = require("./updateBook");
 const { onMediaUpload, onMediaDelete } = require("./mediaProcessor");
 const { inviteCoAuthor } = require("./inviteCoAuthor");
 const { createCheckoutSession } = require("./payments/createCheckoutSession");
@@ -95,6 +97,8 @@ const { searchAgent } = require("./agent");
 const { createPage } = require("./createPage");
 const { updatePage } = require("./updatePage");
 const { onUserCreate } = require("./onUserCreate");
+const { onBookDeleted, onPageDeleted, onChapterDeleted } = require("./usageTriggers");
+const { deleteMediaAsset, deleteAlbumAssets } = require("./deleteMedia");
 
 exports.helloWorld = onRequest({ region: "us-central1" }, (request, response) => {
   logger.info("Hello logs!", { structuredData: true });
@@ -104,6 +108,7 @@ exports.helloWorld = onRequest({ region: "us-central1" }, (request, response) =>
 exports.uploadMedia = uploadMedia;
 exports.rewriteNote = rewriteNote;
 exports.createBook = createBook;
+exports.updateBook = updateBook;
 exports.onMediaUpload = onMediaUpload;
 exports.onMediaDelete = onMediaDelete;
 exports.inviteCoAuthor = inviteCoAuthor;
@@ -113,10 +118,15 @@ exports.searchAgent = searchAgent;
 exports.createPage = createPage;
 exports.updatePage = updatePage;
 exports.onUserCreate = onUserCreate;
-
-// Genkit RAG Flow
-const { queryBookFlow } = require("./genkit");
-exports.queryBookFlow = queryBookFlow;
+exports.onBookDeleted = onBookDeleted;
+exports.onPageDeleted = onPageDeleted;
+exports.onChapterDeleted = onChapterDeleted;
+exports.deleteMediaAsset = deleteMediaAsset;
+exports.deleteAlbumAssets = deleteAlbumAssets;
+const { createAlbum } = require("./createAlbum");
+exports.createAlbum = createAlbum;
+const { updateAlbum } = require("./updateAlbum");
+exports.updateAlbum = updateAlbum;
 
 // Function to get chapters for a book (hot reload test)
 exports.getBookChapters = onCall({ region: "us-central1" }, async (request) => {

@@ -3,6 +3,7 @@ const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const { FieldValue } = require("firebase-admin/firestore");
 const logger = require("firebase-functions/logger");
+const { buildInitialQuotaCounters, loadConfig } = require("./utils/limits");
 
 const db = admin.firestore();
 // const db = admin.firestore(); // This line is removed as per the instruction
@@ -22,6 +23,8 @@ exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
         const db = admin.firestore();
 
         const { uid, email, displayName } = user;
+        const emailLower = (email || "").toLowerCase();
+        const cfg = loadConfig();
 
         const defaultEntitlements = {
             canReadBooks: true,
@@ -37,6 +40,22 @@ exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
             latestPaymentId: null,
         };
 
+        // Determine plan tier (god > early > free)
+        let planTier = 'free';
+        if (cfg.godUsers.has(emailLower) || cfg.godUsers.has(uid)) {
+            planTier = 'god';
+        } else {
+            // Use count aggregation instead of fetching all documents
+            const countSnap = await db.collection('users').count().get();
+            if (countSnap.data().count < 50) {
+                planTier = 'early';
+            }
+        }
+
+        defaultBilling.planTier = planTier;
+        defaultBilling.planLabel =
+            planTier === 'god' ? 'God Tier' : planTier === 'early' ? 'Early Supporter' : 'Free Explorer';
+
         const newUser = {
             displayName: displayName || '',
             displayNameLower: (displayName || '').toLowerCase(),
@@ -44,6 +63,7 @@ exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
             accessibleBookIds: [],
             accessibleAlbums: [],
             billing: defaultBilling,
+            quotaCounters: buildInitialQuotaCounters(),
             createdAt: FieldValue.serverTimestamp(),
             updatedAt: FieldValue.serverTimestamp(),
         };
