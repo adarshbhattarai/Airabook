@@ -7,6 +7,27 @@ if (!admin.apps.length) {
   admin.initializeApp();
 }
 const db = admin.firestore();
+const storage = admin.storage();
+
+/**
+ * Extract storage path from a Firebase Storage download URL.
+ * Returns null if the URL is not a valid Firebase Storage URL.
+ */
+function extractStoragePathFromUrl(url) {
+  if (!url || typeof url !== 'string') return null;
+  
+  try {
+    // Handle URLs like: https://firebasestorage.googleapis.com/v0/b/BUCKET/o/PATH?token=...
+    // or emulator URLs: http://127.0.0.1:9199/v0/b/BUCKET/o/PATH?token=...
+    const match = url.match(/\/o\/([^?]+)/);
+    if (match && match[1]) {
+      return decodeURIComponent(match[1]);
+    }
+  } catch (err) {
+    console.warn("Failed to extract storage path from URL:", url, err);
+  }
+  return null;
+}
 
 /**
  * Decrement book counter when a book is deleted.
@@ -56,6 +77,26 @@ exports.onBookDeleted = onDocumentDeleted(
         }
       })
     );
+
+    // Delete cover image from storage if it exists
+    const coverImageUrl = prev.coverImageUrl;
+    if (coverImageUrl) {
+      const storagePath = extractStoragePathFromUrl(coverImageUrl);
+      if (storagePath) {
+        try {
+          const bucket = storage.bucket();
+          await bucket.file(storagePath).delete();
+          console.log(`🗑️ Deleted cover image from storage: ${storagePath}`);
+        } catch (err) {
+          // File might not exist or already deleted - log but don't fail
+          if (err.code === 404) {
+            console.log(`ℹ️ Cover image already deleted or not found: ${storagePath}`);
+          } else {
+            console.error(`⚠️ Failed to delete cover image from storage:`, err);
+          }
+        }
+      }
+    }
 
     return null;
   }

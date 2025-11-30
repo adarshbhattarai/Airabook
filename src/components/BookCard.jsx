@@ -213,7 +213,7 @@ const BookCard = ({ bookId, bookTitle, coverImage, onBookDeleted }) => {
                                     <span>Edit</span>
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
-                                    className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                                    className="book-delete-item text-red-600 focus:text-red-600 focus:bg-red-50 focus:font-medium"
                                     onClick={() => setConfirmOpen(true)}
                                 >
                                     <Trash2 className="mr-2 h-4 w-4" />

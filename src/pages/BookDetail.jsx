@@ -88,7 +88,7 @@ const quillFormats = [
 
 // --- REUSABLE UI COMPONENTS ---
 
-const HoverDeleteMenu = ({ onDelete }) => {
+const HoverDeleteMenu = ({ onDelete, side = 'left' }) => {
   const [isOpen, setIsOpen] = useState(false);
   const rootRef = useRef(null);
 
@@ -125,7 +125,7 @@ const HoverDeleteMenu = ({ onDelete }) => {
       </Button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-1 w-28 bg-white rounded-md shadow-lg z-20 border">
+        <div className={`absolute top-full mt-1 w-28 bg-white rounded-md shadow-2xl z-[9999] border ${side === 'right' ? 'right-0' : 'left-0'}`}>
           <Button
             type="button"
             variant="ghost"
@@ -1549,7 +1549,7 @@ const BookDetail = () => {
       title: `Delete ${type}?`,
       description: type === 'chapter'
         ? `Are you sure you want to permanently delete "${data.title}" and all its pages? This action cannot be undone.`
-        : `Are you sure you want to permanently delete this page? This action cannot be undone.`,
+        : `Are you sure you want to permanently delete "${data.shortNote || 'Untitled Page'}"? This action cannot be undone.`,
     });
   };
   const closeModal = () => setModalState({ isOpen: false });
@@ -2120,22 +2120,26 @@ const BookDetail = () => {
 
           {isOwner && (
             <div className="flex items-center gap-2">
-              <Button
-                variant={book?.isPublic ? 'appPrimary' : 'appGhost'}
-                onClick={() => setPublishModalOpen(true)}
-                className="flex items-center gap-2 h-8 text-xs"
-              >
-                <Globe className="h-3 w-3" />
-                {book?.isPublic ? 'Unpublish' : 'Publish'}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setCoAuthorModalOpen(true)}
-                className="flex items-center gap-2 h-8 text-xs"
-              >
-                <Users className="h-3 w-3" />
-                Co-Authors
-              </Button>
+              <span title="Currently Disabled, Coming Soon">
+                <Button
+                  variant="appGhost"
+                  disabled
+                  className="flex items-center gap-2 h-8 text-xs pointer-events-none"
+                >
+                  <Globe className="h-3 w-3" />
+                  Publish
+                </Button>
+              </span>
+              <span title="Currently Disabled, Coming Soon">
+                <Button
+                  variant="outline"
+                  disabled
+                  className="flex items-center gap-2 h-8 text-xs pointer-events-none"
+                >
+                  <Users className="h-3 w-3" />
+                  Co-Authors
+                </Button>
+              </span>
             </div>
           )}
         </div>
@@ -2143,7 +2147,7 @@ const BookDetail = () => {
         {/* Main Content */}
         <div className="flex flex-1 overflow-hidden">
           {/* Left Sidebar: Chapters */}
-          <div className="w-72 bg-app-gray-50 border-r border-border flex flex-col shrink-0">
+          <div className="w-72 bg-app-gray-50 border-r border-border flex flex-col shrink-0 overflow-visible relative z-20">
             <div className="p-3 border-b border-border bg-card/80 backdrop-blur-sm">
               <form onSubmit={handleCreateChapter} className="flex items-center space-x-2">
                 <Input
@@ -2159,7 +2163,7 @@ const BookDetail = () => {
               </form>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-2">
+            <div className="flex-1 overflow-y-auto overflow-x-visible p-2">
               <div className="space-y-1">
                 {[...chapters].sort((a, b) => a.order.localeCompare(b.order)).map(chapter => (
                   <div key={chapter.id} className="group">
@@ -2253,7 +2257,7 @@ const BookDetail = () => {
                                       <span className="truncate text-xs">{pageSummary.shortNote || 'Untitled Page'}</span>
                                     </div>
 
-                                    {canEdit && <HoverDeleteMenu onDelete={() => openDeleteModal('page', { ...pageSummary, chapterId: chapter.id, pageIndex: index })} />}
+                                    {canEdit && <HoverDeleteMenu side="right" onDelete={() => openDeleteModal('page', { ...pageSummary, chapterId: chapter.id, pageIndex: index })} />}
                                   </div>
                                 )}
                               </Draggable>

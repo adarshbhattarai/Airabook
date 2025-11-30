@@ -282,6 +282,21 @@ a:focus-visible {
   border-color: hsl(var(--border)) !important;
 }
 
+/* Dropdown menu delete item - better contrast in dark themes */
+.theme-matrix .book-delete-item,
+.theme-dark .book-delete-item {
+  color: #f87171 !important; /* lighter red for better visibility in dark themes */
+}
+
+.theme-matrix .book-delete-item:focus,
+.theme-dark .book-delete-item:focus,
+.theme-matrix .book-delete-item[data-highlighted],
+.theme-dark .book-delete-item[data-highlighted] {
+  color: #fca5a5 !important; /* lighter red for better visibility */
+  background-color: rgba(127, 29, 29, 0.6) !important; /* dark red background */
+  font-weight: 500;
+}
+
 /* Loading animation */
 @keyframes pulse {
   0%, 100% {
