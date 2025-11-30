@@ -123,10 +123,10 @@ exports.onPageDeleted = onPageDeleted;
 exports.onChapterDeleted = onChapterDeleted;
 exports.deleteMediaAsset = deleteMediaAsset;
 exports.deleteAlbumAssets = deleteAlbumAssets;
-
-// Genkit RAG Flow
-const { queryBookFlow } = require("./genkit");
-exports.queryBookFlow = queryBookFlow;
+const { createAlbum } = require("./createAlbum");
+exports.createAlbum = createAlbum;
+const { updateAlbum } = require("./updateAlbum");
+exports.updateAlbum = updateAlbum;
 
 // Function to get chapters for a book (hot reload test)
 exports.getBookChapters = onCall({ region: "us-central1" }, async (request) => {

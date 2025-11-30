@@ -1,17 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Image as ImageIcon, Video, Loader2, Trash2 } from 'lucide-react';
+import { ArrowLeft, Image as ImageIcon, Video, Loader2, Trash2, UploadCloud, PlusCircle, Pencil, X } from 'lucide-react';
 import { Helmet } from 'react-helmet';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/context/AuthContext';
-import { doc, getDoc } from 'firebase/firestore';
-import { firestore } from '@/lib/firebase';
+import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { firestore, storage } from '@/lib/firebase';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { httpsCallable, getFunctions } from 'firebase/functions';
 import {
   Dialog,
   DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
 } from '@/components/ui/dialog';
 
 /**
@@ -19,18 +26,18 @@ import {
  */
 const convertToEmulatorURL = (url) => {
   if (!url) return url;
-  
+
   const useEmulator = import.meta.env.VITE_USE_EMULATOR === 'true';
-  
+
   if (!useEmulator) {
     return url; // Return as-is if not in emulator mode
   }
-  
+
   // Check if URL is already in emulator format
   if (url.includes('127.0.0.1:9199') || url.includes('localhost:9199')) {
     return url;
   }
-  
+
   // Check if URL is a production storage URL
   if (url.includes('storage.googleapis.com')) {
     try {
@@ -38,25 +45,25 @@ const convertToEmulatorURL = (url) => {
       // Format: https://storage.googleapis.com/{bucket}/{storagePath}
       const urlObj = new URL(url);
       const pathParts = urlObj.pathname.split('/').filter(p => p);
-      
+
       if (pathParts.length >= 1) {
         const bucket = pathParts[0];
         const storagePath = pathParts.slice(1).join('/');
-        
+
         // Convert bucket name from .appspot.com to .firebasestorage.app if needed
         let emulatorBucket = bucket;
         if (bucket.endsWith('.appspot.com')) {
           emulatorBucket = bucket.replace('.appspot.com', '.firebasestorage.app');
         }
-        
+
         // URL encode the storage path (each segment needs to be encoded separately for proper emulator format)
         // The emulator expects: /o/{encodedPath} where encodedPath has %2F for slashes
         const encodedPath = encodeURIComponent(storagePath);
-        
+
         // Generate emulator URL format: http://127.0.0.1:9199/v0/b/{bucket}/o/{encodedPath}?alt=media&token={token}
         const token = urlObj.searchParams.get('token') || 'emulator-token';
         const emulatorURL = `http://127.0.0.1:9199/v0/b/${emulatorBucket}/o/${encodedPath}?alt=media&token=${token}`;
-        
+
         console.log('Converted URL:', { original: url, emulator: emulatorURL });
         return emulatorURL;
       }
@@ -65,7 +72,7 @@ const convertToEmulatorURL = (url) => {
       return url; // Return original if conversion fails
     }
   }
-  
+
   // If URL doesn't match known patterns, return as-is
   return url;
 };
@@ -75,11 +82,11 @@ const AlbumDetail = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
-  
+
   console.log('AlbumDetail component rendered');
   console.log('bookId from params:', bookId);
   console.log('user:', user);
-  
+
   const [album, setAlbum] = useState(null);
   const [loading, setLoading] = useState(true);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -88,6 +95,14 @@ const AlbumDetail = () => {
   const [allMedia, setAllMedia] = useState([]); // Combined images and videos for preview
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [confirmingAlbumDelete, setConfirmingAlbumDelete] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingName, setEditingName] = useState('');
+  const [editingCover, setEditingCover] = useState(null);
+  const [coverPreview, setCoverPreview] = useState(null);
+  const [updating, setUpdating] = useState(false);
+  const fileInputRef = useRef(null);
+  const coverInputRef = useRef(null);
   const functions = getFunctions();
 
   useEffect(() => {
@@ -122,7 +137,7 @@ const AlbumDetail = () => {
         // Query single album document
         const albumRef = doc(firestore, 'albums', bookId);
         console.log('Album reference:', albumRef.path);
-        
+
         const albumSnap = await getDoc(albumRef);
         console.log('Album snapshot exists:', albumSnap.exists());
         console.log('Album snapshot data:', albumSnap.data());
@@ -140,6 +155,8 @@ const AlbumDetail = () => {
 
         const albumData = { id: albumSnap.id, ...albumSnap.data() };
         setAlbum(albumData);
+        setEditingName(albumData.name || '');
+        setCoverPreview(convertToEmulatorURL(albumData.coverImage));
 
         console.log('Album data:', albumData);
         console.log('Images array:', albumData.images);
@@ -164,7 +181,7 @@ const AlbumDetail = () => {
           };
         });
         setAllMedia([...images, ...videos]);
-        
+
         console.log('Extracted images:', images);
         console.log('Extracted videos:', videos);
         console.log('All media:', [...images, ...videos]);
@@ -192,7 +209,7 @@ const AlbumDetail = () => {
     // Find index in combined media array
     const images = album.images || [];
     const videos = album.videos || [];
-    
+
     if (type === 'image') {
       setPreviewIndex(index);
     } else {
@@ -259,6 +276,136 @@ const AlbumDetail = () => {
       toast({ title: 'Delete failed', description: err?.message || 'Could not delete album.', variant: 'destructive' });
       setConfirmingAlbumDelete(false);
     }
+  };
+
+  const handleUpdateAlbum = async (e) => {
+    e.preventDefault();
+    if (!editingName.trim()) return;
+
+    setUpdating(true);
+    try {
+      let coverImageUrl = album.coverImage;
+
+      // Upload new cover if selected
+      if (editingCover) {
+        const storagePath = `${user.uid}/albums/${bookId}/cover_${Date.now()}_${editingCover.name}`;
+        const storageRef = ref(storage, storagePath);
+        const uploadTask = await uploadBytesResumable(storageRef, editingCover);
+        coverImageUrl = await getDownloadURL(uploadTask.ref);
+      }
+
+      const updateAlbumFn = httpsCallable(functions, 'updateAlbum');
+      await updateAlbumFn({
+        albumId: bookId,
+        name: editingName,
+        coverImage: coverImageUrl,
+      });
+
+      setAlbum(prev => ({
+        ...prev,
+        name: editingName,
+        coverImage: coverImageUrl,
+      }));
+
+      toast({ title: 'Success', description: 'Album updated successfully.' });
+      setEditModalOpen(false);
+    } catch (error) {
+      console.error('Update failed:', error);
+      toast({ title: 'Error', description: error.message || 'Failed to update album.', variant: 'destructive' });
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleCoverSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setEditingCover(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setCoverPreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleFileSelect = (event) => {
+    const files = Array.from(event.target.files || []);
+    if (files.length === 0) return;
+    files.forEach(file => handleUpload(file));
+    // Reset input
+    event.target.value = '';
+  };
+
+  const handleUpload = (file) => {
+    if (!file || !user) return;
+
+    setUploading(true);
+    const mediaType = file.type.startsWith('video') ? 'video' : 'image';
+    const uniqueFileName = `${Date.now()}_${file.name}`;
+    // Store in user's albums folder: users/{uid}/albums/{albumId}/{type}/{filename}
+    const storagePath = `${user.uid}/albums/${bookId}/${mediaType}/${uniqueFileName}`;
+    const storageRef = ref(storage, storagePath);
+    const uploadTask = uploadBytesResumable(storageRef, file);
+
+    uploadTask.on('state_changed',
+      (snapshot) => {
+        // Optional: Handle progress
+      },
+      (error) => {
+        console.error('Upload error:', error);
+        toast({ title: 'Upload Error', description: error.message, variant: 'destructive' });
+        setUploading(false);
+      },
+      () => {
+        getDownloadURL(uploadTask.snapshot.ref).then(async (downloadURL) => {
+          const newMediaItem = {
+            url: downloadURL,
+            storagePath,
+            type: mediaType,
+            name: file.name,
+            uploadedAt: new Date().toISOString(),
+          };
+
+          try {
+            const albumRef = doc(firestore, 'albums', bookId);
+            // Update the specific array based on type
+            const updateData = mediaType === 'video'
+              ? { videos: arrayUnion(newMediaItem) }
+              : { images: arrayUnion(newMediaItem) };
+
+            await updateDoc(albumRef, updateData);
+
+            // Update local state
+            setAlbum(prev => {
+              if (!prev) return prev;
+              const updated = { ...prev };
+              if (mediaType === 'video') {
+                updated.videos = [...(updated.videos || []), newMediaItem];
+              } else {
+                updated.images = [...(updated.images || []), newMediaItem];
+              }
+              updated.mediaCount = (updated.mediaCount || 0) + 1;
+              return updated;
+            });
+
+            // Update allMedia for preview
+            setAllMedia(prev => [...prev, {
+              url: convertToEmulatorURL(downloadURL),
+              storagePath,
+              type: mediaType
+            }]);
+
+            toast({ title: 'Upload Success', description: `"${file.name}" uploaded.` });
+          } catch (error) {
+            console.error('Firestore update error:', error);
+            toast({ title: 'Error', description: 'Failed to update album.', variant: 'destructive' });
+          } finally {
+            setUploading(false);
+          }
+        });
+      }
+    );
   };
 
   const goPrev = () => {
@@ -332,9 +479,24 @@ const AlbumDetail = () => {
               <ArrowLeft className="h-3.5 w-3.5" />
               Back to albums
             </Button>
-            <h1 className="text-[28px] font-semibold text-app-gray-900 leading-tight">
-              {album.name || 'Album'}
-            </h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-[28px] font-semibold text-app-gray-900 leading-tight">
+                {album.name || 'Album'}
+              </h1>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-gray-500 hover:text-gray-900"
+                onClick={() => {
+                  setEditingName(album.name || '');
+                  setCoverPreview(convertToEmulatorURL(album.coverImage));
+                  setEditingCover(null);
+                  setEditModalOpen(true);
+                }}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+            </div>
             <p className="mt-1 text-xs text-app-gray-600">
               {(album.mediaCount || 0) === 0
                 ? 'No media yet'
@@ -342,6 +504,28 @@ const AlbumDetail = () => {
             </p>
           </div>
           <div className="flex gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,video/*"
+              multiple
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+            <Button
+              variant="appPrimary"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="gap-2"
+            >
+              {uploading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <UploadCloud className="h-4 w-4" />
+              )}
+              {uploading ? 'Uploading...' : 'Upload media'}
+            </Button>
             <Button
               variant="destructive"
               size="sm"
@@ -357,9 +541,17 @@ const AlbumDetail = () => {
           <div className="text-center py-16">
             <ImageIcon className="h-16 w-16 mx-auto text-gray-400 mb-4" />
             <h3 className="text-2xl font-bold text-gray-700 mb-2">No Media Yet</h3>
-            <p className="text-gray-600">
-              Upload media from the book page to see it here.
+            <p className="text-gray-600 mb-6">
+              Upload media to see it here.
             </p>
+            <Button
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              className="gap-2"
+            >
+              <PlusCircle className="h-4 w-4" />
+              Upload now
+            </Button>
           </div>
         ) : (
           <>
@@ -553,6 +745,88 @@ const AlbumDetail = () => {
               <Button variant="destructive" onClick={handleDeleteAlbum}>Delete</Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+      {/* Edit Album Modal */}
+      <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+        <DialogContent className="max-w-md p-6 bg-white rounded-2xl shadow-xl">
+          <DialogHeader>
+            <DialogTitle>Edit Album</DialogTitle>
+            <DialogDescription>Update album details and cover image.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleUpdateAlbum} className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <Label htmlFor="album-name">Album Name</Label>
+              <Input
+                id="album-name"
+                value={editingName}
+                onChange={(e) => setEditingName(e.target.value)}
+                placeholder="Enter album name"
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Cover Image</Label>
+              <div
+                className="relative w-40 aspect-[3/4] mx-auto bg-gray-100 rounded-lg overflow-hidden border-2 border-dashed border-gray-300 hover:border-app-iris cursor-pointer transition-colors flex items-center justify-center group"
+                onClick={() => coverInputRef.current?.click()}
+              >
+                {coverPreview ? (
+                  <>
+                    <img src={coverPreview} alt="Cover preview" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <span className="text-white font-medium text-sm">Change Cover</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center text-gray-500">
+                    <ImageIcon className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <span className="text-sm">Click to upload cover</span>
+                  </div>
+                )}
+                <input
+                  ref={coverInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleCoverSelect}
+                />
+              </div>
+              {coverPreview && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-red-500 hover:text-red-600 hover:bg-red-50 h-auto p-0 text-xs"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCoverPreview(null);
+                    setEditingCover(null);
+                    if (coverInputRef.current) coverInputRef.current.value = '';
+                  }}
+                >
+                  Remove cover
+                </Button>
+              )}
+            </div>
+
+            <DialogFooter className="pt-4">
+              <Button type="button" variant="outline" onClick={() => setEditModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="appPrimary" disabled={updating || !editingName.trim()}>
+                {updating ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save Changes'
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
