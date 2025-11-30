@@ -13,12 +13,13 @@ import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import {
-  Trash2, PlusCircle, ChevronRight, ChevronDown, ArrowLeft, ArrowRight, UploadCloud, GripVertical, MoreVertical, ChevronLeft, Sparkles, Globe, Users, UserPlus, X, Send
+  Trash2, PlusCircle, ChevronRight, ChevronDown, ArrowLeft, ArrowRight, UploadCloud, GripVertical, MoreVertical, ChevronLeft, Sparkles, Globe, Users, UserPlus, X, Send, Edit
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
 } from '@/components/ui/dialog';
 import { httpsCallable } from 'firebase/functions';
+import EditBookModal from '@/components/EditBookModal';
 
 // --- UTILITY FOR FRACTIONAL INDEXING ---
 const getMidpointString = (prev = '', next = '') => {
@@ -1177,6 +1178,7 @@ const BookDetail = () => {
   const [saveConfirmOpen, setSaveConfirmOpen] = useState(false);
   const [pendingChapterEdit, setPendingChapterEdit] = useState(null);
   const [publishModalOpen, setPublishModalOpen] = useState(false);
+  const [editBookModalOpen, setEditBookModalOpen] = useState(false);
   const [coAuthorModalOpen, setCoAuthorModalOpen] = useState(false);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -1297,9 +1299,17 @@ const BookDetail = () => {
   }, [bookId]);
 
   // Permission checks
-  const isOwner = book?.ownerId === user?.uid;
+  // Permission checks
+  const isOwner = book?.ownerId === user?.uid || book?.members?.[user?.uid] === 'Owner';
   const isCoAuthor = book?.members?.[user?.uid] === 'Co-author';
   const canEdit = isOwner || isCoAuthor;
+
+  console.log('👤 Auth Check:', {
+    userId: user?.uid,
+    bookOwnerId: book?.ownerId,
+    isOwner,
+    members: book?.members
+  });
 
   // User search function
   const searchUsers = useCallback(async (searchTerm) => {
@@ -1497,6 +1507,10 @@ const BookDetail = () => {
       .filter(([uid, role]) => uid !== book.ownerId && role === 'Co-author')
       .map(([uid]) => uid)
     : [];
+
+  const handleBookUpdate = (updatedBook) => {
+    setBook(prev => ({ ...prev, ...updatedBook }));
+  };
 
   // Fetch co-author user details
   useEffect(() => {
@@ -1968,6 +1982,13 @@ const BookDetail = () => {
         </DialogContent>
       </Dialog>
 
+      <EditBookModal
+        isOpen={editBookModalOpen}
+        onClose={() => setEditBookModalOpen(false)}
+        book={book}
+        onUpdate={handleBookUpdate}
+      />
+
       {/* Co-Author Invitation Modal */}
       <Dialog open={coAuthorModalOpen} onOpenChange={setCoAuthorModalOpen}>
         <DialogContent className="w-full max-w-lg p-6 bg-white rounded-2xl shadow-lg">
@@ -2074,9 +2095,27 @@ const BookDetail = () => {
               <ArrowLeft className="h-4 w-4" />
               Back
             </Button>
+            {book?.coverImageUrl && (
+              <img
+                src={book.coverImageUrl}
+                alt="Cover"
+                className="h-8 w-8 rounded object-cover border border-gray-200"
+              />
+            )}
             <h1 className="text-lg font-semibold text-app-gray-900 truncate max-w-md" title={book?.babyName}>
               {book?.babyName}
             </h1>
+            {isOwner && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setEditBookModalOpen(true)}
+                className="ml-2 h-6 w-6 text-app-gray-400 hover:text-app-gray-900"
+                title="Edit book details"
+              >
+                <Edit className="h-3 w-3" />
+              </Button>
+            )}
           </div>
 
           {isOwner && (

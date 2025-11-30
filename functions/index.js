@@ -84,9 +84,11 @@ if (!admin.apps.length) {
 // Get default Firestore instance
 const db = admin.firestore();
 
+
 const { uploadMedia } = require("./imageProcessor");
 const { rewriteNote } = require("./textGenerator");
 const { createBook } = require("./createBook");
+const { updateBook } = require("./updateBook");
 const { onMediaUpload, onMediaDelete } = require("./mediaProcessor");
 const { inviteCoAuthor } = require("./inviteCoAuthor");
 const { createCheckoutSession } = require("./payments/createCheckoutSession");
