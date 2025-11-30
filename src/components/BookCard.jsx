@@ -204,16 +204,16 @@ const BookCard = ({ bookId, bookTitle, coverImage, onBookDeleted }) => {
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-40">
-                                <DropdownMenuItem onClick={() => navigate(`/book/${bookId}/view`)}>
+                                <DropdownMenuItem onClick={() => navigate(`/book/${bookId}/view`)} className="cursor-pointer">
                                     <Eye className="mr-2 h-4 w-4" />
                                     <span>View</span>
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => navigate(`/book/${bookId}`)}>
+                                <DropdownMenuItem onClick={() => navigate(`/book/${bookId}`)} className="cursor-pointer">
                                     <Pencil className="mr-2 h-4 w-4" />
                                     <span>Edit</span>
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
-                                    className="book-delete-item text-red-600 focus:text-red-600 focus:bg-red-50 focus:font-medium"
+                                    className="book-delete-item text-red-600 focus:text-red-600 focus:bg-red-50 focus:font-medium cursor-pointer"
                                     onClick={() => setConfirmOpen(true)}
                                 >
                                     <Trash2 className="mr-2 h-4 w-4" />
