@@ -89,6 +89,7 @@ const { uploadMedia } = require("./imageProcessor");
 const { rewriteNote } = require("./textGenerator");
 const { createBook } = require("./createBook");
 const { updateBook } = require("./updateBook");
+const { createAlbum } = require("./createAlbum");
 const { onMediaUpload, onMediaDelete } = require("./mediaProcessor");
 const { inviteCoAuthor } = require("./inviteCoAuthor");
 const { createCheckoutSession } = require("./payments/createCheckoutSession");
@@ -109,6 +110,7 @@ exports.uploadMedia = uploadMedia;
 exports.rewriteNote = rewriteNote;
 exports.createBook = createBook;
 exports.updateBook = updateBook;
+exports.createAlbum = createAlbum;
 exports.onMediaUpload = onMediaUpload;
 exports.onMediaDelete = onMediaDelete;
 exports.inviteCoAuthor = inviteCoAuthor;
@@ -123,8 +125,6 @@ exports.onPageDeleted = onPageDeleted;
 exports.onChapterDeleted = onChapterDeleted;
 exports.deleteMediaAsset = deleteMediaAsset;
 exports.deleteAlbumAssets = deleteAlbumAssets;
-const { createAlbum } = require("./createAlbum");
-exports.createAlbum = createAlbum;
 const { updateAlbum } = require("./updateAlbum");
 exports.updateAlbum = updateAlbum;
 
@@ -388,4 +388,22 @@ exports.addPageSummary = onCall({ region: "us-central1" }, async (request) => {
     throw new HttpsError('internal', 'Failed to add page summary. Please try again.');
   }
 });
+
+// Export all functions
+exports.uploadMedia = uploadMedia;
+exports.rewriteNote = rewriteNote;
+exports.createBook = createBook;
+exports.updateBook = updateBook;
+exports.onMediaUpload = onMediaUpload;
+exports.onMediaDelete = onMediaDelete;
+exports.inviteCoAuthor = inviteCoAuthor;
+exports.createCheckoutSession = createCheckoutSession;
+exports.stripeWebhook = stripeWebhook;
+exports.searchAgent = searchAgent;
+exports.createPage = createPage;
+exports.updatePage = updatePage;
+exports.onUserCreate = onUserCreate;
+exports.onBookDeleted = onBookDeleted;
+exports.onPageDeleted = onPageDeleted;
+exports.onChapterDeleted = onChapterDeleted;
 

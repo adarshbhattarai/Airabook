@@ -446,9 +446,18 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
 
     const mediaType = file.type.startsWith('video') ? 'video' : 'image';
     const uniqueFileName = `${Date.now()}_${file.name}`;
+    // Construct path: {userId}/{bookId}/{chapterId}/{pageId}/media/{type}/{filename}
     const storagePath = `${user.uid}/${bookId}/${chapterId}/${page.id}/media/${mediaType}/${uniqueFileName}`;
     const storageRef = ref(storage, storagePath);
-    const uploadTask = uploadBytesResumable(storageRef, file);
+
+    // Add custom metadata for original name
+    const metadata = {
+      customMetadata: {
+        originalName: file.name
+      }
+    };
+
+    const uploadTask = uploadBytesResumable(storageRef, file, metadata);
 
     uploadTask.on('state_changed',
       (snapshot) => {
@@ -472,9 +481,12 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
             name: file.name,
             uploadedAt: new Date().toISOString(),
           };
+
+          // Update Page document in Firestore
           const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', page.id);
           await updateDoc(pageRef, { media: arrayUnion(newMediaItem) });
 
+          // Update local state
           onPageUpdate(prev => ({
             ...prev,
             media: [...(prev?.media || []), newMediaItem],
@@ -819,11 +831,10 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
                   albums.map((album) => (
                     <button
                       key={album.id}
-                      className={`w-full text-left px-3 py-2 rounded-md border transition-colors ${
-                        selectedAlbumId === album.id
-                          ? 'border-app-iris bg-app-iris/10 text-app-iris'
-                          : 'border-app-gray-100 hover:border-app-iris/40'
-                      }`}
+                      className={`w-full text-left px-3 py-2 rounded-md border transition-colors ${selectedAlbumId === album.id
+                        ? 'border-app-iris bg-app-iris/10 text-app-iris'
+                        : 'border-app-gray-100 hover:border-app-iris/40'
+                        }`}
                       onClick={() => setSelectedAlbumId(album.id)}
                     >
                       <div className="font-semibold text-sm">{album.name || 'Untitled album'}</div>
