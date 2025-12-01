@@ -338,6 +338,31 @@ async function getDownloadURL(bucket, storagePath) {
       try {
         // Parse storage path to extract metadata
         const metadata = parseStoragePath(storagePath);
+        console.log(`📋 Parsed metadata:`, metadata);
+
+        // Get or create album (metadata.bookId is the album ID)
+        await getOrCreateAlbum(metadata.bookId, metadata.userId);
+        const albumId = metadata.bookId;
+
+        // Generate download URL
+        const downloadURL = await getDownloadURL(bucket, storagePath);
+        console.log(`🔗 Generated download URL for ${metadata.type}`);
+
+        // Update album with new media
+        const albumUpdate = await updateAlbumWithMedia(
+          albumId,
+          downloadURL,
+          metadata.type,
+          storagePath,
+          { originalName: metadata.filename }
+        );
+
+        // Get album data for name
+        const albumRef = db.collection('albums').doc(albumId);
+        const albumDoc = await albumRef.get();
+        const albumData = albumDoc.exists ? albumDoc.data() : {};
+        const albumName = albumData.name || 'Untitled Album';
+
         // Update user's accessibleAlbums
         await updateUserAccessibleAlbums(
           metadata.userId,
