@@ -58,54 +58,47 @@ function parseStoragePath(storagePath) {
 }
 
 /**
- * Validate that user has access to upload media for this resource (book or album)
+ * Get or create album for a book
  */
-async function validateAccess(userId, resourceId) {
-  console.log(`🔍 Validating access for user ${userId} to resource ${resourceId}`);
+async function getOrCreateAlbum(bookId, userId) {
+  const albumRef = db.collection('albums').doc(bookId);
+  const albumDoc = await albumRef.get();
 
-  // 1. Try to find a book with this ID
-  const bookRef = db.collection('books').doc(resourceId);
-  const bookDoc = await bookRef.get();
+  if (!albumDoc.exists) {
+    // Get book data for album name
+    const bookRef = db.collection('books').doc(bookId);
+    const bookDoc = await bookRef.get();
+    const bookData = bookDoc.exists ? bookDoc.data() : {};
 
-  async function getOrCreateAlbum(bookId, userId) {
-    const albumRef = db.collection('albums').doc(bookId);
-    const albumDoc = await albumRef.get();
-
-    if (!albumDoc.exists) {
-      // Get book data for album name
-      const bookRef = db.collection('books').doc(bookId);
-      const bookDoc = await bookRef.get();
-      const bookData = bookDoc.exists ? bookDoc.data() : {};
-
-      // Create album document
-      await albumRef.set({
-        name: bookData.babyName || bookData.title || 'Untitled Album',
-        type: 'book',
-        bookId: bookId,
-        coverImage: null,
-        images: [],
-        videos: [],
-        accessPermission: {
-          ownerId: userId,
-          accessType: 'private',
-          sharedWith: [],
-        },
-        mediaCount: 0,
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-      console.log(`✅ Created album document: albums/${bookId}`);
-      return { albumId: bookId, isNew: true };
-    }
-
-    return { albumId: bookId, isNew: false };
+    // Create album document
+    await albumRef.set({
+      name: bookData.babyName || bookData.title || 'Untitled Album',
+      type: 'book',
+      bookId: bookId,
+      coverImage: null,
+      images: [],
+      videos: [],
+      accessPermission: {
+        ownerId: userId,
+        accessType: 'private',
+        sharedWith: [],
+      },
+      mediaCount: 0,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    console.log(`✅ Created album document: albums/${bookId}`);
+    return { albumId: bookId, isNew: true };
   }
 
-  /**
-   * Generate download URL for storage file
-   * Handles both emulator and production environments
-   */
-  async function getDownloadURL(bucket, storagePath) {
+  return { albumId: bookId, isNew: false };
+}
+
+/**
+ * Generate download URL for storage file
+ * Handles both emulator and production environments
+ */
+async function getDownloadURL(bucket, storagePath) {
     // Check if running in emulator
     const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true' ||
       process.env.FIREBASE_AUTH_EMULATOR_HOST ||
@@ -226,20 +219,14 @@ async function validateAccess(userId, resourceId) {
       accessibleBookIds = await Promise.all(bookPromises);
     }
 
-    // Find and update or add book entry
+    // Find and update book entry
     const bookIndex = accessibleBookIds.findIndex(item => item.bookId === bookId);
     if (bookIndex >= 0) {
       accessibleBookIds[bookIndex].coverImage = coverImage;
     } else {
-      // If book not found, get title from Firestore
-      const bookRef = db.collection('books').doc(bookId);
-      const bookDoc = await bookRef.get();
-      const bookData = bookDoc.exists ? bookDoc.data() : {};
-      accessibleBookIds.push({
-        bookId,
-        title: bookData.babyName || bookData.title || 'Untitled Book',
-        coverImage: coverImage,
-      });
+      // If book not found, it's likely an album (not a book), so don't add it to accessibleBookIds
+      console.log(`ℹ️  Book ${bookId} not found in accessibleBookIds, skipping (likely an album)`);
+      return;
     }
 
     await userRef.update({
