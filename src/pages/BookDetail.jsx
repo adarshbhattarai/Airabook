@@ -756,7 +756,7 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
       />
 
       <Dialog open={mediaPickerOpen} onOpenChange={setMediaPickerOpen}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-4xl bg-white rounded-2xl shadow-2xl border border-gray-100 p-6">
           <DialogHeader>
             <DialogTitle>Add media to this page</DialogTitle>
             <DialogDescription>
