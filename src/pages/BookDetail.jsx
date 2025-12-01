@@ -425,7 +425,20 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
 
     setMediaPickerOpen(false);
 
+    // Clear the input value so selecting the same file again still triggers onChange
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+
     files.forEach(file => handleUpload(file));
+  };
+
+  const openFileDialog = () => {
+    if (fileInputRef.current) {
+      // Reset value on open to ensure re-selecting the same file works
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
   };
 
   const handleUpload = (file) => {
@@ -784,20 +797,20 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
           {mediaPickerTab === 'upload' ? (
             <div
               className="p-6 border-2 border-dashed rounded-lg bg-gray-50 text-center text-sm text-app-gray-700"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={openFileDialog}
             >
               <UploadCloud className="h-10 w-10 mx-auto mb-3 text-app-iris" />
               <p className="font-semibold">Select files to upload</p>
               <p className="text-xs text-app-gray-500">Up to 5 images or videos per page</p>
               <div className="mt-4">
-                <Button variant="appPrimary" onClick={() => fileInputRef.current?.click()}>
+                <Button variant="appPrimary" onClick={openFileDialog}>
                   Choose files
                 </Button>
               </div>
             </div>
           ) : (
             <div className="grid gap-4 lg:grid-cols-[220px,1fr]">
-              <div className="space-y-2">
+              <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
                 {albums.length === 0 ? (
                   <div className="text-sm text-app-gray-600 bg-app-gray-50 border border-app-gray-100 rounded-md p-3">
                     No asset albums yet. Create one from the Asset Registry page.
@@ -820,7 +833,7 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
                 )}
               </div>
 
-              <div className="border border-app-gray-100 rounded-lg p-4 min-h-[260px] bg-white">
+              <div className="border border-app-gray-100 rounded-lg p-4 min-h-[260px] max-h-[520px] overflow-y-auto bg-white">
                 {loadingAlbums ? (
                   <div className="flex items-center justify-center h-full text-sm text-app-gray-600">Loading assets...</div>
                 ) : !selectedAlbumId ? (
