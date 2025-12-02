@@ -531,10 +531,26 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
         type: asset.type || 'image',
         name: asset.name || 'Asset',
         uploadedAt: new Date().toISOString(),
+        albumId: selectedAlbumId, // Store albumId for untracking later
       };
 
       const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', page.id);
       await updateDoc(pageRef, { media: arrayUnion(newMediaItem) });
+
+      // Track usage in album
+      try {
+        const trackUsage = httpsCallable(functions, 'trackMediaUsage');
+        await trackUsage({
+          albumId: selectedAlbumId,
+          storagePath: asset.storagePath,
+          bookId,
+          chapterId,
+          pageId: page.id
+        });
+      } catch (trackError) {
+        console.error('Failed to track usage:', trackError);
+        // Don't fail the whole operation if tracking fails
+      }
 
       onPageUpdate((prev) => ({
         ...prev,
@@ -558,6 +574,24 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
     const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', page.id);
     try {
       await updateDoc(pageRef, { media: arrayRemove(mediaToDelete) });
+
+      // Untrack usage if this was attached from an album
+      if (mediaToDelete.albumId && mediaToDelete.storagePath) {
+        try {
+          const untrackUsage = httpsCallable(functions, 'untrackMediaUsage');
+          await untrackUsage({
+            albumId: mediaToDelete.albumId,
+            storagePath: mediaToDelete.storagePath,
+            bookId,
+            chapterId,
+            pageId: page.id
+          });
+        } catch (untrackError) {
+          console.error('Failed to untrack usage:', untrackError);
+          // Don't fail the whole operation if untracking fails
+        }
+      }
+
       onPageUpdate({
         ...page,
         media: (page.media || []).filter(m => m.storagePath !== mediaToDelete.storagePath),
@@ -815,7 +849,10 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
               <p className="font-semibold">Select files to upload</p>
               <p className="text-xs text-app-gray-500">Up to 5 images or videos per page</p>
               <div className="mt-4">
-                <Button variant="appPrimary" onClick={openFileDialog}>
+                <Button variant="appPrimary" onClick={(e) => {
+                  e.stopPropagation();
+                  openFileDialog();
+                }}>
                   Choose files
                 </Button>
               </div>

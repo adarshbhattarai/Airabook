@@ -210,24 +210,57 @@ exports.deleteMediaAsset = onCall({ region: "us-central1" }, async (request) => 
     skipStorageUsage: false,
   });
 
-  // Remove from pages under this book (only for book media, not album-only)
-  if (bookRef) {
-    try {
-      const chaptersSnap = await bookRef.collection("chapters").get();
-      for (const chap of chaptersSnap.docs) {
-        const pagesSnap = await chap.ref.collection("pages").get();
-        for (const pageDoc of pagesSnap.docs) {
-          const pageData = pageDoc.data() || {};
-          const mediaArr = pageData.media || [];
-          const filtered = mediaArr.filter((m) => m.storagePath !== storagePath);
-          if (filtered.length !== mediaArr.length) {
-            await pageDoc.ref.update({ media: filtered });
+  // Remove from pages using the usedIn tracking from album
+  try {
+    const albumRef = db.collection("albums").doc(bookId);
+    const albumSnap = await albumRef.get();
+
+    if (albumSnap.exists) {
+      const albumData = albumSnap.data();
+      const images = albumData.images || [];
+      const videos = albumData.videos || [];
+
+      // Find the media item by storagePath
+      let mediaItem = null;
+      mediaItem = images.find(img => img.storagePath === storagePath);
+      if (!mediaItem) {
+        mediaItem = videos.find(vid => vid.storagePath === storagePath);
+      }
+
+      // If we found the media item and it has usage tracking
+      if (mediaItem && mediaItem.usedIn && mediaItem.usedIn.length > 0) {
+        console.log(`📋 Found ${mediaItem.usedIn.length} page(s) using this media`);
+
+        // Clean up each page where this media is used
+        for (const usage of mediaItem.usedIn) {
+          try {
+            const pageRef = db
+              .collection("books")
+              .doc(usage.bookId)
+              .collection("chapters")
+              .doc(usage.chapterId)
+              .collection("pages")
+              .doc(usage.pageId);
+
+            const pageSnap = await pageRef.get();
+            if (pageSnap.exists) {
+              const pageData = pageSnap.data() || {};
+              const mediaArr = pageData.media || [];
+              const filtered = mediaArr.filter((m) => m.storagePath !== storagePath);
+
+              if (filtered.length !== mediaArr.length) {
+                await pageRef.update({ media: filtered });
+                console.log(`✅ Removed media from page ${usage.pageId} in book ${usage.bookId}`);
+              }
+            }
+          } catch (err) {
+            console.error(`⚠️ Failed to clean up page ${usage.pageId}:`, err);
           }
         }
       }
-    } catch (err) {
-      console.error("Page media cleanup failed:", err);
     }
+  } catch (err) {
+    console.error("Page media cleanup failed:", err);
   }
 
   return { success: true };
@@ -395,6 +428,47 @@ exports.deleteAlbumAssets = onCall({ region: "us-central1" }, async (request) =>
     const albumDirSize = await calculateDirectorySize(albumDirPrefix);
     totalStorageSize += albumDirSize;
     await deleteDirectory(albumDirPrefix);
+
+    // Clean up pages where album media is used (before deleting album document)
+    try {
+      const images = albumData.images || [];
+      const videos = albumData.videos || [];
+      const allMedia = [...images, ...videos];
+
+      for (const mediaItem of allMedia) {
+        if (mediaItem.usedIn && mediaItem.usedIn.length > 0) {
+          console.log(`📋 Cleaning up ${mediaItem.usedIn.length} page(s) for ${mediaItem.storagePath}`);
+
+          for (const usage of mediaItem.usedIn) {
+            try {
+              const pageRef = db
+                .collection("books")
+                .doc(usage.bookId)
+                .collection("chapters")
+                .doc(usage.chapterId)
+                .collection("pages")
+                .doc(usage.pageId);
+
+              const pageSnap = await pageRef.get();
+              if (pageSnap.exists) {
+                const pageData = pageSnap.data() || {};
+                const mediaArr = pageData.media || [];
+                const filtered = mediaArr.filter((m) => m.storagePath !== mediaItem.storagePath);
+
+                if (filtered.length !== mediaArr.length) {
+                  await pageRef.update({ media: filtered });
+                  console.log(`✅ Removed ${mediaItem.storagePath} from page ${usage.pageId}`);
+                }
+              }
+            } catch (err) {
+              console.error(`⚠️ Failed to clean up page ${usage.pageId}:`, err);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error(`⚠️ Failed to clean up pages for album:`, err);
+    }
 
     // Delete album document
     try {

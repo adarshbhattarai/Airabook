@@ -100,6 +100,7 @@ const { updatePage } = require("./updatePage");
 const { onUserCreate } = require("./onUserCreate");
 const { onBookDeleted, onPageDeleted, onChapterDeleted } = require("./usageTriggers");
 const { deleteMediaAsset, deleteAlbumAssets } = require("./deleteMedia");
+const { trackMediaUsage, untrackMediaUsage } = require("./mediaUsage");
 
 exports.helloWorld = onRequest({ region: "us-central1" }, (request, response) => {
   logger.info("Hello logs!", { structuredData: true });
@@ -127,6 +128,8 @@ exports.deleteMediaAsset = deleteMediaAsset;
 exports.deleteAlbumAssets = deleteAlbumAssets;
 const { updateAlbum } = require("./updateAlbum");
 exports.updateAlbum = updateAlbum;
+exports.trackMediaUsage = trackMediaUsage;
+exports.untrackMediaUsage = untrackMediaUsage;
 
 // Function to get chapters for a book (hot reload test)
 exports.getBookChapters = onCall({ region: "us-central1" }, async (request) => {
