@@ -2,6 +2,8 @@ const { onObjectFinalized, onObjectDeleted } = require("firebase-functions/v2/st
 const admin = require("firebase-admin");
 const FieldValue = require("firebase-admin/firestore").FieldValue;
 const { addStorageUsage } = require("./utils/limits");
+const { deleteMediaInternal } = require("./deleteMedia");
+
 
 // Ensure Firebase Admin is initialized (may be initialized by index.js)
 if (!admin.apps.length) {
@@ -99,428 +101,459 @@ async function getOrCreateAlbum(bookId, userId) {
  * Handles both emulator and production environments
  */
 async function getDownloadURL(bucket, storagePath) {
-    // Check if running in emulator
-    const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true' ||
-      process.env.FIREBASE_AUTH_EMULATOR_HOST ||
-      process.env.STORAGE_EMULATOR_HOST ||
-      process.env.FIREBASE_STORAGE_EMULATOR_HOST;
+  // Check if running in emulator
+  const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true' ||
+    process.env.FIREBASE_AUTH_EMULATOR_HOST ||
+    process.env.STORAGE_EMULATOR_HOST ||
+    process.env.FIREBASE_STORAGE_EMULATOR_HOST;
 
-    if (isEmulator) {
-      // Generate emulator URL format: http://127.0.0.1:9199/v0/b/{bucket}/o/{encodedPath}?alt=media&token={token}
-      // URL encode the storage path (keep slashes as %2F)
-      const encodedPath = encodeURIComponent(storagePath);
-      const token = require('crypto').randomUUID();
-      const emulatorHost = process.env.FIREBASE_STORAGE_EMULATOR_HOST || '127.0.0.1:9199';
-      const protocol = emulatorHost.startsWith('http') ? '' : 'http://';
-      const downloadURL = `${protocol}${emulatorHost}/v0/b/${bucket}/o/${encodedPath}?alt=media&token=${token}`;
-      console.log(`🔗 Generated emulator URL: ${downloadURL}`);
-      return downloadURL;
-    }
-
-    // Production: use signed URL
-    try {
-      const bucketObj = admin.storage().bucket(bucket);
-      const file = bucketObj.file(storagePath);
-      const [signedUrl] = await file.getSignedUrl({
-        action: 'read',
-        expires: '03-09-2491', // Far future expiration
-      });
-      console.log(`🔗 Generated signed URL for production`);
-      return signedUrl;
-    } catch (error) {
-      // Fallback: construct public URL
-      console.log(`⚠️  Signed URL failed, using public URL: ${error.message}`);
-      return `https://storage.googleapis.com/${bucket}/${storagePath}`;
-    }
+  if (isEmulator) {
+    // Generate emulator URL format: http://127.0.0.1:9199/v0/b/{bucket}/o/{encodedPath}?alt=media&token={token}
+    // URL encode the storage path (keep slashes as %2F)
+    const encodedPath = encodeURIComponent(storagePath);
+    const token = require('crypto').randomUUID();
+    const emulatorHost = process.env.FIREBASE_STORAGE_EMULATOR_HOST || '127.0.0.1:9199';
+    const protocol = emulatorHost.startsWith('http') ? '' : 'http://';
+    const downloadURL = `${protocol}${emulatorHost}/v0/b/${bucket}/o/${encodedPath}?alt=media&token=${token}`;
+    console.log(`🔗 Generated emulator URL: ${downloadURL}`);
+    return downloadURL;
   }
 
-  /**
-   * Update album document with new media URL
-   */
-  async function updateAlbumWithMedia(albumId, downloadURL, mediaType, storagePath, metadata = {}) {
-    const albumRef = db.collection('albums').doc(albumId);
-    const albumDoc = await albumRef.get();
-
-    if (!albumDoc.exists) {
-      throw new Error(`Album ${albumId} does not exist`);
-    }
-
-    const albumData = albumDoc.data();
-    const updateData = {
-      updatedAt: FieldValue.serverTimestamp(),
-    };
-
-    // Store URL with metadata: {url, storagePath, name, uploadedAt}
-    const mediaItem = {
-      url: downloadURL,
-      storagePath: storagePath,
-      name: metadata.originalName || storagePath.split('/').pop(),
-      uploadedAt: new Date().toISOString()
-    };
-
-    // Add URL to appropriate array
-    if (mediaType === 'image') {
-      updateData.images = FieldValue.arrayUnion(mediaItem);
-    } else {
-      updateData.videos = FieldValue.arrayUnion(mediaItem);
-    }
-
-    // Update media count
-    const currentImages = albumData.images || [];
-    const currentVideos = albumData.videos || [];
-    const newCount = mediaType === 'image'
-      ? currentImages.length + 1 + currentVideos.length
-      : currentImages.length + currentVideos.length + 1;
-    updateData.mediaCount = newCount;
-
-    // Set cover image if this is the first image
-    if (mediaType === 'image' && !albumData.coverImage) {
-      updateData.coverImage = downloadURL;
-      console.log(`📸 Setting cover image for album ${albumId}`);
-    }
-
-    await albumRef.update(updateData);
-    console.log(`✅ Updated album ${albumId} with new ${mediaType}: count=${newCount}`);
-
-    return {
-      coverImage: updateData.coverImage || albumData.coverImage,
-      mediaCount: newCount,
-    };
-  }
-
-  /**
-   * Update user's accessibleBookIds with cover image
-   */
-  async function updateUserAccessibleBookIds(userId, bookId, coverImage) {
-    const userRef = db.collection('users').doc(userId);
-    const userDoc = await userRef.get();
-
-    if (!userDoc.exists) {
-      console.warn(`⚠️  User ${userId} does not exist`);
-      return;
-    }
-
-    const userData = userDoc.data();
-    let accessibleBookIds = userData.accessibleBookIds || [];
-
-    // Convert old string array to object array if needed
-    if (accessibleBookIds.length > 0 && typeof accessibleBookIds[0] === 'string') {
-      // For old format, fetch book titles from Firestore
-      const bookPromises = accessibleBookIds.map(async (id) => {
-        const bookRef = db.collection('books').doc(id);
-        const bookDoc = await bookRef.get();
-        const bookData = bookDoc.exists ? bookDoc.data() : {};
-        return {
-          bookId: id,
-          title: bookData.babyName || bookData.title || 'Untitled Book',
-          coverImage: bookData.mediaCoverUrl || null,
-        };
-      });
-      accessibleBookIds = await Promise.all(bookPromises);
-    }
-
-    // Find and update book entry
-    const bookIndex = accessibleBookIds.findIndex(item => item.bookId === bookId);
-    if (bookIndex >= 0) {
-      accessibleBookIds[bookIndex].coverImage = coverImage;
-    } else {
-      // If book not found, it's likely an album (not a book), so don't add it to accessibleBookIds
-      console.log(`ℹ️  Book ${bookId} not found in accessibleBookIds, skipping (likely an album)`);
-      return;
-    }
-
-    await userRef.update({
-      accessibleBookIds: accessibleBookIds,
-      updatedAt: FieldValue.serverTimestamp(),
+  // Production: use signed URL
+  try {
+    const bucketObj = admin.storage().bucket(bucket);
+    const file = bucketObj.file(storagePath);
+    const [signedUrl] = await file.getSignedUrl({
+      action: 'read',
+      expires: '03-09-2491', // Far future expiration
     });
-    console.log(`✅ Updated user ${userId} accessibleBookIds with cover image`);
+    console.log(`🔗 Generated signed URL for production`);
+    return signedUrl;
+  } catch (error) {
+    // Fallback: construct public URL
+    console.log(`⚠️  Signed URL failed, using public URL: ${error.message}`);
+    return `https://storage.googleapis.com/${bucket}/${storagePath}`;
+  }
+}
+
+/**
+ * Update album document with new media URL
+ */
+async function updateAlbumWithMedia(albumId, downloadURL, mediaType, storagePath, metadata = {}) {
+  const albumRef = db.collection('albums').doc(albumId);
+  const albumDoc = await albumRef.get();
+
+  if (!albumDoc.exists) {
+    throw new Error(`Album ${albumId} does not exist`);
   }
 
-  /**
-   * Update user's accessibleAlbums
-   */
-  async function updateUserAccessibleAlbums(userId, albumId, albumName, coverImage, mediaCount) {
-    const userRef = db.collection('users').doc(userId);
-    const userDoc = await userRef.get();
+  const albumData = albumDoc.data();
+  const updateData = {
+    updatedAt: FieldValue.serverTimestamp(),
+  };
 
-    if (!userDoc.exists) {
-      console.warn(`⚠️  User ${userId} does not exist`);
-      return;
-    }
+  // Store URL with metadata: {url, storagePath, name, uploadedAt}
+  const mediaItem = {
+    url: downloadURL,
+    storagePath: storagePath,
+    name: metadata.originalName || storagePath.split('/').pop(),
+    uploadedAt: new Date().toISOString()
+  };
 
-    const userData = userDoc.data();
-    let accessibleAlbums = userData.accessibleAlbums || [];
+  // Add URL to appropriate array
+  if (mediaType === 'image') {
+    updateData.images = FieldValue.arrayUnion(mediaItem);
+  } else {
+    updateData.videos = FieldValue.arrayUnion(mediaItem);
+  }
 
-    // Find and update or add album entry
-    const albumIndex = accessibleAlbums.findIndex(item => item.id === albumId);
-    if (albumIndex >= 0) {
-      accessibleAlbums[albumIndex].coverImage = coverImage;
-      accessibleAlbums[albumIndex].mediaCount = mediaCount;
-      accessibleAlbums[albumIndex].updatedAt = new Date();
-    } else {
-      accessibleAlbums.push({
-        id: albumId,
-        coverImage: coverImage,
-        type: 'book',
-        name: albumName,
-        mediaCount: mediaCount,
-        updatedAt: new Date(),
-      });
-    }
+  // Update media count
+  const currentImages = albumData.images || [];
+  const currentVideos = albumData.videos || [];
+  const newCount = mediaType === 'image'
+    ? currentImages.length + 1 + currentVideos.length
+    : currentImages.length + currentVideos.length + 1;
+  updateData.mediaCount = newCount;
 
-    await userRef.update({
-      accessibleAlbums: accessibleAlbums,
-      updatedAt: FieldValue.serverTimestamp(),
+  // Set cover image if this is the first image
+  if (mediaType === 'image' && !albumData.coverImage) {
+    updateData.coverImage = downloadURL;
+    console.log(`📸 Setting cover image for album ${albumId}`);
+  }
+
+  await albumRef.update(updateData);
+  console.log(`✅ Updated album ${albumId} with new ${mediaType}: count=${newCount}`);
+
+  return {
+    coverImage: updateData.coverImage || albumData.coverImage,
+    mediaCount: newCount,
+  };
+}
+
+/**
+ * Update user's accessibleBookIds with cover image
+ */
+async function updateUserAccessibleBookIds(userId, bookId, coverImage) {
+  const userRef = db.collection('users').doc(userId);
+  const userDoc = await userRef.get();
+
+  if (!userDoc.exists) {
+    console.warn(`⚠️  User ${userId} does not exist`);
+    return;
+  }
+
+  const userData = userDoc.data();
+  let accessibleBookIds = userData.accessibleBookIds || [];
+
+  // Convert old string array to object array if needed
+  if (accessibleBookIds.length > 0 && typeof accessibleBookIds[0] === 'string') {
+    // For old format, fetch book titles from Firestore
+    const bookPromises = accessibleBookIds.map(async (id) => {
+      const bookRef = db.collection('books').doc(id);
+      const bookDoc = await bookRef.get();
+      const bookData = bookDoc.exists ? bookDoc.data() : {};
+      return {
+        bookId: id,
+        title: bookData.babyName || bookData.title || 'Untitled Book',
+        coverImage: bookData.mediaCoverUrl || null,
+      };
     });
-    console.log(`✅ Updated user ${userId} accessibleAlbums`);
+    accessibleBookIds = await Promise.all(bookPromises);
   }
 
-  /**
-   * Storage trigger function that runs when a file is uploaded
-   * Updates albums/{albumId} document with URL in images/videos array
-   */
-  exports.onMediaUpload = onObjectFinalized(
-    {
-      region: "us-central1"
-    },
-    async (event) => {
-      const storagePath = event.data.name;
-      const bucket = event.data.bucket;
-      const metaSize = parseInt(event.data?.size || "0", 10) || 0;
-      const quotaCounted =
-        event.data?.metadata?.metadata?.quotaCounted === "true" ||
-        event.data?.metadata?.customMetadata?.quotaCounted === "true";
-      const customMetadata = event.data?.metadata?.customMetadata || {};
+  // Find and update book entry
+  const bookIndex = accessibleBookIds.findIndex(item => item.bookId === bookId);
+  if (bookIndex >= 0) {
+    accessibleBookIds[bookIndex].coverImage = coverImage;
+  } else {
+    // If book not found, it's likely an album (not a book), so don't add it to accessibleBookIds
+    console.log(`ℹ️  Book ${bookId} not found in accessibleBookIds, skipping (likely an album)`);
+    return;
+  }
 
-      console.log(`📸 Storage trigger fired for: ${storagePath}`);
+  await userRef.update({
+    accessibleBookIds: accessibleBookIds,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  console.log(`✅ Updated user ${userId} accessibleBookIds with cover image`);
+}
 
-      // --- AVATAR CLEANUP LOGIC ---
-      // Check for avatar upload: {userId}/avatars/{filename}
-      const avatarMatch = storagePath.match(/^([^/]+)\/avatars\/(.+)$/);
-      if (avatarMatch) {
-        const userId = avatarMatch[1];
-        console.log(`👤 Avatar upload detected for user: ${userId}`);
+/**
+ * Update user's accessibleAlbums
+ */
+async function updateUserAccessibleAlbums(userId, albumId, albumName, coverImage, mediaCount) {
+  const userRef = db.collection('users').doc(userId);
+  const userDoc = await userRef.get();
 
-        try {
-          const bucketObj = admin.storage().bucket(bucket);
-          // List all files in the user's avatar directory
-          const [files] = await bucketObj.getFiles({ prefix: `${userId}/avatars/` });
+  if (!userDoc.exists) {
+    console.warn(`⚠️  User ${userId} does not exist`);
+    return;
+  }
 
-          // Delete all files EXCEPT the one currently being processed
-          const deletePromises = files
-            .filter(file => file.name !== storagePath)
-            .map(file => {
-              console.log(`🗑️ Deleting old avatar: ${file.name}`);
-              return file.delete();
-            });
+  const userData = userDoc.data();
+  let accessibleAlbums = userData.accessibleAlbums || [];
 
-          if (deletePromises.length > 0) {
-            await Promise.all(deletePromises);
-            console.log(`✅ Cleanup complete: Deleted ${deletePromises.length} old avatar(s) for user ${userId}`);
-          } else {
-            console.log(`✨ No old avatars to delete.`);
-          }
+  // Find and update or add album entry
+  const albumIndex = accessibleAlbums.findIndex(item => item.id === albumId);
+  if (albumIndex >= 0) {
+    accessibleAlbums[albumIndex].coverImage = coverImage;
+    accessibleAlbums[albumIndex].mediaCount = mediaCount;
+    accessibleAlbums[albumIndex].updatedAt = new Date();
+  } else {
+    accessibleAlbums.push({
+      id: albumId,
+      coverImage: coverImage,
+      type: 'book',
+      name: albumName,
+      mediaCount: mediaCount,
+      updatedAt: new Date(),
+    });
+  }
 
-          return null; // Stop processing (avatars are not book media)
-        } catch (error) {
-          console.error("❌ Error cleaning up avatars:", error);
-          return null;
-        }
-      }
-      // -----------------------------
+  await userRef.update({
+    accessibleAlbums: accessibleAlbums,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  console.log(`✅ Updated user ${userId} accessibleAlbums`);
+}
 
-      // Skip if not a media file
-      if (!storagePath || (!storagePath.includes('/media/image/') && !storagePath.includes('/media/video/'))) {
-        console.log(`⏭️  Skipping non-media file: ${storagePath}`);
-        return null;
-      }
+/**
+ * Storage trigger function that runs when a file is uploaded
+ * Updates albums/{albumId} document with URL in images/videos array
+ */
+exports.onMediaUpload = onObjectFinalized(
+  {
+    region: "us-central1"
+  },
+  async (event) => {
+    const storagePath = event.data.name;
+    const bucket = event.data.bucket;
+    const metaSize = parseInt(event.data?.size || "0", 10) || 0;
+    const quotaCounted =
+      event.data?.metadata?.metadata?.quotaCounted === "true" ||
+      event.data?.metadata?.customMetadata?.quotaCounted === "true";
+    const customMetadata = event.data?.metadata?.customMetadata || {};
+
+    console.log(`📸 Storage trigger fired for: ${storagePath}`);
+
+    // --- AVATAR CLEANUP LOGIC ---
+    // Check for avatar upload: {userId}/avatars/{filename}
+    const avatarMatch = storagePath.match(/^([^/]+)\/avatars\/(.+)$/);
+    if (avatarMatch) {
+      const userId = avatarMatch[1];
+      console.log(`👤 Avatar upload detected for user: ${userId}`);
 
       try {
-        // Parse storage path to extract metadata
-        const metadata = parseStoragePath(storagePath);
-        console.log(`📋 Parsed metadata:`, metadata);
+        const bucketObj = admin.storage().bucket(bucket);
+        // List all files in the user's avatar directory
+        const [files] = await bucketObj.getFiles({ prefix: `${userId}/avatars/` });
 
-        // Get or create album (metadata.bookId is the album ID)
-        await getOrCreateAlbum(metadata.bookId, metadata.userId);
-        const albumId = metadata.bookId;
-
-        // Generate download URL
-        const downloadURL = await getDownloadURL(bucket, storagePath);
-        console.log(`🔗 Generated download URL for ${metadata.type}`);
-
-        // Update album with new media
-        const albumUpdate = await updateAlbumWithMedia(
-          albumId,
-          downloadURL,
-          metadata.type,
-          storagePath,
-          { originalName: metadata.filename }
-        );
-
-        // Get album data for name
-        const albumRef = db.collection('albums').doc(albumId);
-        const albumDoc = await albumRef.get();
-        const albumData = albumDoc.exists ? albumDoc.data() : {};
-        const albumName = albumData.name || 'Untitled Album';
-
-        // Update user's accessibleAlbums
-        await updateUserAccessibleAlbums(
-          metadata.userId,
-          albumId,
-          albumName,
-          albumUpdate.coverImage,
-          albumUpdate.mediaCount
-        );
-
-        if (!quotaCounted && metaSize > 0) {
-          try {
-            await addStorageUsage(db, metadata.userId, metaSize);
-            console.log(`📈 Added ${metaSize} bytes to storage usage for ${metadata.userId}`);
-          } catch (usageErr) {
-            console.error("⚠️ Failed to add storage usage on media upload:", usageErr);
-          }
-        }
-
-        console.log(`✅ Successfully processed media upload: ${storagePath} -> albums/${albumId}`);
-
-        return { success: true, albumId };
-
-      } catch (error) {
-        console.error(`❌ Error processing media upload ${storagePath}:`, error);
-        return null;
-      }
-    }
-  );
-
-  exports.onMediaDelete = onObjectDeleted(
-    {
-      region: "us-central1"
-    },
-    async (event) => {
-      const storagePath = event.data.name;
-
-      console.log(`🗑️  Storage delete trigger fired for: ${storagePath}`);
-
-      // Skip if not a media file
-      if (!storagePath || (!storagePath.includes('/media/image/') && !storagePath.includes('/media/video/'))) {
-        console.log(`⏭️  Skipping non-media file deletion: ${storagePath}`);
-        return null;
-      }
-
-      try {
-        // Parse storage path to extract metadata
-        const metadata = parseStoragePath(storagePath);
-
-        console.log(`📋 Parsed deletion metadata:`, metadata);
-
-        const albumRef = db.collection('albums').doc(metadata.bookId);
-        const albumDoc = await albumRef.get();
-
-        if (!albumDoc.exists) {
-          console.log(`⚠️  Album ${metadata.bookId} not found`);
-          return null;
-        }
-
-        const albumData = albumDoc.data();
-        const images = albumData.images || [];
-        const videos = albumData.videos || [];
-
-        // Find the URL that matches this storage path
-        const updateData = {
-          updatedAt: FieldValue.serverTimestamp(),
-        };
-
-        // Find URL to remove by matching storage path
-        let mediaItemToRemove = null;
-        if (metadata.type === 'image') {
-          // Find image item that matches storage path
-          mediaItemToRemove = images.find(item => {
-            const itemObj = typeof item === 'string' ? { url: item } : item;
-            return itemObj.storagePath === storagePath || itemObj.url?.includes(metadata.chapterId);
+        // Delete all files EXCEPT the one currently being processed
+        const deletePromises = files
+          .filter(file => file.name !== storagePath)
+          .map(file => {
+            console.log(`🗑️ Deleting old avatar: ${file.name}`);
+            return file.delete();
           });
 
-          if (!mediaItemToRemove && images.length > 0) {
-            // Fallback: remove last image if can't find match
-            mediaItemToRemove = images[images.length - 1];
-          }
-
-          if (mediaItemToRemove) {
-            const itemUrl = typeof mediaItemToRemove === 'string' ? mediaItemToRemove : mediaItemToRemove.url;
-            updateData.images = FieldValue.arrayRemove(mediaItemToRemove);
-            const remainingImages = images.filter(item => {
-              const itemObj = typeof item === 'string' ? { url: item } : item;
-              return itemObj.url !== itemUrl;
-            });
-            updateData.mediaCount = remainingImages.length + videos.length;
-
-            // Update cover image if deleted image was cover
-            if (albumData.coverImage === itemUrl) {
-              const nextImage = remainingImages.length > 0
-                ? (typeof remainingImages[0] === 'string' ? remainingImages[0] : remainingImages[0].url)
-                : null;
-              updateData.coverImage = nextImage;
-            }
-          }
+        if (deletePromises.length > 0) {
+          await Promise.all(deletePromises);
+          console.log(`✅ Cleanup complete: Deleted ${deletePromises.length} old avatar(s) for user ${userId}`);
         } else {
-          // Find video item that matches storage path
-          mediaItemToRemove = videos.find(item => {
-            const itemObj = typeof item === 'string' ? { url: item } : item;
-            return itemObj.storagePath === storagePath || itemObj.url?.includes(metadata.chapterId);
-          });
-
-          if (!mediaItemToRemove && videos.length > 0) {
-            // Fallback: remove last video if can't find match
-            mediaItemToRemove = videos[videos.length - 1];
-          }
-
-          if (mediaItemToRemove) {
-            updateData.videos = FieldValue.arrayRemove(mediaItemToRemove);
-            const remainingVideos = videos.filter(item => {
-              const itemObj = typeof item === 'string' ? { url: item } : item;
-              const itemUrl = typeof mediaItemToRemove === 'string' ? mediaItemToRemove : mediaItemToRemove.url;
-              return itemObj.url !== itemUrl;
-            });
-            updateData.mediaCount = images.length + remainingVideos.length;
-          }
+          console.log(`✨ No old avatars to delete.`);
         }
 
-        if (!mediaItemToRemove) {
-          console.log(`⚠️  Could not find media item to remove for storage path: ${storagePath}`);
-          return null;
-        }
-
-        const itemUrl = typeof mediaItemToRemove === 'string' ? mediaItemToRemove : mediaItemToRemove.url;
-
-        await albumRef.update(updateData);
-        console.log(`🗑️  Removed media from album ${metadata.bookId}`);
-
-        // Update user's accessibleBookIds and accessibleAlbums
-        const newCoverImage = updateData.coverImage !== undefined ? updateData.coverImage : albumData.coverImage;
-        await updateUserAccessibleBookIds(metadata.userId, metadata.bookId, newCoverImage);
-
-        const albumName = albumData.name || 'Untitled Album';
-        await updateUserAccessibleAlbums(
-          metadata.userId,
-          metadata.bookId,
-          albumName,
-          newCoverImage,
-          updateData.mediaCount
-        );
-
-        const sizeBytes = parseInt(event.data?.size || "0", 10) || 0;
-        if (sizeBytes > 0) {
-          try {
-            await addStorageUsage(db, metadata.userId, -sizeBytes);
-            console.log(`📉 Decremented storage usage by ${sizeBytes} bytes for user ${metadata.userId}`);
-          } catch (usageErr) {
-            console.error("⚠️ Failed to update storage usage after delete:", usageErr);
-          }
-        }
-
-        return { success: true };
+        return null; // Stop processing (avatars are not book media)
       } catch (error) {
-        console.error(`❌ Error processing media deletion ${storagePath}:`, error);
+        console.error("❌ Error cleaning up avatars:", error);
         return null;
       }
     }
-  );
+    // -----------------------------
+
+    // Skip if not a media file
+    if (!storagePath || (!storagePath.includes('/media/image/') && !storagePath.includes('/media/video/'))) {
+      console.log(`⏭️  Skipping non-media file: ${storagePath}`);
+      return null;
+    }
+
+    try {
+      // Parse storage path to extract metadata
+      const metadata = parseStoragePath(storagePath);
+      console.log(`📋 Parsed metadata:`, metadata);
+
+      // Get or create album (metadata.bookId is the album ID)
+      await getOrCreateAlbum(metadata.bookId, metadata.userId);
+      const albumId = metadata.bookId;
+
+      // Generate download URL
+      const downloadURL = await getDownloadURL(bucket, storagePath);
+      console.log(`🔗 Generated download URL for ${metadata.type}`);
+
+      // Update album with new media
+      const albumUpdate = await updateAlbumWithMedia(
+        albumId,
+        downloadURL,
+        metadata.type,
+        storagePath,
+        { originalName: metadata.filename }
+      );
+
+      // Get album data for name
+      const albumRef = db.collection('albums').doc(albumId);
+      const albumDoc = await albumRef.get();
+      const albumData = albumDoc.exists ? albumDoc.data() : {};
+      const albumName = albumData.name || 'Untitled Album';
+
+      // Add storage usage - if limit is reached, rollback the upload
+      if (!quotaCounted && metaSize > 0) {
+        try {
+          await addStorageUsage(db, metadata.userId, metaSize);
+          // Update user's accessibleAlbums
+          await updateUserAccessibleAlbums(
+            metadata.userId,
+            albumId,
+            albumName,
+            albumUpdate.coverImage,
+            albumUpdate.mediaCount
+          );
+
+          console.log(`📈 Added ${metaSize} bytes to storage usage for ${metadata.userId}`);
+        } catch (usageErr) {
+          console.error("⚠️ Storage limit reached on media upload:", usageErr);
+
+          // Rollback: Delete the uploaded file using shared helper
+          if (usageErr.code === 'resource-exhausted') {
+            console.log(`🔄 Rolling back upload - deleting file and removing from album...`);
+
+            try {
+              // Use the shared deletion helper
+              // Skip storage usage decrement since it was never incremented
+              await deleteMediaInternal({
+                storagePath,
+                bookId: albumId,
+                bookData: null, // Don't update user accessibleAlbums during rollback
+                skipStorageUsage: true,
+              });
+              console.log(`✅ Rollback complete`);
+
+              // Re-throw the error to notify the frontend
+              throw usageErr;
+            } catch (rollbackErr) {
+              // If rollback itself fails, log but still throw original error
+              if (rollbackErr.code !== 'resource-exhausted') {
+                console.error("❌ Rollback failed:", rollbackErr);
+              }
+              // Still throw the original storage limit error
+              throw usageErr;
+            }
+          } else {
+            // For other errors, just log and continue
+            console.error("⚠️ Non-critical error adding storage usage:", usageErr);
+          }
+        }
+      }
+
+      console.log(`✅ Successfully processed media upload: ${storagePath} -> albums/${albumId}`);
+
+      return { success: true, albumId };
+
+    } catch (error) {
+      console.error(`❌ Error processing media upload ${storagePath}:`, error);
+      return null;
+    }
+  }
+);
+
+exports.onMediaDelete = onObjectDeleted(
+  {
+    region: "us-central1"
+  },
+  async (event) => {
+    const storagePath = event.data.name;
+
+    console.log(`🗑️  Storage delete trigger fired for: ${storagePath}`);
+
+    // Skip if not a media file
+    if (!storagePath || (!storagePath.includes('/media/image/') && !storagePath.includes('/media/video/'))) {
+      console.log(`⏭️  Skipping non-media file deletion: ${storagePath}`);
+      return null;
+    }
+
+    try {
+      // Parse storage path to extract metadata
+      const metadata = parseStoragePath(storagePath);
+
+      console.log(`📋 Parsed deletion metadata:`, metadata);
+
+      const albumRef = db.collection('albums').doc(metadata.bookId);
+      const albumDoc = await albumRef.get();
+
+      if (!albumDoc.exists) {
+        console.log(`⚠️  Album ${metadata.bookId} not found`);
+        return null;
+      }
+
+      const albumData = albumDoc.data();
+      const images = albumData.images || [];
+      const videos = albumData.videos || [];
+
+      // Find the URL that matches this storage path
+      const updateData = {
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+
+      // Find URL to remove by matching storage path
+      let mediaItemToRemove = null;
+      if (metadata.type === 'image') {
+        // Find image item that matches storage path
+        mediaItemToRemove = images.find(item => {
+          const itemObj = typeof item === 'string' ? { url: item } : item;
+          return itemObj.storagePath === storagePath || itemObj.url?.includes(metadata.chapterId);
+        });
+
+        if (!mediaItemToRemove && images.length > 0) {
+          // Fallback: remove last image if can't find match
+          mediaItemToRemove = images[images.length - 1];
+        }
+
+        if (mediaItemToRemove) {
+          const itemUrl = typeof mediaItemToRemove === 'string' ? mediaItemToRemove : mediaItemToRemove.url;
+          updateData.images = FieldValue.arrayRemove(mediaItemToRemove);
+          const remainingImages = images.filter(item => {
+            const itemObj = typeof item === 'string' ? { url: item } : item;
+            return itemObj.url !== itemUrl;
+          });
+          updateData.mediaCount = remainingImages.length + videos.length;
+
+          // Update cover image if deleted image was cover
+          if (albumData.coverImage === itemUrl) {
+            const nextImage = remainingImages.length > 0
+              ? (typeof remainingImages[0] === 'string' ? remainingImages[0] : remainingImages[0].url)
+              : null;
+            updateData.coverImage = nextImage;
+          }
+        }
+      } else {
+        // Find video item that matches storage path
+        mediaItemToRemove = videos.find(item => {
+          const itemObj = typeof item === 'string' ? { url: item } : item;
+          return itemObj.storagePath === storagePath || itemObj.url?.includes(metadata.chapterId);
+        });
+
+        if (!mediaItemToRemove && videos.length > 0) {
+          // Fallback: remove last video if can't find match
+          mediaItemToRemove = videos[videos.length - 1];
+        }
+
+        if (mediaItemToRemove) {
+          updateData.videos = FieldValue.arrayRemove(mediaItemToRemove);
+          const remainingVideos = videos.filter(item => {
+            const itemObj = typeof item === 'string' ? { url: item } : item;
+            const itemUrl = typeof mediaItemToRemove === 'string' ? mediaItemToRemove : mediaItemToRemove.url;
+            return itemObj.url !== itemUrl;
+          });
+          updateData.mediaCount = images.length + remainingVideos.length;
+        }
+      }
+
+      if (!mediaItemToRemove) {
+        console.log(`⚠️  Could not find media item to remove for storage path: ${storagePath}`);
+        return null;
+      }
+
+      const itemUrl = typeof mediaItemToRemove === 'string' ? mediaItemToRemove : mediaItemToRemove.url;
+
+      await albumRef.update(updateData);
+      console.log(`🗑️  Removed media from album ${metadata.bookId}`);
+
+      // Update user's accessibleBookIds and accessibleAlbums
+      const newCoverImage = updateData.coverImage !== undefined ? updateData.coverImage : albumData.coverImage;
+      await updateUserAccessibleBookIds(metadata.userId, metadata.bookId, newCoverImage);
+
+      const albumName = albumData.name || 'Untitled Album';
+      await updateUserAccessibleAlbums(
+        metadata.userId,
+        metadata.bookId,
+        albumName,
+        newCoverImage,
+        updateData.mediaCount
+      );
+
+      const sizeBytes = parseInt(event.data?.size || "0", 10) || 0;
+      if (sizeBytes > 0) {
+        try {
+          await addStorageUsage(db, metadata.userId, -sizeBytes);
+          console.log(`📉 Decremented storage usage by ${sizeBytes} bytes for user ${metadata.userId}`);
+        } catch (usageErr) {
+          console.error("⚠️ Failed to update storage usage after delete:", usageErr);
+        }
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error(`❌ Error processing media deletion ${storagePath}:`, error);
+      return null;
+    }
+  }
+);
