@@ -2,6 +2,8 @@ const { onObjectFinalized, onObjectDeleted } = require("firebase-functions/v2/st
 const admin = require("firebase-admin");
 const FieldValue = require("firebase-admin/firestore").FieldValue;
 const { addStorageUsage } = require("./utils/limits");
+const { deleteMediaInternal } = require("./deleteMedia");
+
 
 // Ensure Firebase Admin is initialized (may be initialized by index.js)
 if (!admin.apps.length) {
@@ -58,33 +60,7 @@ function parseStoragePath(storagePath) {
 }
 
 /**
- * Validate that user has access to upload media for this book
- */
-async function validateBookAccess(userId, bookId) {
-  const bookRef = db.collection('books').doc(bookId);
-  const bookDoc = await bookRef.get();
-
-  if (!bookDoc.exists) {
-    throw new Error(`Book ${bookId} does not exist`);
-  }
-
-  const bookData = bookDoc.data();
-
-  // Check if user is the owner
-  if (bookData.ownerId === userId) {
-    return true;
-  }
-
-  // Check if user is a member with access
-  if (bookData.members && bookData.members[userId]) {
-    return true;
-  }
-
-  throw new Error(`User ${userId} does not have access to book ${bookId}`);
-}
-
-/**
- * Get or create album document for a book
+ * Get or create album for a book
  */
 async function getOrCreateAlbum(bookId, userId) {
   const albumRef = db.collection('albums').doc(bookId);
@@ -163,7 +139,7 @@ async function getDownloadURL(bucket, storagePath) {
 /**
  * Update album document with new media URL
  */
-async function updateAlbumWithMedia(albumId, downloadURL, mediaType, storagePath) {
+async function updateAlbumWithMedia(albumId, downloadURL, mediaType, storagePath, metadata = {}) {
   const albumRef = db.collection('albums').doc(albumId);
   const albumDoc = await albumRef.get();
 
@@ -176,8 +152,13 @@ async function updateAlbumWithMedia(albumId, downloadURL, mediaType, storagePath
     updatedAt: FieldValue.serverTimestamp(),
   };
 
-  // Store URL with metadata: {url, storagePath}
-  const mediaItem = { url: downloadURL, storagePath: storagePath };
+  // Store URL with metadata: {url, storagePath, name, uploadedAt}
+  const mediaItem = {
+    url: downloadURL,
+    storagePath: storagePath,
+    name: metadata.originalName || storagePath.split('/').pop(),
+    uploadedAt: new Date().toISOString()
+  };
 
   // Add URL to appropriate array
   if (mediaType === 'image') {
@@ -240,20 +221,14 @@ async function updateUserAccessibleBookIds(userId, bookId, coverImage) {
     accessibleBookIds = await Promise.all(bookPromises);
   }
 
-  // Find and update or add book entry
+  // Find and update book entry
   const bookIndex = accessibleBookIds.findIndex(item => item.bookId === bookId);
   if (bookIndex >= 0) {
     accessibleBookIds[bookIndex].coverImage = coverImage;
   } else {
-    // If book not found, get title from Firestore
-    const bookRef = db.collection('books').doc(bookId);
-    const bookDoc = await bookRef.get();
-    const bookData = bookDoc.exists ? bookDoc.data() : {};
-    accessibleBookIds.push({
-      bookId,
-      title: bookData.babyName || bookData.title || 'Untitled Book',
-      coverImage: coverImage,
-    });
+    // If book not found, it's likely an album (not a book), so don't add it to accessibleBookIds
+    console.log(`ℹ️  Book ${bookId} not found in accessibleBookIds, skipping (likely an album)`);
+    return;
   }
 
   await userRef.update({
@@ -317,6 +292,7 @@ exports.onMediaUpload = onObjectFinalized(
     const quotaCounted =
       event.data?.metadata?.metadata?.quotaCounted === "true" ||
       event.data?.metadata?.customMetadata?.quotaCounted === "true";
+    const customMetadata = event.data?.metadata?.customMetadata || {};
 
     console.log(`📸 Storage trigger fired for: ${storagePath}`);
 
@@ -364,47 +340,77 @@ exports.onMediaUpload = onObjectFinalized(
     try {
       // Parse storage path to extract metadata
       const metadata = parseStoragePath(storagePath);
-      metadata.storagePath = storagePath; // Store full path
-
       console.log(`📋 Parsed metadata:`, metadata);
 
-      // Validate user has access to the book
-      await validateBookAccess(metadata.userId, metadata.bookId);
+      // Get or create album (metadata.bookId is the album ID)
+      await getOrCreateAlbum(metadata.bookId, metadata.userId);
+      const albumId = metadata.bookId;
 
-      // Get download URL (handles emulator and production)
+      // Generate download URL
       const downloadURL = await getDownloadURL(bucket, storagePath);
+      console.log(`🔗 Generated download URL for ${metadata.type}`);
 
-      console.log(`🔗 Generated download URL for ${storagePath}`);
-
-      // Get or create album document
-      const { albumId } = await getOrCreateAlbum(metadata.bookId, metadata.userId);
-
-      // Update album document with media URL
-      const albumUpdate = await updateAlbumWithMedia(albumId, downloadURL, metadata.type, storagePath);
-
-      // Update user's accessibleBookIds with cover image
-      await updateUserAccessibleBookIds(metadata.userId, metadata.bookId, albumUpdate.coverImage);
-
-      // Get album name for accessibleAlbums
-      const albumRef = db.collection('albums').doc(albumId);
-      const albumDoc = await albumRef.get();
-      const albumName = albumDoc.exists ? albumDoc.data().name : 'Untitled Album';
-
-      // Update user's accessibleAlbums
-      await updateUserAccessibleAlbums(
-        metadata.userId,
+      // Update album with new media
+      const albumUpdate = await updateAlbumWithMedia(
         albumId,
-        albumName,
-        albumUpdate.coverImage,
-        albumUpdate.mediaCount
+        downloadURL,
+        metadata.type,
+        storagePath,
+        { originalName: metadata.filename }
       );
 
+      // Get album data for name
+      const albumRef = db.collection('albums').doc(albumId);
+      const albumDoc = await albumRef.get();
+      const albumData = albumDoc.exists ? albumDoc.data() : {};
+      const albumName = albumData.name || 'Untitled Album';
+
+      // Add storage usage - if limit is reached, rollback the upload
       if (!quotaCounted && metaSize > 0) {
         try {
           await addStorageUsage(db, metadata.userId, metaSize);
+          // Update user's accessibleAlbums
+          await updateUserAccessibleAlbums(
+            metadata.userId,
+            albumId,
+            albumName,
+            albumUpdate.coverImage,
+            albumUpdate.mediaCount
+          );
+
           console.log(`📈 Added ${metaSize} bytes to storage usage for ${metadata.userId}`);
         } catch (usageErr) {
-          console.error("⚠️ Failed to add storage usage on media upload:", usageErr);
+          console.error("⚠️ Storage limit reached on media upload:", usageErr);
+
+          // Rollback: Delete the uploaded file using shared helper
+          if (usageErr.code === 'resource-exhausted') {
+            console.log(`🔄 Rolling back upload - deleting file and removing from album...`);
+
+            try {
+              // Use the shared deletion helper
+              // Skip storage usage decrement since it was never incremented
+              await deleteMediaInternal({
+                storagePath,
+                bookId: albumId,
+                bookData: null, // Don't update user accessibleAlbums during rollback
+                skipStorageUsage: true,
+              });
+              console.log(`✅ Rollback complete`);
+
+              // Re-throw the error to notify the frontend
+              throw usageErr;
+            } catch (rollbackErr) {
+              // If rollback itself fails, log but still throw original error
+              if (rollbackErr.code !== 'resource-exhausted') {
+                console.error("❌ Rollback failed:", rollbackErr);
+              }
+              // Still throw the original storage limit error
+              throw usageErr;
+            }
+          } else {
+            // For other errors, just log and continue
+            console.error("⚠️ Non-critical error adding storage usage:", usageErr);
+          }
         }
       }
 
@@ -414,17 +420,11 @@ exports.onMediaUpload = onObjectFinalized(
 
     } catch (error) {
       console.error(`❌ Error processing media upload ${storagePath}:`, error);
-      // Don't throw - we don't want to retry failed media document creation
-      // The file is already in Storage, we can fix the document later if needed
       return null;
     }
   }
 );
 
-/**
- * Storage trigger function that runs when a file is deleted
- * Removes URL from albums/{albumId} document arrays
- */
 exports.onMediaDelete = onObjectDeleted(
   {
     region: "us-central1"
@@ -432,11 +432,12 @@ exports.onMediaDelete = onObjectDeleted(
   async (event) => {
     const storagePath = event.data.name;
 
-    console.log(`🗑️  Storage delete trigger fired for: ${storagePath}`);
+    console.log(`🔔 [onMediaDelete] ========== TRIGGER FIRED ==========`);
+    console.log(`🔔 [onMediaDelete] Storage path: ${storagePath}`);
 
     // Skip if not a media file
     if (!storagePath || (!storagePath.includes('/media/image/') && !storagePath.includes('/media/video/'))) {
-      console.log(`⏭️  Skipping non-media file deletion: ${storagePath}`);
+      console.log(`⏭️  [onMediaDelete] Skipping non-media file deletion: ${storagePath}`);
       return null;
     }
 
@@ -444,19 +445,21 @@ exports.onMediaDelete = onObjectDeleted(
       // Parse storage path to extract metadata
       const metadata = parseStoragePath(storagePath);
 
-      console.log(`📋 Parsed deletion metadata:`, metadata);
+      console.log(`🔔 [onMediaDelete] Parsed metadata:`, JSON.stringify(metadata, null, 2));
 
       const albumRef = db.collection('albums').doc(metadata.bookId);
       const albumDoc = await albumRef.get();
 
       if (!albumDoc.exists) {
-        console.log(`⚠️  Album ${metadata.bookId} not found`);
+        console.log(`⚠️  [onMediaDelete] Album ${metadata.bookId} not found - nothing to update`);
         return null;
       }
 
       const albumData = albumDoc.data();
       const images = albumData.images || [];
       const videos = albumData.videos || [];
+
+      console.log(`🔔 [onMediaDelete] Current album state - images: ${images.length}, videos: ${videos.length}`);
 
       // Find the URL that matches this storage path
       const updateData = {
@@ -466,25 +469,29 @@ exports.onMediaDelete = onObjectDeleted(
       // Find URL to remove by matching storage path
       let mediaItemToRemove = null;
       if (metadata.type === 'image') {
-        // Find image item that matches storage path
+        // Find image item that matches storage path EXACTLY
+        console.log(`🔔 [onMediaDelete] Searching for image with storagePath: ${storagePath}`);
         mediaItemToRemove = images.find(item => {
           const itemObj = typeof item === 'string' ? { url: item } : item;
-          return itemObj.storagePath === storagePath || itemObj.url?.includes(metadata.chapterId);
+          const matches = itemObj.storagePath === storagePath;
+          if (matches) {
+            console.log(`🔔 [onMediaDelete] Found exact match:`, itemObj);
+          }
+          return matches;
         });
 
-        if (!mediaItemToRemove && images.length > 0) {
-          // Fallback: remove last image if can't find match
-          mediaItemToRemove = images[images.length - 1];
-        }
+        console.log(`🔔 [onMediaDelete] Found matching image: ${!!mediaItemToRemove}`);
 
         if (mediaItemToRemove) {
           const itemUrl = typeof mediaItemToRemove === 'string' ? mediaItemToRemove : mediaItemToRemove.url;
+          console.log(`🔔 [onMediaDelete] Will remove image:`, mediaItemToRemove);
           updateData.images = FieldValue.arrayRemove(mediaItemToRemove);
           const remainingImages = images.filter(item => {
             const itemObj = typeof item === 'string' ? { url: item } : item;
             return itemObj.url !== itemUrl;
           });
           updateData.mediaCount = remainingImages.length + videos.length;
+          console.log(`🔔 [onMediaDelete] New mediaCount will be: ${updateData.mediaCount}`);
 
           // Update cover image if deleted image was cover
           if (albumData.coverImage === itemUrl) {
@@ -492,21 +499,25 @@ exports.onMediaDelete = onObjectDeleted(
               ? (typeof remainingImages[0] === 'string' ? remainingImages[0] : remainingImages[0].url)
               : null;
             updateData.coverImage = nextImage;
+            console.log(`🔔 [onMediaDelete] Updating cover image to: ${nextImage}`);
           }
         }
       } else {
-        // Find video item that matches storage path
+        // Find video item that matches storage path EXACTLY
+        console.log(`🔔 [onMediaDelete] Searching for video with storagePath: ${storagePath}`);
         mediaItemToRemove = videos.find(item => {
           const itemObj = typeof item === 'string' ? { url: item } : item;
-          return itemObj.storagePath === storagePath || itemObj.url?.includes(metadata.chapterId);
+          const matches = itemObj.storagePath === storagePath;
+          if (matches) {
+            console.log(`🔔 [onMediaDelete] Found exact match:`, itemObj);
+          }
+          return matches;
         });
 
-        if (!mediaItemToRemove && videos.length > 0) {
-          // Fallback: remove last video if can't find match
-          mediaItemToRemove = videos[videos.length - 1];
-        }
+        console.log(`🔔 [onMediaDelete] Found matching video: ${!!mediaItemToRemove}`);
 
         if (mediaItemToRemove) {
+          console.log(`🔔 [onMediaDelete] Will remove video:`, mediaItemToRemove);
           updateData.videos = FieldValue.arrayRemove(mediaItemToRemove);
           const remainingVideos = videos.filter(item => {
             const itemObj = typeof item === 'string' ? { url: item } : item;
@@ -514,21 +525,69 @@ exports.onMediaDelete = onObjectDeleted(
             return itemObj.url !== itemUrl;
           });
           updateData.mediaCount = images.length + remainingVideos.length;
+          console.log(`🔔 [onMediaDelete] New mediaCount will be: ${updateData.mediaCount}`);
         }
       }
 
       if (!mediaItemToRemove) {
-        console.log(`⚠️  Could not find media item to remove for storage path: ${storagePath}`);
+        console.log(`ℹ️  [onMediaDelete] No matching media found in album - likely already removed by deleteMediaAsset`);
+
+        // Still decrement storage usage if we have size info
+        const sizeBytes = parseInt(event.data?.size || "0", 10) || 0;
+        if (sizeBytes > 0) {
+          try {
+            await addStorageUsage(db, metadata.userId, -sizeBytes);
+            console.log(`✅ [onMediaDelete] Decremented storage usage by ${sizeBytes} bytes (orphaned file cleanup)`);
+          } catch (usageErr) {
+            console.error("❌ [onMediaDelete] Failed to update storage usage:", usageErr);
+          }
+        }
+
+        console.log(`✅ [onMediaDelete] Completed (no album update needed)`);
         return null;
       }
 
       const itemUrl = typeof mediaItemToRemove === 'string' ? mediaItemToRemove : mediaItemToRemove.url;
 
+      // Clean up page references using usedIn tracking
+      if (mediaItemToRemove.usedIn && mediaItemToRemove.usedIn.length > 0) {
+        console.log(`🔔 [onMediaDelete] Found ${mediaItemToRemove.usedIn.length} page(s) using this media`);
+
+        for (const usage of mediaItemToRemove.usedIn) {
+          try {
+            const pageRef = db
+              .collection("books")
+              .doc(usage.bookId)
+              .collection("chapters")
+              .doc(usage.chapterId)
+              .collection("pages")
+              .doc(usage.pageId);
+
+            const pageSnap = await pageRef.get();
+            if (pageSnap.exists) {
+              const pageData = pageSnap.data() || {};
+              const mediaArr = pageData.media || [];
+              const filtered = mediaArr.filter((m) => m.storagePath !== storagePath);
+
+              if (filtered.length !== mediaArr.length) {
+                await pageRef.update({ media: filtered });
+                console.log(`✅ [onMediaDelete] Removed media from page ${usage.pageId} in book ${usage.bookId}`);
+              }
+            }
+          } catch (err) {
+            console.error(`⚠️ [onMediaDelete] Failed to clean up page ${usage.pageId}:`, err);
+          }
+        }
+      } else {
+        console.log(`ℹ️  [onMediaDelete] No page references to clean up (usedIn is empty)`);
+      }
+
+      console.log(`🔔 [onMediaDelete] Updating album document...`);
       await albumRef.update(updateData);
-      console.log(`🗑️  Removed media from album ${metadata.bookId}`);
 
       // Update user's accessibleBookIds and accessibleAlbums
       const newCoverImage = updateData.coverImage !== undefined ? updateData.coverImage : albumData.coverImage;
+      console.log(`🔔 [onMediaDelete] Updating user accessible lists...`);
       await updateUserAccessibleBookIds(metadata.userId, metadata.bookId, newCoverImage);
 
       const albumName = albumData.name || 'Untitled Album';
@@ -539,20 +598,22 @@ exports.onMediaDelete = onObjectDeleted(
         newCoverImage,
         updateData.mediaCount
       );
+      console.log(`✅ [onMediaDelete] Updated user accessible lists`);
 
       const sizeBytes = parseInt(event.data?.size || "0", 10) || 0;
       if (sizeBytes > 0) {
         try {
           await addStorageUsage(db, metadata.userId, -sizeBytes);
-          console.log(`📉 Decremented storage usage by ${sizeBytes} bytes for user ${metadata.userId}`);
+          console.log(`✅ [onMediaDelete] Decremented storage usage by ${sizeBytes} bytes for user ${metadata.userId}`);
         } catch (usageErr) {
-          console.error("⚠️ Failed to update storage usage after delete:", usageErr);
+          console.error("❌ [onMediaDelete] Failed to update storage usage:", usageErr);
         }
       }
 
+      console.log(`✅ [onMediaDelete] ========== COMPLETED ==========`);
       return { success: true };
     } catch (error) {
-      console.error(`❌ Error processing media deletion ${storagePath}:`, error);
+      console.error(`❌ [onMediaDelete] Error processing deletion for ${storagePath}:`, error);
       return null;
     }
   }

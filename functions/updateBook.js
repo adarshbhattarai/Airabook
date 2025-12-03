@@ -11,6 +11,28 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 /**
+ * Helper function to delete a cover image from storage
+ */
+async function deleteCoverImage(coverImageUrl) {
+    if (!coverImageUrl) return;
+    try {
+        const bucket = admin.storage().bucket();
+        // Extract storage path from URL
+        const urlMatch = coverImageUrl.match(/\/o\/(.+?)\?/) || coverImageUrl.match(/\.com\/([^?]+)/);
+        if (urlMatch) {
+            const coverPath = decodeURIComponent(urlMatch[1]);
+            const coverFile = bucket.file(coverPath);
+            await coverFile.delete({ ignoreNotFound: true });
+            logger.log(`🗑️ Deleted old cover image: ${coverPath}`);
+        }
+    } catch (err) {
+        logger.warn(`⚠️ Could not delete old cover image:`, err?.message);
+        // Don't fail the update if cover deletion fails
+    }
+}
+
+
+/**
  * Updates book details (title, cover image).
  * Propagates changes to:
  * - books/{bookId}
@@ -57,6 +79,12 @@ exports.updateBook = onCall({ region: "us-central1" }, async (request) => {
                 "permission-denied",
                 "Only the book owner can update book details."
             );
+        }
+
+        // Delete old cover if we're updating to a new one
+        if (coverImageUrl !== undefined && coverImageUrl !== bookData.coverImageUrl && bookData.coverImageUrl) {
+            logger.log(`🗑️ Deleting old book cover before update`);
+            await deleteCoverImage(bookData.coverImageUrl);
         }
 
         const updates = {

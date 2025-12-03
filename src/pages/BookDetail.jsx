@@ -65,6 +65,46 @@ const textToHtml = (text = '') =>
 // Heuristic: does a string look like HTML?
 const isLikelyHtml = (s = '') => /<\w+[^>]*>/.test(s);
 
+const convertToEmulatorURL = (url) => {
+  if (!url) return url;
+
+  const useEmulator = import.meta.env.VITE_USE_EMULATOR === 'true';
+
+  if (!useEmulator) {
+    return url;
+  }
+
+  if (url.includes('127.0.0.1:9199') || url.includes('localhost:9199')) {
+    return url;
+  }
+
+  if (url.includes('storage.googleapis.com')) {
+    try {
+      const urlObj = new URL(url);
+      const pathParts = urlObj.pathname.split('/').filter(p => p);
+
+      if (pathParts.length >= 1) {
+        const bucket = pathParts[0];
+        const storagePath = pathParts.slice(1).join('/');
+
+        let emulatorBucket = bucket;
+        if (bucket.endsWith('.appspot.com')) {
+          emulatorBucket = bucket.replace('.appspot.com', '.firebasestorage.app');
+        }
+
+        const encodedPath = encodeURIComponent(storagePath);
+        const token = urlObj.searchParams.get('token') || 'emulator-token';
+        return `http://127.0.0.1:9199/v0/b/${emulatorBucket}/o/${encodedPath}?alt=media&token=${token}`;
+      }
+    } catch (error) {
+      console.error('Error converting URL to emulator format:', error, url);
+      return url;
+    }
+  }
+
+  return url;
+};
+
 // --- ReactQuill toolbar / formats ---
 const quillModules = {
   toolbar: [
@@ -180,10 +220,18 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
   const [mediaToDelete, setMediaToDelete] = useState(null);
 
   const quillRef = useRef(null);
-  const { user } = useAuth();
+  const { user, appUser } = useAuth();
   const { toast } = useToast();
   const fileInputRef = useRef(null);
   const saveTimeoutRef = useRef(null);
+
+  const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
+  const [mediaPickerTab, setMediaPickerTab] = useState('upload');
+  const [albums, setAlbums] = useState([]);
+  const [selectedAlbumId, setSelectedAlbumId] = useState(null);
+  const [albumMedia, setAlbumMedia] = useState([]);
+  const [loadingAlbums, setLoadingAlbums] = useState(false);
+  const [selectedAssets, setSelectedAssets] = useState([]);
 
   const mediaList = page.media || [];
   const previewItem = mediaList[previewIndex] || null;
@@ -198,6 +246,71 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
       setNote('');
     }
   }, [clearEditor]);
+
+  useEffect(() => {
+    const availableAlbums = appUser?.accessibleAlbums || [];
+    setAlbums(availableAlbums);
+    if (!selectedAlbumId && availableAlbums.length > 0) {
+      setSelectedAlbumId(availableAlbums[0].id);
+    } else if (availableAlbums.length === 0) {
+      setSelectedAlbumId(null);
+    }
+  }, [appUser, selectedAlbumId]);
+
+  useEffect(() => {
+    if (!mediaPickerOpen || mediaPickerTab !== 'library' || !selectedAlbumId) {
+      return;
+    }
+
+    let isMounted = true;
+    const fetchAlbumMedia = async () => {
+      try {
+        setLoadingAlbums(true);
+        setAlbumMedia([]);
+        const albumRef = doc(firestore, 'albums', selectedAlbumId);
+        const albumSnap = await getDoc(albumRef);
+        if (!albumSnap.exists()) {
+          toast({ title: 'Album not found', description: 'Please pick another album.', variant: 'destructive' });
+          return;
+        }
+
+        const data = albumSnap.data();
+        const images = (data.images || []).map((item) => {
+          const url = typeof item === 'string' ? item : item.url;
+          const storagePath = typeof item === 'string' ? null : item.storagePath;
+          return {
+            url: convertToEmulatorURL(url),
+            storagePath,
+            type: 'image',
+            name: typeof item === 'string' ? (url?.split('/')?.pop() || 'Image') : (item.name || item.fileName || 'Image'),
+          };
+        });
+        const videos = (data.videos || []).map((item) => {
+          const url = typeof item === 'string' ? item : item.url;
+          const storagePath = typeof item === 'string' ? null : item.storagePath;
+          return {
+            url: convertToEmulatorURL(url),
+            storagePath,
+            type: 'video',
+            name: typeof item === 'string' ? (url?.split('/')?.pop() || 'Video') : (item.name || item.fileName || 'Video'),
+          };
+        });
+
+        if (isMounted) {
+          setAlbumMedia([...images, ...videos]);
+        }
+      } catch (error) {
+        console.error('Failed to load album assets', error);
+        toast({ title: 'Unable to load assets', description: error.message || 'Try again later.', variant: 'destructive' });
+      } finally {
+        if (isMounted) setLoadingAlbums(false);
+      }
+    };
+
+    fetchAlbumMedia();
+
+    return () => { isMounted = false; };
+  }, [mediaPickerOpen, mediaPickerTab, selectedAlbumId, toast]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -311,7 +424,22 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
       return;
     }
 
+    setMediaPickerOpen(false);
+
+    // Clear the input value so selecting the same file again still triggers onChange
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+
     files.forEach(file => handleUpload(file));
+  };
+
+  const openFileDialog = () => {
+    if (fileInputRef.current) {
+      // Reset value on open to ensure re-selecting the same file works
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
   };
 
   const handleUpload = (file) => {
@@ -319,9 +447,18 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
 
     const mediaType = file.type.startsWith('video') ? 'video' : 'image';
     const uniqueFileName = `${Date.now()}_${file.name}`;
+    // Construct path: {userId}/{bookId}/{chapterId}/{pageId}/media/{type}/{filename}
     const storagePath = `${user.uid}/${bookId}/${chapterId}/${page.id}/media/${mediaType}/${uniqueFileName}`;
     const storageRef = ref(storage, storagePath);
-    const uploadTask = uploadBytesResumable(storageRef, file);
+
+    // Add custom metadata for original name
+    const metadata = {
+      customMetadata: {
+        originalName: file.name
+      }
+    };
+
+    const uploadTask = uploadBytesResumable(storageRef, file, metadata);
 
     uploadTask.on('state_changed',
       (snapshot) => {
@@ -345,9 +482,12 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
             name: file.name,
             uploadedAt: new Date().toISOString(),
           };
+
+          // Update Page document in Firestore
           const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', page.id);
           await updateDoc(pageRef, { media: arrayUnion(newMediaItem) });
 
+          // Update local state
           onPageUpdate(prev => ({
             ...prev,
             media: [...(prev?.media || []), newMediaItem],
@@ -364,6 +504,99 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
     );
   };
 
+  const handleAttachFromAlbum = async (asset) => {
+    const currentMediaCount = page.media?.length || 0;
+    if (currentMediaCount + 1 > 5) {
+      toast({
+        title: 'Upload Limit Exceeded',
+        description: 'You can only attach up to 5 media items per page.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const alreadyAttached = (page.media || []).some((item) =>
+      item.storagePath && asset.storagePath
+        ? item.storagePath === asset.storagePath
+        : item.url === asset.url
+    );
+    if (alreadyAttached) {
+      toast({ title: 'Already attached', description: 'This asset is already on the page.' });
+      return;
+    }
+
+    try {
+      const newMediaItem = {
+        url: asset.url,
+        storagePath: asset.storagePath || asset.url,
+        type: asset.type || 'image',
+        name: asset.name || 'Asset',
+        uploadedAt: new Date().toISOString(),
+        albumId: selectedAlbumId, // Store albumId for untracking later
+      };
+
+      const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', page.id);
+      await updateDoc(pageRef, { media: arrayUnion(newMediaItem) });
+
+      // Track usage in album
+      try {
+        const trackUsage = httpsCallable(functions, 'trackMediaUsage');
+        await trackUsage({
+          albumId: selectedAlbumId,
+          storagePath: asset.storagePath,
+          bookId,
+          chapterId,
+          pageId: page.id
+        });
+      } catch (trackError) {
+        console.error('Failed to track usage:', trackError);
+        // Don't fail the whole operation if tracking fails
+      }
+
+      onPageUpdate((prev) => ({
+        ...prev,
+        media: [...(prev?.media || []), newMediaItem],
+      }));
+
+      toast({ title: 'Asset added', description: `${newMediaItem.name} attached from library.` });
+    } catch (error) {
+      console.error('Failed to attach asset', error);
+      toast({ title: 'Attach failed', description: error.message || 'Could not attach asset.', variant: 'destructive' });
+    }
+  };
+
+  const toggleAssetSelection = (asset) => {
+    setSelectedAssets(prev => {
+      const isSelected = prev.some(a => (a.storagePath || a.url) === (asset.storagePath || asset.url));
+      if (isSelected) {
+        return prev.filter(a => (a.storagePath || a.url) !== (asset.storagePath || asset.url));
+      } else {
+        return [...prev, asset];
+      }
+    });
+  };
+
+  const handleSaveSelectedAssets = async () => {
+    if (selectedAssets.length === 0) return;
+
+    const currentMediaCount = page.media?.length || 0;
+    if (currentMediaCount + selectedAssets.length > 5) {
+      toast({
+        title: 'Upload Limit Exceeded',
+        description: `You can only attach up to 5 media items per page. You have ${currentMediaCount} already.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    for (const asset of selectedAssets) {
+      await handleAttachFromAlbum(asset);
+    }
+
+    setSelectedAssets([]);
+    setMediaPickerOpen(false);
+  };
+
   const handleMediaDelete = (mediaItemToDelete) => {
     setMediaToDelete(mediaItemToDelete);
   };
@@ -374,6 +607,24 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
     const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', page.id);
     try {
       await updateDoc(pageRef, { media: arrayRemove(mediaToDelete) });
+
+      // Untrack usage if this was attached from an album
+      if (mediaToDelete.albumId && mediaToDelete.storagePath) {
+        try {
+          const untrackUsage = httpsCallable(functions, 'untrackMediaUsage');
+          await untrackUsage({
+            albumId: mediaToDelete.albumId,
+            storagePath: mediaToDelete.storagePath,
+            bookId,
+            chapterId,
+            pageId: page.id
+          });
+        } catch (untrackError) {
+          console.error('Failed to untrack usage:', untrackError);
+          // Don't fail the whole operation if untracking fails
+        }
+      }
+
       onPageUpdate({
         ...page,
         media: (page.media || []).filter(m => m.storagePath !== mediaToDelete.storagePath),
@@ -596,16 +847,154 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
         onChange={handleFileSelect}
       />
 
+      <Dialog open={mediaPickerOpen} onOpenChange={(open) => {
+        setMediaPickerOpen(open);
+        if (!open) setSelectedAssets([]);
+      }}>
+        <DialogContent className="max-w-4xl bg-white rounded-2xl shadow-2xl border border-gray-100 p-6">
+          <DialogHeader>
+            <DialogTitle>Add media to this page</DialogTitle>
+            <DialogDescription>
+              Upload from your computer or attach existing assets from your library.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex gap-2 mb-4">
+            <Button
+              variant={mediaPickerTab === 'upload' ? 'appPrimary' : 'outline'}
+              onClick={() => setMediaPickerTab('upload')}
+              className="flex-1"
+            >
+              Upload from computer
+            </Button>
+            <Button
+              variant={mediaPickerTab === 'library' ? 'appPrimary' : 'outline'}
+              onClick={() => setMediaPickerTab('library')}
+              className="flex-1"
+            >
+              Choose from asset registry
+            </Button>
+          </div>
+
+          {mediaPickerTab === 'upload' ? (
+            <div
+              className="p-6 border-2 border-dashed rounded-lg bg-gray-50 text-center text-sm text-app-gray-700"
+              onClick={openFileDialog}
+            >
+              <UploadCloud className="h-10 w-10 mx-auto mb-3 text-app-iris" />
+              <p className="font-semibold">Select files to upload</p>
+              <p className="text-xs text-app-gray-500">Up to 5 images or videos per page</p>
+              <div className="mt-4">
+                <Button variant="appPrimary" onClick={(e) => {
+                  e.stopPropagation();
+                  openFileDialog();
+                }}>
+                  Choose files
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-[220px,1fr]">
+              <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                {albums.length === 0 ? (
+                  <div className="text-sm text-app-gray-600 bg-app-gray-50 border border-app-gray-100 rounded-md p-3">
+                    No asset albums yet. Create one from the Asset Registry page.
+                  </div>
+                ) : (
+                  albums.map((album) => (
+                    <button
+                      key={album.id}
+                      className={`w-full text-left px-3 py-2 rounded-md border transition-colors ${selectedAlbumId === album.id
+                        ? 'border-app-iris bg-app-iris/10 text-app-iris'
+                        : 'border-app-gray-100 hover:border-app-iris/40'
+                        }`}
+                      onClick={() => setSelectedAlbumId(album.id)}
+                    >
+                      <div className="font-semibold text-sm">{album.name || 'Untitled album'}</div>
+                      <div className="text-xs text-app-gray-500">{album.mediaCount || 0} assets</div>
+                    </button>
+                  ))
+                )}
+              </div>
+
+              <div className="border border-app-gray-100 rounded-lg p-4 min-h-[260px] max-h-[400px] overflow-y-auto bg-white">
+                {loadingAlbums ? (
+                  <div className="flex items-center justify-center h-full text-sm text-app-gray-600">Loading assets...</div>
+                ) : !selectedAlbumId ? (
+                  <div className="text-sm text-app-gray-600">Select an album to view its assets.</div>
+                ) : albumMedia.length === 0 ? (
+                  <div className="text-sm text-app-gray-600">No assets found in this album.</div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    {albumMedia.map((asset) => {
+                      const isSelected = selectedAssets.some(a => (a.storagePath || a.url) === (asset.storagePath || asset.url));
+                      return (
+                        <button
+                          key={`${asset.storagePath || asset.url}`}
+                          className={`relative rounded-lg overflow-hidden border-2 group transition-all ${isSelected
+                            ? 'border-app-iris bg-app-iris/10'
+                            : 'border-app-gray-100 hover:border-app-iris/60'
+                            }`}
+                          onClick={() => toggleAssetSelection(asset)}
+                        >
+                          {asset.type === 'image' ? (
+                            <img src={asset.url} alt={asset.name} className="h-24 w-full object-cover" />
+                          ) : (
+                            <video src={asset.url} className="h-24 w-full object-cover" />
+                          )}
+                          <div className={`absolute inset-0 transition-opacity flex items-center justify-center ${isSelected ? 'bg-app-iris/40' : 'bg-black/30 opacity-0 group-hover:opacity-100'
+                            }`}>
+                            {isSelected ? (
+                              <div className="bg-app-iris rounded-full p-1">
+                                <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                </svg>
+                              </div>
+                            ) : (
+                              <span className="text-xs font-semibold text-white">Select</span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Action buttons for selected assets */}
+              {selectedAssets.length > 0 && (
+                <div className="mt-4 flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setSelectedAssets([])}
+                    size="sm"
+                  >
+                    Clear Selection
+                  </Button>
+                  <Button
+                    variant="appPrimary"
+                    onClick={handleSaveSelectedAssets}
+                    size="sm"
+                  >
+                    Add ({selectedAssets.length})
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Dropzone / uploader */}
       <div
         className="mb-4 p-4 border-2 border-dashed rounded-lg flex flex-col justify-center items-center bg-gray-50 text-gray-500 hover:bg-violet-50 hover:border-violet-400 transition-colors"
-        onClick={() => fileInputRef.current?.click()}
+        onClick={() => { setMediaPickerTab('upload'); setMediaPickerOpen(true); }}
       >
         {(!page.media || page.media.length === 0) && Object.keys(uploadProgress).length === 0 && (
           <div className="text-center pointer-events-none">
             <UploadCloud className="h-10 w-10 mx-auto mb-2" />
-            <p className="font-semibold">Click to upload media</p>
-            <p className="text-xs">Up to 5 images or videos</p>
+            <p className="font-semibold">Add media to this page</p>
+            <p className="text-xs">Upload from your computer or choose from the asset registry</p>
           </div>
         )}
 

@@ -206,6 +206,7 @@ exports.createBook = onCall(
     const userId = auth.uid;
 
     let reservedBookSlot = false;
+    const db = admin.firestore();
 
     try {
       // Validate input
@@ -218,7 +219,6 @@ exports.createBook = onCall(
       );
 
       // Get Firestore instance - using default database
-      const db = admin.firestore();
       logger.log(`🔥 Firestore instance obtained (default database)`);
       logger.log(`🔍 Attempting to access users collection for userId: ${userId}`);
 

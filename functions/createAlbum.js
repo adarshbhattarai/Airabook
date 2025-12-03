@@ -26,6 +26,11 @@ exports.createAlbum = onCall(
             throw new HttpsError("invalid-argument", "Album name is required.");
         }
 
+        // Ensure Firebase Admin is initialized
+        if (!admin.apps.length) {
+            admin.initializeApp();
+        }
+
         const db = admin.firestore();
         const nameNormalized = name.trim();
 

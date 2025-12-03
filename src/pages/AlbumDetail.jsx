@@ -343,10 +343,19 @@ const AlbumDetail = () => {
     setUploading(true);
     const mediaType = file.type.startsWith('video') ? 'video' : 'image';
     const uniqueFileName = `${Date.now()}_${file.name}`;
-    // Store in user's albums folder: users/{uid}/albums/{albumId}/{type}/{filename}
-    const storagePath = `${user.uid}/albums/${bookId}/${mediaType}/${uniqueFileName}`;
+    // Construct path to match mediaProcessor expectation: {userId}/{bookId}/{chapterId}/{pageId}/media/{type}/{filename}
+    // For albums, we use albumId as bookId, and '_album_' as placeholders for chapter/page
+    const storagePath = `${user.uid}/${bookId}/_album_/_album_/media/${mediaType}/${uniqueFileName}`;
     const storageRef = ref(storage, storagePath);
-    const uploadTask = uploadBytesResumable(storageRef, file);
+
+    // Add custom metadata for original name
+    const metadata = {
+      customMetadata: {
+        originalName: file.name
+      }
+    };
+
+    const uploadTask = uploadBytesResumable(storageRef, file, metadata);
 
     uploadTask.on('state_changed',
       (snapshot) => {
@@ -367,16 +376,14 @@ const AlbumDetail = () => {
             uploadedAt: new Date().toISOString(),
           };
 
+          // NOTE: We do NOT update Firestore here anymore.
+          // The 'onMediaUpload' Cloud Function in mediaProcessor.js will handle:
+          // 1. Updating the album document
+          // 2. Updating user's accessible albums
+          // 3. Tracking storage usage
+
           try {
-            const albumRef = doc(firestore, 'albums', bookId);
-            // Update the specific array based on type
-            const updateData = mediaType === 'video'
-              ? { videos: arrayUnion(newMediaItem) }
-              : { images: arrayUnion(newMediaItem) };
-
-            await updateDoc(albumRef, updateData);
-
-            // Update local state
+            // Update local state for immediate UI feedback
             setAlbum(prev => {
               if (!prev) return prev;
               const updated = { ...prev };
@@ -398,8 +405,7 @@ const AlbumDetail = () => {
 
             toast({ title: 'Upload Success', description: `"${file.name}" uploaded.` });
           } catch (error) {
-            console.error('Firestore update error:', error);
-            toast({ title: 'Error', description: 'Failed to update album.', variant: 'destructive' });
+            console.error('Local state update error:', error);
           } finally {
             setUploading(false);
           }
