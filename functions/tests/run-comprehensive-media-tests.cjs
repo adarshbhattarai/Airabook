@@ -38,7 +38,15 @@ if (!admin.apps.length) {
 }
 
 const db = admin.firestore();
-const bucket = admin.storage().bucket();
+const storage = admin.storage();
+const bucket = storage.bucket();
+
+// Force storage to use HTTP for emulator (not HTTPS)
+if (process.env.STORAGE_EMULATOR_HOST) {
+    process.env.FIREBASE_STORAGE_EMULATOR_HOST = process.env.STORAGE_EMULATOR_HOST;
+    // Disable SSL for storage requests to emulator
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+}
 
 // Import functions to test
 const createBookFunc = require("../createBook");
@@ -147,6 +155,7 @@ async function createTestImage(filename, sizeKB = 10) {
     const storagePath = filename;
     const file = bucket.file(storagePath);
     await file.save(buffer, {
+        resumable: false, // Fix SSL error with storage emulator
         metadata: {
             contentType: 'image/jpeg',
             customMetadata: {
@@ -274,6 +283,9 @@ async function run() {
     // TEST 3: Create Standalone Album
     // ========================================================================
     await test("3. Create Standalone Album (not linked to book)", async () => {
+        if (!bookId1) {
+            throw new Error("Test dependency failed: bookId1 not created. Skipping.");
+        }
         const request = {
             data: {
                 name: "My Vacation Photos",
@@ -301,6 +313,9 @@ async function run() {
     // TEST 4: Upload Media to Book's Album
     // ========================================================================
     await test("4. Upload Media to Book's Album", async () => {
+        if (!bookId1) {
+            throw new Error("Test dependency failed: bookId1 not created. Skipping.");
+        }
         // Create test images
         testImage1 = await createTestImage(`${testUserId}/${bookId1}/_album_/_album_/media/image/test-image-1.jpg`, 100);
         testImage2 = await createTestImage(`${testUserId}/${bookId1}/_album_/_album_/media/image/test-image-2.jpg`, 150);
@@ -352,6 +367,9 @@ async function run() {
     // TEST 5: Attach Media to Page (usedIn tracking)
     // ========================================================================
     await test("5. Attach Media to Book Page (Track usedIn)", async () => {
+        if (!bookId1 || !testImage1) {
+            throw new Error("Test dependency failed: bookId1 or testImage1 not created. Skipping.");
+        }
         // First, create a chapter and page
         const chapterRef = await db.collection("books").doc(bookId1).collection("chapters").add({
             title: "Chapter 1",
@@ -413,6 +431,9 @@ async function run() {
     // TEST 6: Update Book Cover (Delete old, add new)
     // ========================================================================
     await test("6. Update Book Cover (Old cover should be deleted)", async () => {
+        if (!bookId1 || !coverImage1) {
+            throw new Error("Test dependency failed: bookId1 or coverImage1 not created. Skipping.");
+        }
         // Create new cover
         coverImage2 = await createTestImage(`${testUserId}/covers/book1-cover-new.jpg`, 60);
         logStorageOperation("ADD", coverImage2.size, "New book cover uploaded");
@@ -453,6 +474,9 @@ async function run() {
     // TEST 7: Update Standalone Album Cover
     // ========================================================================
     await test("7. Update Standalone Album Cover (No book sync)", async () => {
+        if (!albumId1) {
+            throw new Error("Test dependency failed: albumId1 not created. Skipping.");
+        }
         // Add initial cover to standalone album
         const cover1 = await createTestImage(`${testUserId}/albums/${albumId1}/cover1.jpg`, 40);
         logStorageOperation("ADD", cover1.size, "Standalone album cover 1");
@@ -497,6 +521,9 @@ async function run() {
     // TEST 8: Delete Single Media Item
     // ========================================================================
     await test("8. Delete Single Media Item (Check usedIn cleanup)", async () => {
+        if (!bookId1 || !testImage1) {
+            throw new Error("Test dependency failed: bookId1 or testImage1 not created. Skipping.");
+        }
         const imageToDelete = testImage1;
         const imageSizeToDelete = imageToDelete.size;
 
@@ -561,6 +588,9 @@ async function run() {
     // TEST 10: Verify UsedIn Functionality
     // ========================================================================
     await test("10. Verify UsedIn Tracking Integrity", async () => {
+        if (!bookId1) {
+            throw new Error("Test dependency failed: bookId1 not created. Skipping.");
+        }
         const albumDoc = await getDoc("albums", bookId1);
 
         log(`📋 UsedIn Status for Album ${bookId1}:`);
@@ -589,6 +619,9 @@ async function run() {
     // TEST 11: Verify Firestore Document Cleanup
     // ========================================================================
     await test("11. Verify Deleted Items Don't Exist in Firestore", async () => {
+        if (!bookId1 || !testImage1 || !coverImage1) {
+            throw new Error("Test dependency failed: Required test data not created. Skipping.");
+        }
         // testImage1 should not exist in album
         const albumDoc = await getDoc("albums", bookId1);
         const deletedImageExists = albumDoc.images.some(img => img.storagePath === testImage1.storagePath);
