@@ -231,6 +231,7 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
   const [selectedAlbumId, setSelectedAlbumId] = useState(null);
   const [albumMedia, setAlbumMedia] = useState([]);
   const [loadingAlbums, setLoadingAlbums] = useState(false);
+  const [selectedAssets, setSelectedAssets] = useState([]);
 
   const mediaList = page.media || [];
   const previewItem = mediaList[previewIndex] || null;
@@ -564,6 +565,38 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
     }
   };
 
+  const toggleAssetSelection = (asset) => {
+    setSelectedAssets(prev => {
+      const isSelected = prev.some(a => (a.storagePath || a.url) === (asset.storagePath || asset.url));
+      if (isSelected) {
+        return prev.filter(a => (a.storagePath || a.url) !== (asset.storagePath || asset.url));
+      } else {
+        return [...prev, asset];
+      }
+    });
+  };
+
+  const handleSaveSelectedAssets = async () => {
+    if (selectedAssets.length === 0) return;
+
+    const currentMediaCount = page.media?.length || 0;
+    if (currentMediaCount + selectedAssets.length > 5) {
+      toast({
+        title: 'Upload Limit Exceeded',
+        description: `You can only attach up to 5 media items per page. You have ${currentMediaCount} already.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    for (const asset of selectedAssets) {
+      await handleAttachFromAlbum(asset);
+    }
+
+    setSelectedAssets([]);
+    setMediaPickerOpen(false);
+  };
+
   const handleMediaDelete = (mediaItemToDelete) => {
     setMediaToDelete(mediaItemToDelete);
   };
@@ -814,7 +847,10 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
         onChange={handleFileSelect}
       />
 
-      <Dialog open={mediaPickerOpen} onOpenChange={setMediaPickerOpen}>
+      <Dialog open={mediaPickerOpen} onOpenChange={(open) => {
+        setMediaPickerOpen(open);
+        if (!open) setSelectedAssets([]);
+      }}>
         <DialogContent className="max-w-4xl bg-white rounded-2xl shadow-2xl border border-gray-100 p-6">
           <DialogHeader>
             <DialogTitle>Add media to this page</DialogTitle>
@@ -881,7 +917,7 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
                 )}
               </div>
 
-              <div className="border border-app-gray-100 rounded-lg p-4 min-h-[260px] max-h-[520px] overflow-y-auto bg-white">
+              <div className="border border-app-gray-100 rounded-lg p-4 min-h-[260px] max-h-[400px] overflow-y-auto bg-white">
                 {loadingAlbums ? (
                   <div className="flex items-center justify-center h-full text-sm text-app-gray-600">Loading assets...</div>
                 ) : !selectedAlbumId ? (
@@ -890,25 +926,60 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
                   <div className="text-sm text-app-gray-600">No assets found in this album.</div>
                 ) : (
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                    {albumMedia.map((asset) => (
-                      <button
-                        key={`${asset.storagePath || asset.url}`}
-                        className="relative rounded-lg overflow-hidden border border-app-gray-100 group hover:border-app-iris/60"
-                        onClick={() => handleAttachFromAlbum(asset)}
-                      >
-                        {asset.type === 'image' ? (
-                          <img src={asset.url} alt={asset.name} className="h-24 w-full object-cover" />
-                        ) : (
-                          <video src={asset.url} className="h-24 w-full object-cover" />
-                        )}
-                        <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          <span className="text-xs font-semibold text-white">Attach to page</span>
-                        </div>
-                      </button>
-                    ))}
+                    {albumMedia.map((asset) => {
+                      const isSelected = selectedAssets.some(a => (a.storagePath || a.url) === (asset.storagePath || asset.url));
+                      return (
+                        <button
+                          key={`${asset.storagePath || asset.url}`}
+                          className={`relative rounded-lg overflow-hidden border-2 group transition-all ${isSelected
+                            ? 'border-app-iris bg-app-iris/10'
+                            : 'border-app-gray-100 hover:border-app-iris/60'
+                            }`}
+                          onClick={() => toggleAssetSelection(asset)}
+                        >
+                          {asset.type === 'image' ? (
+                            <img src={asset.url} alt={asset.name} className="h-24 w-full object-cover" />
+                          ) : (
+                            <video src={asset.url} className="h-24 w-full object-cover" />
+                          )}
+                          <div className={`absolute inset-0 transition-opacity flex items-center justify-center ${isSelected ? 'bg-app-iris/40' : 'bg-black/30 opacity-0 group-hover:opacity-100'
+                            }`}>
+                            {isSelected ? (
+                              <div className="bg-app-iris rounded-full p-1">
+                                <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                </svg>
+                              </div>
+                            ) : (
+                              <span className="text-xs font-semibold text-white">Select</span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
+
+              {/* Action buttons for selected assets */}
+              {selectedAssets.length > 0 && (
+                <div className="mt-4 flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setSelectedAssets([])}
+                    size="sm"
+                  >
+                    Clear Selection
+                  </Button>
+                  <Button
+                    variant="appPrimary"
+                    onClick={handleSaveSelectedAssets}
+                    size="sm"
+                  >
+                    Add ({selectedAssets.length})
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </DialogContent>
