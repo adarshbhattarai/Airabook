@@ -3,6 +3,27 @@ const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
 const FieldValue = require("firebase-admin/firestore").FieldValue;
 
+/**
+ * Helper function to delete a cover image from storage
+ */
+async function deleteCoverImage(coverImageUrl) {
+    if (!coverImageUrl) return;
+    try {
+        const bucket = admin.storage().bucket();
+        // Extract storage path from URL
+        const urlMatch = coverImageUrl.match(/\/o\/(.+?)\?/) || coverImageUrl.match(/\.com\/([^?]+)/);
+        if (urlMatch) {
+            const coverPath = decodeURIComponent(urlMatch[1]);
+            const coverFile = bucket.file(coverPath);
+            await coverFile.delete({ ignoreNotFound: true });
+            logger.log(`🗑️ Deleted old cover image: ${coverPath}`);
+        }
+    } catch (err) {
+        logger.warn(`⚠️ Could not delete old cover image:`, err?.message);
+        // Don't fail the update if cover deletion fails
+    }
+}
+
 exports.updateAlbum = onCall(
     { region: "us-central1" },
     async (request) => {
@@ -41,6 +62,12 @@ exports.updateAlbum = onCall(
                 throw new HttpsError("permission-denied", "You do not have permission to update this album.");
             }
 
+            // Delete old cover if we're updating to a new one
+            if (coverImage !== undefined && coverImage !== albumData.coverImage && albumData.coverImage) {
+                logger.log(`🗑️ Deleting old album cover before update`);
+                await deleteCoverImage(albumData.coverImage);
+            }
+
             const updates = {
                 updatedAt: FieldValue.serverTimestamp(),
             };
@@ -55,6 +82,36 @@ exports.updateAlbum = onCall(
 
             await albumRef.update(updates);
             logger.log(`✅ Album ${albumId} updated`);
+
+            // If this album is linked to a book, also update the book document
+            if (albumData.type === "book" && albumData.bookId) {
+                try {
+                    const bookRef = db.collection("books").doc(albumData.bookId);
+                    const bookSnap = await bookRef.get();
+
+                    if (bookSnap.exists) {
+                        const bookUpdates = {};
+
+                        if (name && name.trim()) {
+                            bookUpdates.babyName = name.trim();
+                            bookUpdates.titleLower = name.trim().toLowerCase();
+                        }
+
+                        if (coverImage !== undefined) {
+                            bookUpdates.coverImageUrl = coverImage;
+                        }
+
+                        if (Object.keys(bookUpdates).length > 0) {
+                            bookUpdates.updatedAt = FieldValue.serverTimestamp();
+                            await bookRef.update(bookUpdates);
+                            logger.log(`✅ Synced changes to linked book ${albumData.bookId}`);
+                        }
+                    }
+                } catch (bookError) {
+                    logger.warn(`⚠️ Failed to update linked book:`, bookError?.message);
+                    // Don't fail the whole operation if book update fails
+                }
+            }
 
             // Update user's accessibleAlbums
             const userRef = db.collection("users").doc(userId);
