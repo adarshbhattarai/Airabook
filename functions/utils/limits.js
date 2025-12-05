@@ -30,7 +30,14 @@ const parseList = (val) => {
 };
 
 function loadConfig() {
-  const cfg = functions.config?.() || {};
+  let cfg = {};
+  try {
+    if (typeof functions.config === "function") {
+      cfg = functions.config() || {};
+    }
+  } catch (e) {
+    cfg = {};
+  }
   const plansCfg = cfg.plans || {};
   const toPlan = (key) => ({
     apiCalls: parseNumber(plansCfg[key]?.api_calls, defaultPlans[key].apiCalls),

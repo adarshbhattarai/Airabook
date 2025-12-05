@@ -1,33 +1,31 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
-const functionsConfig = require('firebase-functions').config();
 const Stripe = require('stripe');
 const { paymentService } = require('./paymentService');
 
-// Log config on module load to debug
+// Prefer environment variables; avoid functions.config() (not available in v2)
+const stripeSecret =
+  process.env.STRIPE_SECRET_KEY ||
+  process.env.STRIPE_SECRET ||
+  process.env.STRIPE_API_KEY ||
+  null;
+const appBaseUrl =
+  process.env.APP_PUBLIC_URL ||
+  process.env.PUBLIC_URL ||
+  process.env.BASE_URL ||
+  'http://localhost:5173';
+
 logger.info('Loading Stripe config...', {
-  hasStripeConfig: !!functionsConfig.stripe,
-  stripeKeys: functionsConfig.stripe ? Object.keys(functionsConfig.stripe) : [],
-  hasAppConfig: !!functionsConfig.app,
-  allConfigKeys: Object.keys(functionsConfig),
+  hasStripeSecret: !!stripeSecret,
+  appBaseUrl,
+  envKeys: Object.keys(process.env).filter((k) => k.includes('STRIPE') || k.includes('APP_PUBLIC_URL')),
 });
 
-const stripeSecret = functionsConfig.stripe?.secret_key;
-if (!stripeSecret) {
-  logger.error('Stripe secret key is not configured via functions config.', {
-    availableConfig: functionsConfig.stripe,
-    allConfig: functionsConfig
-  });
-} else {
-  logger.info('Stripe secret key found', { keyLength: stripeSecret.length });
-}
-
 const stripe = stripeSecret ? new Stripe(stripeSecret, { apiVersion: '2024-06-20' }) : null;
-const appBaseUrl = functionsConfig.app?.public_url || 'http://localhost:5173';
 
-logger.info('Stripe initialized', { 
-  hasStripe: !!stripe, 
-  appBaseUrl 
+logger.info('Stripe initialized', {
+  hasStripe: !!stripe,
+  appBaseUrl,
 });
 
 const normalizeAmount = (value) => {

@@ -2,6 +2,7 @@
   "projects": {
     "default": "airabook-dev",
     "local": "demo-project",
+    "dev2": "airaproject-f5298",
     "dev": "airabook-dev",
     "qa": "airabook-qa",
     "go": "airabook-21bf5",

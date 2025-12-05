@@ -1,12 +1,16 @@
 const { onRequest } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
-const functionsConfig = require('firebase-functions').config();
 const Stripe = require('stripe');
 const { paymentService, PaymentStatus } = require('./paymentService');
 
-const stripeSecret = functionsConfig.stripe?.secret_key;
+const stripeSecret =
+  process.env.STRIPE_SECRET_KEY ||
+  process.env.STRIPE_SECRET ||
+  process.env.STRIPE_API_KEY ||
+  null;
 // Trim webhook secret to remove any whitespace/newlines
-const webhookSecret = functionsConfig.stripe?.webhook_secret?.trim();
+const webhookSecret =
+  (process.env.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK || '').trim() || null;
 
 const stripe = stripeSecret ? new Stripe(stripeSecret, { apiVersion: '2024-06-20' }) : null;
 

@@ -1,5 +1,5 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
-const functions = require("firebase-functions");
+const { beforeUserCreated } = require("firebase-functions/v2/identity");
 const admin = require("firebase-admin");
 const { FieldValue } = require("firebase-admin/firestore");
 const logger = require("firebase-functions/logger");
@@ -12,7 +12,8 @@ const db = admin.firestore();
  * Triggered when a new user is created in Firebase Auth.
  * Creates a corresponding document in the 'users' collection.
  */
-exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
+exports.onUserCreate = beforeUserCreated({ region: "us-central1" }, async (event) => {
+    const user = event.data;
     console.log("!!! ------------------------------------------------- !!!");
     console.log("!!! onUserCreate TRIGGERED for user:", user.uid);
     console.log("!!! Email:", user.email);
@@ -87,6 +88,7 @@ exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
             console.log("Logger failed but document created.");
         }
 
+        return event.data;
     } catch (error) {
         console.error("!!! ------------------------------------------------- !!!");
         console.error("!!! CRITICAL ERROR in onUserCreate:", error);

@@ -3,6 +3,7 @@ node_modules
 .env.development
 .env.qa
 .env.go
+.env.dev2
 .env.production
 functions/.env
 functions/.env.local
