@@ -16,52 +16,31 @@ const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'air
 const LOCATION = 'us-central1';
 const MODEL_NAME = 'gemini-2.5-flash';
 
-console.log(`🤖 AI Client initialized for project: ${PROJECT_ID}`);
-
-// Initialize Vertex AI (wrap in try-catch to prevent module load errors)
+// Lazy initialization variables
 let vertex = null;
 let generativeModel = null;
-
-if (VertexAI) {
-  try {
-    vertex = new VertexAI({ project: PROJECT_ID, location: LOCATION });
-    generativeModel = vertex.getGenerativeModel({
-      model: MODEL_NAME,
-      generationConfig: {
-        maxOutputTokens: 2048,
-        temperature: 0.7,
-        topP: 0.9,
-        topK: 40,
-      },
-    });
-    console.log('✅ Vertex AI initialized');
-  } catch (e) {
-    console.warn('⚠️ Vertex AI initialization failed:', e?.message);
-    vertex = null;
-    generativeModel = null;
-  }
-} else {
-  console.warn('⚠️ Vertex AI not available - @google-cloud/vertexai package not found');
-}
-
-// Initialize OpenAI client if key is present
 let openai = null;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-if (OPENAI_API_KEY && OpenAI) {
-  try {
-    openai = new OpenAI({ apiKey: OPENAI_API_KEY });
-    console.log('✅ OpenAI client initialized');
-  } catch (e) {
-    console.warn('⚠️ OpenAI initialization failed:', e?.message);
-    openai = null;
-  }
-}
+let vertexInitialized = false;
+let openaiInitialized = false;
 
 /**
  * Get the active AI client
  * @returns {Object|null} OpenAI client or null
  */
 function getOpenAIClient() {
+  if (!openaiInitialized) {
+    const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+    if (OPENAI_API_KEY && OpenAI) {
+      try {
+        openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+        console.log('✅ OpenAI client initialized');
+      } catch (e) {
+        console.warn('⚠️ OpenAI initialization failed:', e?.message);
+        openai = null;
+      }
+    }
+    openaiInitialized = true;
+  }
   return openai;
 }
 
@@ -70,6 +49,30 @@ function getOpenAIClient() {
  * @returns {Object} Vertex AI generative model
  */
 function getVertexAIModel() {
+  if (!vertexInitialized) {
+    if (VertexAI) {
+      try {
+        vertex = new VertexAI({ project: PROJECT_ID, location: LOCATION });
+        generativeModel = vertex.getGenerativeModel({
+          model: MODEL_NAME,
+          generationConfig: {
+            maxOutputTokens: 2048,
+            temperature: 0.7,
+            topP: 0.9,
+            topK: 40,
+          },
+        });
+        console.log('✅ Vertex AI initialized');
+      } catch (e) {
+        console.warn('⚠️ Vertex AI initialization failed:', e?.message);
+        vertex = null;
+        generativeModel = null;
+      }
+    } else {
+      console.warn('⚠️ Vertex AI not available - @google-cloud/vertexai package not found');
+    }
+    vertexInitialized = true;
+  }
   return generativeModel;
 }
 
@@ -80,7 +83,8 @@ function getVertexAIModel() {
  * @returns {Promise<string>} The generated text
  */
 async function callOpenAI(prompt, options = {}) {
-  if (!openai) {
+  const client = getOpenAIClient();
+  if (!client) {
     throw new Error('OpenAI client not initialized');
   }
 
@@ -88,7 +92,7 @@ async function callOpenAI(prompt, options = {}) {
   const maxTokens = options.maxTokens || 1024;
   const temperature = options.temperature || 0.7;
 
-  const response = await openai.chat.completions.create({
+  const response = await client.chat.completions.create({
     model,
     messages: [{ role: 'user', content: prompt }],
     max_tokens: maxTokens,
@@ -105,14 +109,15 @@ async function callOpenAI(prompt, options = {}) {
  * @returns {Promise<string>} The generated text
  */
 async function callVertexAI(prompt, options = {}) {
-  if (!generativeModel) {
+  const model = getVertexAIModel();
+  if (!model) {
     throw new Error('Vertex AI not initialized');
   }
 
   const maxTokens = options.maxTokens || 1024;
   const temperature = options.temperature || 0.7;
 
-  const response = await generativeModel.generateContent({
+  const response = await model.generateContent({
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     generationConfig: {
       maxOutputTokens: maxTokens,
@@ -130,10 +135,13 @@ async function callVertexAI(prompt, options = {}) {
  * @returns {Promise<string>} The generated text
  */
 async function callAI(prompt, options = {}) {
-  if (openai) {
+  const openAIClient = getOpenAIClient();
+  const vertexModel = getVertexAIModel();
+
+  if (openAIClient) {
     console.log('🤖 Using OpenAI');
     return await callOpenAI(prompt, options);
-  } else if (generativeModel) {
+  } else if (vertexModel) {
     console.log('🤖 Using Vertex AI');
     return await callVertexAI(prompt, options);
   } else {
@@ -147,7 +155,5 @@ module.exports = {
   callOpenAI,
   callVertexAI,
   callAI,
-  openai,
-  generativeModel,
 };
 

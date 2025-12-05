@@ -1,56 +1,24 @@
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
-const logger = require('firebase-functions/logger');
-const functionsConfig = require('firebase-functions').config();
-const Stripe = require('stripe');
-const { paymentService } = require('./paymentService');
 
-// Log config on module load to debug
-logger.info('Loading Stripe config...', {
-  hasStripeConfig: !!functionsConfig.stripe,
-  stripeKeys: functionsConfig.stripe ? Object.keys(functionsConfig.stripe) : [],
-  hasAppConfig: !!functionsConfig.app,
-  allConfigKeys: Object.keys(functionsConfig),
-});
-
-const stripeSecret = functionsConfig.stripe?.secret_key;
-if (!stripeSecret) {
-  logger.error('Stripe secret key is not configured via functions config.', {
-    availableConfig: functionsConfig.stripe,
-    allConfig: functionsConfig
-  });
-} else {
-  logger.info('Stripe secret key found', { keyLength: stripeSecret.length });
-}
-
-const stripe = stripeSecret ? new Stripe(stripeSecret, { apiVersion: '2024-06-20' }) : null;
-const appBaseUrl = functionsConfig.app?.public_url || 'http://localhost:5173';
-
-logger.info('Stripe initialized', { 
-  hasStripe: !!stripe, 
-  appBaseUrl 
-});
-
-const normalizeAmount = (value) => {
-  if (typeof value === 'number') {
-    return Math.trunc(value);
-  }
-  if (typeof value === 'string') {
-    return Math.trunc(Number(value));
-  }
-  return 0;
-};
 
 exports.createCheckoutSession = onCall({ region: 'us-central1' }, async (request) => {
-  logger.info('createCheckoutSession called', { 
+  // Lazy load config and initialize Stripe inside the function
+  // This prevents startup crashes if config is missing
+  const functionsConfig = require('firebase-functions').config();
+  const stripeSecret = functionsConfig.stripe?.secret_key || process.env.STRIPE_SECRET_KEY;
+
+  const stripe = stripeSecret ? new Stripe(stripeSecret, { apiVersion: '2024-06-20' }) : null;
+  const appBaseUrl = functionsConfig.app?.public_url || process.env.APP_PUBLIC_URL || 'http://localhost:5173';
+
+  logger.info('createCheckoutSession called', {
     hasAuth: !!request.auth,
     hasStripe: !!stripe,
-    configKeys: Object.keys(functionsConfig.stripe || {})
+    configKeys: functionsConfig.stripe ? Object.keys(functionsConfig.stripe) : []
   });
 
   if (!stripe) {
-    logger.error('Stripe not initialized', { 
+    logger.error('Stripe not initialized', {
       hasSecret: !!stripeSecret,
-      config: functionsConfig.stripe 
+      config: functionsConfig.stripe
     });
     throw new HttpsError(
       'failed-precondition',
@@ -129,8 +97,8 @@ exports.createCheckoutSession = onCall({ region: 'us-central1' }, async (request
     logger.info(`Checkout session created successfully`, { paymentId, sessionId: session.id });
 
     // Return both sessionId and the full checkout URL for fallback redirect
-    return { 
-      sessionId: session.id, 
+    return {
+      sessionId: session.id,
       paymentId,
       checkoutUrl: session.url  // Include the full Stripe checkout URL
     };

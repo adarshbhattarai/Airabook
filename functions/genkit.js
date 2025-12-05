@@ -1,74 +1,56 @@
-const { ai, textEmbedding004 } = require('./genkitClient');
-const { z } = require('genkit');
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
-const admin = require('firebase-admin');
-const { generateEmbeddings } = require('./utils/embeddingsClient');
-const { consumeApiCallQuota } = require('./utils/limits');
-// Initialize Firebase Admin if not already initialized
-if (!admin.apps.length) {
-    admin.initializeApp();
-}
-const db = admin.firestore();
+k: z.number().default(3),
+            }),
+        },
+async (input, options) => {
+    const { userId, k } = options;
 
-// Define the Retriever
-const bookPagesRetriever = ai.defineRetriever(
-    {
-        name: 'bookPagesRetriever',
-        configSchema: z.object({
-            userId: z.string(),
-            k: z.number().default(3),
-        }),
-    },
-    async (input, options) => {
-        const { userId, k } = options;
+    const queryEmbedding = await generateEmbeddings(input, {
+        taskType: 'RETRIEVAL_QUERY',
+    });
 
-        const queryEmbedding = await generateEmbeddings(input, {
-            taskType: 'RETRIEVAL_QUERY',
-        });
+    console.log(
+        'queryEmbedding length:',
+        queryEmbedding.length
+    );
+    // Firestore Vector Search
+    // CRITICAL: Filter by createdBy to ensure user isolation
+    const coll = db.collectionGroup('pages');
 
-        console.log(
-            'queryEmbedding length:',
-            queryEmbedding.length
-        );
-        // Firestore Vector Search
-        // CRITICAL: Filter by createdBy to ensure user isolation
-        const coll = db.collectionGroup('pages');
+    try {
 
-        try {
+        const snapshot = await coll
+            .where('createdBy', '==', userId)
+            .findNearest('embeddings', queryEmbedding, {
+                limit: k,
+                distanceMeasure: 'COSINE',
+            })
+            .get();
 
-            const snapshot = await coll
-                .where('createdBy', '==', userId)
-                .findNearest('embeddings', queryEmbedding, {
-                    limit: k,
-                    distanceMeasure: 'COSINE',
-                })
-                .get();
-
-            console.log(`Found ${snapshot.docs.length} documents`);
-            return {
-                documents: snapshot.docs.map(doc => {
-                    const data = doc.data();
-                    return {
-                        content: [{ text: data.plainText || data.note || '' }],
-                        metadata: {
-                            id: doc.id,
-                            bookId: doc.ref.parent.parent.parent.parent.id,
-                            chapterId: doc.ref.parent.parent.id,
-                            ...data,
-                        },
-                    };
-                })
-            };
-        } catch (error) {
-            console.error("Vector search failed:", error);
-            // Return empty documents on error to allow flow to continue with general knowledge
-            return { documents: [] };
-        }
+        console.log(`Found ${snapshot.docs.length} documents`);
+        return {
+            documents: snapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    content: [{ text: data.plainText || data.note || '' }],
+                    metadata: {
+                        id: doc.id,
+                        bookId: doc.ref.parent.parent.parent.parent.id,
+                        chapterId: doc.ref.parent.parent.id,
+                        ...data,
+                    },
+                };
+            })
+        };
+    } catch (error) {
+        console.error("Vector search failed:", error);
+        // Return empty documents on error to allow flow to continue with general knowledge
+        return { documents: [] };
     }
-);
+}
+    );
 
 // Define the RAG Flow
-const queryBookFlowRaw = ai.defineFlow(
+queryBookFlowRaw = ai.defineFlow(
     {
         name: 'queryBookFlow',
         inputSchema: z.object({
@@ -108,13 +90,13 @@ const queryBookFlowRaw = ai.defineFlow(
 
             // Ask LLM to score the relevance
             const scoringPrompt = `
-            You are a relevance scorer. 
-            Query: "${query}"
-            Document: "${content}"
-            
-            Rate the relevance of the document to the query on a scale of 0 to 10. 
-            Return ONLY the number.
-            `;
+                You are a relevance scorer. 
+                Query: "${query}"
+                Document: "${content}"
+                
+                Rate the relevance of the document to the query on a scale of 0 to 10. 
+                Return ONLY the number.
+                `;
 
             const scoreResponse = await ai.generate({
                 prompt: scoringPrompt,
@@ -152,16 +134,16 @@ const queryBookFlowRaw = ai.defineFlow(
         const llmResponse = await ai.generate({
             history: history,
             prompt: `
-You are a helpful AI assistant for a book writing app called Airabook.
-Use the following context from the user's book to answer their question if relevant.
-If the answer is not in the context, answer from your general knowledge.
-Be helpful, encouraging, and creative.
-
-Context:
-${finalDocs.map((d) => d.content[0].text).join('\n\n')}
-
-Question: ${query}
-      `,
+    You are a helpful AI assistant for a book writing app called Airabook.
+    Use the following context from the user's book to answer their question if relevant.
+    If the answer is not in the context, answer from your general knowledge.
+    Be helpful, encouraging, and creative.
+    
+    Context:
+    ${finalDocs.map((d) => d.content[0].text).join('\n\n')}
+    
+    Question: ${query}
+          `,
         });
 
         return {
@@ -173,6 +155,7 @@ Question: ${query}
         };
     }
 );
+};
 
 // Export as a Callable Cloud Function
 const queryBookFlow = onCall(
@@ -184,6 +167,9 @@ const queryBookFlow = onCall(
         await consumeApiCallQuota(db, request.auth.uid, 1);
 
         try {
+            // Initialize flows lazily
+            initializeGenkitFlows();
+
             // Invoke the flow with auth context
             return await queryBookFlowRaw(request.data, {
                 context: { auth: request.auth }
