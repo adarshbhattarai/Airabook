@@ -152,27 +152,90 @@ async function updateAlbumWithMedia(albumId, downloadURL, mediaType, storagePath
     updatedAt: FieldValue.serverTimestamp(),
   };
 
-  // Store URL with metadata: {url, storagePath, name, uploadedAt}
-  const mediaItem = {
-    url: downloadURL,
-    storagePath: storagePath,
-    name: metadata.originalName || storagePath.split('/').pop(),
-    uploadedAt: new Date().toISOString()
-  };
+  const currentImages = albumData.images || [];
+  const currentVideos = albumData.videos || [];
+  const targetArray = mediaType === 'image' ? currentImages : currentVideos;
 
-  // Add URL to appropriate array
-  if (mediaType === 'image') {
-    updateData.images = FieldValue.arrayUnion(mediaItem);
+  // Check if media already exists
+  const existingIndex = targetArray.findIndex(item => {
+    const itemPath = typeof item === 'string' ? null : item.storagePath;
+    return itemPath === storagePath;
+  });
+
+  let mediaItem;
+  let isNewItem = false;
+
+  if (existingIndex >= 0) {
+    // Existing item: Preserve usedIn
+    const existingItem = targetArray[existingIndex];
+    // Handle legacy string items (convert to object)
+    const existingUsedIn = (typeof existingItem === 'object' && existingItem.usedIn) ? existingItem.usedIn : [];
+
+    mediaItem = {
+      url: downloadURL,
+      storagePath: storagePath,
+      name: metadata.originalName || storagePath.split('/').pop(),
+      uploadedAt: (typeof existingItem === 'object' && existingItem.uploadedAt) ? existingItem.uploadedAt : new Date().toISOString(),
+      usedIn: existingUsedIn
+    };
+
+    // Update the item in the array
+    targetArray[existingIndex] = mediaItem;
+    if (mediaType === 'image') {
+      updateData.images = targetArray;
+    } else {
+      updateData.videos = targetArray;
+    }
+    console.log(`🔄 Updated existing media item: ${storagePath}, preserved ${existingUsedIn.length} usage refs`);
   } else {
-    updateData.videos = FieldValue.arrayUnion(mediaItem);
+    // New item: Initialize usedIn based on path
+    isNewItem = true;
+    const usedIn = [];
+
+    // Parse path internally to get context
+    try {
+      const pathMetadata = parseStoragePath(storagePath);
+      // Check if we have valid page context (not placeholders)
+      if (pathMetadata.chapterId && pathMetadata.pageId &&
+        pathMetadata.chapterId !== '_album_' && pathMetadata.chapterId !== 'general' &&
+        pathMetadata.pageId !== '_album_' && pathMetadata.pageId !== 'general') {
+        usedIn.push({
+          bookId: pathMetadata.bookId,
+          chapterId: pathMetadata.chapterId,
+          pageId: pathMetadata.pageId
+        });
+        console.log(`✨ New media from page upload - added usage ref: ${pathMetadata.chapterId}/${pathMetadata.pageId}`);
+      } else {
+        console.log(`✨ New media from album/general upload - no initial usage ref`);
+      }
+    } catch (e) {
+      console.warn(`⚠️ Failed to parse storage path for usage tracking: ${storagePath}`, e);
+    }
+
+    mediaItem = {
+      url: downloadURL,
+      storagePath: storagePath,
+      name: metadata.originalName || storagePath.split('/').pop(),
+      uploadedAt: new Date().toISOString(),
+      usedIn: usedIn
+    };
+
+    // Add to array
+    if (mediaType === 'image') {
+      updateData.images = FieldValue.arrayUnion(mediaItem);
+    } else {
+      updateData.videos = FieldValue.arrayUnion(mediaItem);
+    }
   }
 
   // Update media count
-  const currentImages = albumData.images || [];
-  const currentVideos = albumData.videos || [];
-  const newCount = mediaType === 'image'
-    ? currentImages.length + 1 + currentVideos.length
-    : currentImages.length + currentVideos.length + 1;
+  let newCount;
+  if (isNewItem) {
+    newCount = currentImages.length + currentVideos.length + 1;
+  } else {
+    newCount = currentImages.length + currentVideos.length;
+  }
+
   updateData.mediaCount = newCount;
 
   // Set cover image if this is the first image
@@ -182,7 +245,7 @@ async function updateAlbumWithMedia(albumId, downloadURL, mediaType, storagePath
   }
 
   await albumRef.update(updateData);
-  console.log(`✅ Updated album ${albumId} with new ${mediaType}: count=${newCount}`);
+  console.log(`✅ Updated album ${albumId} with ${isNewItem ? 'new' : 'existing'} ${mediaType}: count=${newCount}`);
 
   return {
     coverImage: updateData.coverImage || albumData.coverImage,
