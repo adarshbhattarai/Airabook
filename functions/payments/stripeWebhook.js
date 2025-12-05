@@ -1,22 +1,25 @@
 const { onRequest } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
-const functionsConfig = require('firebase-functions').config();
+
 const Stripe = require('stripe');
 const { paymentService, PaymentStatus } = require('./paymentService');
 
-const stripeSecret = functionsConfig.stripe?.secret_key;
-// Trim webhook secret to remove any whitespace/newlines
-const webhookSecret = functionsConfig.stripe?.webhook_secret?.trim();
-
-const stripe = stripeSecret ? new Stripe(stripeSecret, { apiVersion: '2024-06-20' }) : null;
-
-exports.stripeWebhook = onRequest({ 
+exports.stripeWebhook = onRequest({
   region: 'us-central1',
 }, async (req, res) => {
+  // Lazy load config inside the function
+  const functionsConfig = require('firebase-functions').config();
+  const stripeSecret = functionsConfig.stripe?.secret_key || process.env.STRIPE_SECRET_KEY;
+  // Trim webhook secret to remove any whitespace/newlines
+  const webhookSecret = (functionsConfig.stripe?.webhook_secret || process.env.STRIPE_WEBHOOK_SECRET)?.trim();
+
+  const stripe = stripeSecret ? new Stripe(stripeSecret, { apiVersion: '2024-06-20' }) : null;
+
+
   if (!stripe || !webhookSecret) {
-    logger.error('Stripe webhook secrets missing', { 
-      hasStripe: !!stripe, 
-      hasWebhookSecret: !!webhookSecret 
+    logger.error('Stripe webhook secrets missing', {
+      hasStripe: !!stripe,
+      hasWebhookSecret: !!webhookSecret
     });
     res.status(500).send('Stripe not configured');
     return;
@@ -53,7 +56,7 @@ exports.stripeWebhook = onRequest({
       res.status(400).send('No request body');
       return;
     }
-    
+
     // Log webhook secret info (first 10 chars only for security) for debugging
     logger.debug('Webhook verification attempt', {
       secretLength: webhookSecret?.length,
@@ -63,7 +66,7 @@ exports.stripeWebhook = onRequest({
       hasSignature: !!signature,
       hasRawBody: !!req.rawBody,
     });
-    
+
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
   } catch (err) {
     logger.error('Stripe signature verification failed', { message: err.message });

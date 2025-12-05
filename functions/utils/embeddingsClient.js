@@ -2,7 +2,7 @@
 // Gemini embeddings client for generating text embeddings
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const { ai, textEmbedding004 } = require('../genkitClient');
+const { getAi, textEmbedding004 } = require('../genkitClient');
 
 // Get API key from environment
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -81,6 +81,9 @@ async function generateEmbeddings(input, options = {}) {
     }
 
     const taskType = options.taskType || "RETRIEVAL_DOCUMENT";
+
+    // Lazy init AI
+    const ai = getAi();
 
     const result = await ai.embed({
         embedder: textEmbedding004,
