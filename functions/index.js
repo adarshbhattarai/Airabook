@@ -392,21 +392,5 @@ exports.addPageSummary = onCall({ region: "us-central1" }, async (request) => {
   }
 });
 
-// Export all functions
-exports.uploadMedia = uploadMedia;
-exports.rewriteNote = rewriteNote;
-exports.createBook = createBook;
-exports.updateBook = updateBook;
-exports.onMediaUpload = onMediaUpload;
-exports.onMediaDelete = onMediaDelete;
-exports.inviteCoAuthor = inviteCoAuthor;
-exports.createCheckoutSession = createCheckoutSession;
-exports.stripeWebhook = stripeWebhook;
-exports.searchAgent = searchAgent;
-exports.createPage = createPage;
-exports.updatePage = updatePage;
-exports.onUserCreate = onUserCreate;
-exports.onBookDeleted = onBookDeleted;
-exports.onPageDeleted = onPageDeleted;
-exports.onChapterDeleted = onChapterDeleted;
+
 
