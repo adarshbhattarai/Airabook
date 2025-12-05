@@ -8,7 +8,7 @@
 const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'airabook-dev';
 
 // Derive other configuration from project ID
-const STORAGE_BUCKET = `${PROJECT_ID}.appspot.com`;
+const STORAGE_BUCKET = process.env.FIREBASE_STORAGE_BUCKET || `${PROJECT_ID}.firebasestorage.app`;
 const REGION = 'us-central1';
 
 // Determine environment based on project ID

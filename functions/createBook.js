@@ -11,7 +11,7 @@ if (!admin.apps.length) {
   try {
     // Get current project ID dynamically from environment
     const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'airabook-dev';
-    const STORAGE_BUCKET = `${PROJECT_ID}.appspot.com`;
+    const STORAGE_BUCKET = process.env.FIREBASE_STORAGE_BUCKET || `${PROJECT_ID}.firebasestorage.app`;
 
     admin.initializeApp({
       storageBucket: STORAGE_BUCKET,

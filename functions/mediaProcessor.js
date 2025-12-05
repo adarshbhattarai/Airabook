@@ -2,16 +2,16 @@ const { onObjectFinalized, onObjectDeleted } = require("firebase-functions/v2/st
 const admin = require("firebase-admin");
 const FieldValue = require("firebase-admin/firestore").FieldValue;
 const { addStorageUsage } = require("./utils/limits");
-const { deleteMediaInternal } = require("./deleteMedia");
+const { deleteMediaInternal } = require("./utils/deleteMediaInternal");
+
+// Project and bucket identifiers for trigger configuration
+const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || "airabook-dev";
+const STORAGE_BUCKET = process.env.FIREBASE_STORAGE_BUCKET || `${PROJECT_ID}.firebasestorage.app`;
 
 
 // Ensure Firebase Admin is initialized (may be initialized by index.js)
 if (!admin.apps.length) {
   try {
-    // Get current project ID dynamically from environment
-    const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'airabook-dev';
-    const STORAGE_BUCKET = `${PROJECT_ID}.appspot.com`;
-
     admin.initializeApp({
       storageBucket: STORAGE_BUCKET,
     });
@@ -346,7 +346,8 @@ async function updateUserAccessibleAlbums(userId, albumId, albumName, coverImage
  */
 exports.onMediaUpload = onObjectFinalized(
   {
-    region: "us-central1"
+    region: "us-central1",
+    bucket: STORAGE_BUCKET,
   },
   async (event) => {
     const storagePath = event.data.name;
@@ -490,7 +491,8 @@ exports.onMediaUpload = onObjectFinalized(
 
 exports.onMediaDelete = onObjectDeleted(
   {
-    region: "us-central1"
+    region: "us-central1",
+    bucket: STORAGE_BUCKET,
   },
   async (event) => {
     const storagePath = event.data.name;
