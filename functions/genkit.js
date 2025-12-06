@@ -176,7 +176,7 @@ Question: ${query}
 
 // Export as a Callable Cloud Function
 const queryBookFlow = onCall(
-    { cors: true },
+    { cors: true, region: "us-central1" },
     async (request) => {
         if (!request.auth) {
             throw new HttpsError('unauthenticated', 'User must be authenticated.');
