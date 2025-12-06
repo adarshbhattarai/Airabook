@@ -94,10 +94,11 @@ const { onMediaUpload, onMediaDelete } = require("./mediaProcessor");
 const { inviteCoAuthor } = require("./inviteCoAuthor");
 const { createCheckoutSession } = require("./payments/createCheckoutSession");
 const { stripeWebhook } = require("./payments/stripeWebhook");
-const { searchAgent } = require("./agent");
+
 const { createPage } = require("./createPage");
 const { updatePage } = require("./updatePage");
 const { onUserCreate } = require("./onUserCreate");
+const { queryBookFlow } = require("./genkit");
 const { onBookDeleted, onPageDeleted, onChapterDeleted } = require("./usageTriggers");
 const { deleteMediaAsset, deleteAlbumAssets } = require("./deleteMedia");
 const { trackMediaUsage, untrackMediaUsage } = require("./mediaUsage");
@@ -117,9 +118,10 @@ exports.onMediaDelete = onMediaDelete;
 exports.inviteCoAuthor = inviteCoAuthor;
 exports.createCheckoutSession = createCheckoutSession;
 exports.stripeWebhook = stripeWebhook;
-exports.searchAgent = searchAgent;
+
 exports.createPage = createPage;
 exports.updatePage = updatePage;
+exports.queryBookFlow = queryBookFlow;
 exports.onUserCreate = onUserCreate;
 exports.onBookDeleted = onBookDeleted;
 exports.onPageDeleted = onPageDeleted;

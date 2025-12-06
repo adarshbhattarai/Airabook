@@ -4,13 +4,14 @@ const { FieldValue } = require("firebase-admin/firestore");
 const logger = require("firebase-functions/logger");
 const { buildInitialQuotaCounters, loadConfig } = require("./utils/limits");
 
+const db = admin.firestore();
 // const db = admin.firestore(); // This line is removed as per the instruction
 
 /**
  * Triggered when a new user is created in Firebase Auth.
  * Creates a corresponding document in the 'users' collection.
  */
-exports.onUserCreate = functions.runWith({ region: 'us-central1' }).auth.user().onCreate(async (user) => {
+exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
     console.log("!!! ------------------------------------------------- !!!");
     console.log("!!! onUserCreate TRIGGERED for user:", user.uid);
     console.log("!!! Email:", user.email);
@@ -85,7 +86,6 @@ exports.onUserCreate = functions.runWith({ region: 'us-central1' }).auth.user().
             console.log("Logger failed but document created.");
         }
 
-        return;
     } catch (error) {
         console.error("!!! ------------------------------------------------- !!!");
         console.error("!!! CRITICAL ERROR in onUserCreate:", error);
