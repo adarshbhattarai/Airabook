@@ -1,5 +1,7 @@
 // Disable noisy GCP residency checks in local emulators (sandboxed network)
-if (process.env.FUNCTIONS_EMULATOR === "true" || process.env.FIRESTORE_EMULATOR_HOST) {
+const storageEmulatorBucket = "demo-project.appspot.com";
+const isEmulator = process.env.FUNCTIONS_EMULATOR === "true" || process.env.FIRESTORE_EMULATOR_HOST;
+if (isEmulator) {
   process.env.GOOGLE_CLOUD_DISABLE_GCP_RESIDENCY_CHECK = "true";
 }
 
@@ -62,6 +64,7 @@ const STORAGE_BUCKET = process.env.FIREBASE_STORAGE_BUCKET || `${PROJECT_ID}.fir
 console.log(`🔧 Initializing Firebase Admin for project: ${PROJECT_ID}`);
 console.log(`📦 Storage bucket: ${STORAGE_BUCKET}`);
 
+console.log(`📦 Storage bucket: ${storageEmulatorBucket}`);
 // Initialize Firebase Admin (only if not already initialized)
 if (!admin.apps.length) {
   const runningInEmulator = process.env.FUNCTIONS_EMULATOR === 'true' || process.env.FIREBASE_AUTH_EMULATOR_HOST;
@@ -70,9 +73,9 @@ if (!admin.apps.length) {
   if (runningInEmulator) {
     // Emulator mode - use default initialization
     admin.initializeApp({
-      storageBucket: STORAGE_BUCKET,
+      storageBucket: storageEmulatorBucket,
     });
-    console.log("🧪 Firebase Admin initialized for emulator environment");
+    console.log("🧪 Firebase Admin initialized for emulator environment with storage Bucket" + storageEmulatorBucket);
   } else if (isDeployed) {
     // Deployed to Cloud Functions - use Application Default Credentials (ADC)
     // ADC automatically uses the correct service account for the deployed environment
