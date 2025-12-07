@@ -1,11 +1,10 @@
-const functions = require("firebase-functions");
+const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const { FieldValue } = require("firebase-admin/firestore");
 const logger = require("firebase-functions/logger");
 const { buildInitialQuotaCounters, loadConfig } = require("./utils/limits");
 
-const db = admin.firestore();
-// const db = admin.firestore(); // This line is removed as per the instruction
+// Admin is initialized in index.js - no need to initialize here
 
 /**
  * Triggered when a new user is created in Firebase Auth.
@@ -13,17 +12,28 @@ const db = admin.firestore();
  */
 exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
     console.log("!!! ------------------------------------------------- !!!");
+    console.log("!!! DEBUG: onUserCreate (V1) ENTRY POINT HIT");
+    console.log("!!! DEBUG: user object:", JSON.stringify(user));
+
+    // Check if dependencies loaded
+    console.log("!!! DEBUG: limits imported?", typeof loadConfig, typeof buildInitialQuotaCounters);
+
     console.log("!!! onUserCreate TRIGGERED for user:", user.uid);
     console.log("!!! Email:", user.email);
     console.log("!!! ------------------------------------------------- !!!");
 
     try {
+        console.log("!!! DEBUG: Starting try block");
         // Initialize Firestore inside the function to ensure Admin SDK is ready
         const db = admin.firestore();
+        console.log("!!! DEBUG: Firestore initialized");
 
         const { uid, email, displayName } = user;
         const emailLower = (email || "").toLowerCase();
+
+        console.log("!!! DEBUG: Loading config...");
         const cfg = loadConfig();
+        console.log("!!! DEBUG: Config loaded");
 
         const defaultEntitlements = {
             canReadBooks: true,
@@ -31,65 +41,34 @@ exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
             canInviteTeam: false,
         };
 
-        const defaultBilling = {
-            planTier: 'free',
-            planLabel: 'Free Explorer',
-            planState: 'inactive',
-            entitlements: defaultEntitlements,
-            latestPaymentId: null,
-        };
-
-        // Determine plan tier (god > early > free)
-        let planTier = 'free';
-        if (cfg.godUsers.has(emailLower) || cfg.godUsers.has(uid)) {
-            planTier = 'god';
-        } else {
-            // Use count aggregation instead of fetching all documents
-            const countSnap = await db.collection('users').count().get();
-            if (countSnap.data().count < 50) {
-                planTier = 'early';
-            }
-        }
-
-        defaultBilling.planTier = planTier;
-        defaultBilling.planLabel =
-            planTier === 'god' ? 'God Tier' : planTier === 'early' ? 'Early Supporter' : 'Free Explorer';
-
-        const newUser = {
-            displayName: displayName || '',
-            displayNameLower: (displayName || '').toLowerCase(),
-            email: email || '',
-            accessibleBookIds: [],
-            accessibleAlbums: [],
-            billing: defaultBilling,
-            quotaCounters: buildInitialQuotaCounters(),
+        const userData = {
+            uid,
+            email: emailLower,
+            displayName: displayName || "",
             createdAt: FieldValue.serverTimestamp(),
-            updatedAt: FieldValue.serverTimestamp(),
+            billing: {
+                planId: "free",
+                planLabel: "Free Plan",
+                planTier: "free",
+                status: "active",
+                currentPeriodEnd: null, // Perpetual for free
+                stripeCustomerId: null,
+                entitlements: defaultEntitlements
+            },
+            quotaCounters: buildInitialQuotaCounters(),
         };
 
-        const userRef = db.collection('users').doc(uid);
-        const doc = await userRef.get();
+        console.log("!!! DEBUG: userData prepared:", JSON.stringify(userData));
 
-        if (doc.exists) {
-            console.log(`⚠️ User document already exists for ${uid}, skipping creation.`);
-            return;
-        }
+        await db.collection("users").doc(uid).set(userData);
 
-        await userRef.set(newUser);
         console.log("!!! ------------------------------------------------- !!!");
-        console.log("!!! Firestore document created successfully for:", uid);
+        console.log(`!!! Firestore document created successfully for: ${uid}`);
         console.log("!!! ------------------------------------------------- !!!");
 
-        try {
-            logger.info(`✅ Successfully created Firestore document for user ${uid}`, { structuredData: true });
-        } catch (e) {
-            console.log("Logger failed but document created.");
-        }
-
+        logger.info(`✅ Successfully created Firestore document for user ${uid}`, { structuredData: true });
     } catch (error) {
-        console.error("!!! ------------------------------------------------- !!!");
-        console.error("!!! CRITICAL ERROR in onUserCreate:", error);
-        console.error("!!! ------------------------------------------------- !!!");
-        logger.error(`❌ Error creating user document for ${user.uid}:`, error);
+        console.error("!!! ERROR in onUserCreate:", error);
+        logger.error(`❌ Error creating user document for ${user.uid}: `, error);
     }
 });

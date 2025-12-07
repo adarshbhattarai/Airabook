@@ -1,9 +1,17 @@
 // functions/utils/limits.js
-// Centralized quota and plan helpers (per-env via functions:config)
-const functions = require("firebase-functions");
 const admin = require("firebase-admin");
-const { HttpsError } = require("firebase-functions/v2/https");
+const functions = require("firebase-functions/v1");
 const { FieldValue } = require("firebase-admin/firestore");
+
+// Create HttpsError compatible with both v1 and v2
+class HttpsError extends Error {
+  constructor(code, message, details) {
+    super(message);
+    this.code = code;
+    this.details = details;
+    this.name = 'HttpsError';
+  }
+}
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -75,6 +83,8 @@ function toMillis(ts) {
   if (ts instanceof Date) return ts.getTime();
   return null;
 }
+
+
 
 function buildInitialQuotaCounters() {
   return {

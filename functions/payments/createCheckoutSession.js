@@ -3,7 +3,10 @@ const logger = require('firebase-functions/logger');
 const Stripe = require('stripe');
 const { paymentService } = require('./paymentService');
 
-// Prefer environment variables; avoid functions.config() (not available in v2)
+// Load local env when running in the emulator
+try { require('dotenv').config(); } catch (_) {}
+
+// Prefer environment variables; avoid functions.config()
 const stripeSecret =
   process.env.STRIPE_SECRET_KEY ||
   process.env.STRIPE_SECRET ||
@@ -18,7 +21,7 @@ const appBaseUrl =
 logger.info('Loading Stripe config...', {
   hasStripeSecret: !!stripeSecret,
   appBaseUrl,
-  envKeys: Object.keys(process.env).filter((k) => k.includes('STRIPE') || k.includes('APP_PUBLIC_URL')),
+  envKeys: Object.keys(process.env).filter((k) => k.startsWith('STRIPE_') || k === 'APP_PUBLIC_URL'),
 });
 
 const stripe = stripeSecret ? new Stripe(stripeSecret, { apiVersion: '2024-06-20' }) : null;
@@ -42,17 +45,15 @@ exports.createCheckoutSession = onCall({ region: 'us-central1' }, async (request
   logger.info('createCheckoutSession called', { 
     hasAuth: !!request.auth,
     hasStripe: !!stripe,
-    configKeys: Object.keys(functionsConfig.stripe || {})
   });
 
   if (!stripe) {
     logger.error('Stripe not initialized', { 
       hasSecret: !!stripeSecret,
-      config: functionsConfig.stripe 
     });
     throw new HttpsError(
       'failed-precondition',
-      'Stripe secret key missing. Configure functions config: stripe.secret_key',
+      'Stripe secret key missing. Set STRIPE_SECRET_KEY (or STRIPE_SECRET/STRIPE_API_KEY) in the environment.',
     );
   }
 
