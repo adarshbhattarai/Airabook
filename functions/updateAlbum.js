@@ -25,7 +25,7 @@ async function deleteCoverImage(coverImageUrl) {
 }
 
 exports.updateAlbum = onCall(
-    { region: "us-central1" },
+    { region: "us-central1", cors: true },
     async (request) => {
         const { data, auth } = request;
 

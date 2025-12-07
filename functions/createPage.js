@@ -18,7 +18,7 @@ const db = admin.firestore();
  * Called from BookDetail.jsx via httpsCallable(functions, 'createPage')
  */
 exports.createPage = onCall(
-    { region: 'us-central1' },
+    { region: 'us-central1', cors: true },
     async (request) => {
         const { data, auth } = request;
         let reservedPageSlot = false;

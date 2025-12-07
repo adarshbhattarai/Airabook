@@ -11,7 +11,8 @@ import { useAuth } from '@/context/AuthContext';
 import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { firestore, storage } from '@/lib/firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { httpsCallable, getFunctions } from 'firebase/functions';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '@/lib/firebase';
 import {
   Dialog,
   DialogContent,
@@ -103,7 +104,6 @@ const AlbumDetail = () => {
   const [updating, setUpdating] = useState(false);
   const fileInputRef = useRef(null);
   const coverInputRef = useRef(null);
-  const functions = getFunctions();
 
   useEffect(() => {
     const fetchAlbum = async () => {

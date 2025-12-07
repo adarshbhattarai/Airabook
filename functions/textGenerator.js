@@ -31,7 +31,7 @@ const db = admin.firestore();
  * - chapterId: string (optional)
  * - pageId: string (optional)
  */
-exports.rewriteNote = onCall({ region: LOCATION }, async (request) => {
+exports.rewriteNote = onCall({ region: LOCATION, cors: true }, async (request) => {
   const { data, auth } = request;
 
   // Require auth

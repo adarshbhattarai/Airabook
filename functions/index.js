@@ -168,7 +168,7 @@ exports.trackMediaUsage = trackMediaUsage;
 exports.untrackMediaUsage = untrackMediaUsage;
 
 // Function to get chapters for a book (hot reload test)
-exports.getBookChapters = onCall({ region: "us-central1" }, async (request) => {
+exports.getBookChapters = onCall({ region: "us-central1", cors: true }, async (request) => {
   const { data, auth } = request;
 
   logger.log("getBookChapters called at:", new Date().toISOString());
@@ -240,7 +240,7 @@ exports.getBookChapters = onCall({ region: "us-central1" }, async (request) => {
 });
 
 // Function to add a new chapter to a book
-exports.addChapter = onCall({ region: "us-central1" }, async (request) => {
+exports.addChapter = onCall({ region: "us-central1", cors: true }, async (request) => {
   const { data, auth } = request;
 
   logger.log("addChapter called at:", new Date().toISOString());
@@ -333,7 +333,7 @@ exports.addChapter = onCall({ region: "us-central1" }, async (request) => {
 });
 
 // Function to add a page summary to a chapter
-exports.addPageSummary = onCall({ region: "us-central1" }, async (request) => {
+exports.addPageSummary = onCall({ region: "us-central1", cors: true }, async (request) => {
   const { data, auth } = request;
 
   logger.log("addPageSummary called at:", new Date().toISOString());

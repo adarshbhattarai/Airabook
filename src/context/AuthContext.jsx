@@ -14,7 +14,6 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import {
-  getFunctions,
   httpsCallable
 } from 'firebase/functions';
 import { auth, firestore, functions } from '@/lib/firebase';

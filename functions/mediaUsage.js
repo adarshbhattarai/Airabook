@@ -11,7 +11,7 @@ const db = admin.firestore();
 /**
  * Track media usage when an asset is attached to a page
  */
-exports.trackMediaUsage = onCall({ region: "us-central1" }, async (request) => {
+exports.trackMediaUsage = onCall({ region: "us-central1", cors: true }, async (request) => {
     const { albumId, storagePath, bookId, chapterId, pageId } = request.data || {};
     const auth = request.auth;
 
@@ -93,7 +93,7 @@ exports.trackMediaUsage = onCall({ region: "us-central1" }, async (request) => {
 /**
  * Untrack media usage when an asset is removed from a page
  */
-exports.untrackMediaUsage = onCall({ region: "us-central1" }, async (request) => {
+exports.untrackMediaUsage = onCall({ region: "us-central1", cors: true }, async (request) => {
     const { albumId, storagePath, bookId, chapterId, pageId } = request.data || {};
     const auth = request.auth;
 

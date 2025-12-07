@@ -16,7 +16,7 @@ const db = admin.firestore();
  * Called from BookDetail.jsx via httpsCallable(functions, 'updatePage')
  */
 exports.updatePage = onCall(
-    { region: 'us-central1' },
+    { region: 'us-central1', cors: true },
     async (request) => {
         const { data, auth } = request;
 

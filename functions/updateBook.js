@@ -40,7 +40,7 @@ async function deleteCoverImage(coverImageUrl) {
  * - users/{userId}/accessibleBookIds
  * - users/{userId}/accessibleAlbums
  */
-exports.updateBook = onCall({ region: "us-central1" }, async (request) => {
+exports.updateBook = onCall({ region: "us-central1", cors: true }, async (request) => {
     const { data, auth } = request;
 
     // Authentication required
