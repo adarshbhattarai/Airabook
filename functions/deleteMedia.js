@@ -10,7 +10,7 @@ if (!admin.apps.length) {
 }
 const db = admin.firestore();
 
-exports.deleteMediaAsset = onCall({ region: "us-central1" }, async (request) => {
+exports.deleteMediaAsset = onCall({ region: "us-central1", cors: true }, async (request) => {
   const { storagePath, bookId } = request.data || {};
   const auth = request.auth;
 
@@ -88,7 +88,7 @@ exports.deleteMediaAsset = onCall({ region: "us-central1" }, async (request) => 
  * - User accessibleAlbums entries
  * - Storage usage
  */
-exports.deleteAlbumAssets = onCall({ region: "us-central1" }, async (request) => {
+exports.deleteAlbumAssets = onCall({ region: "us-central1", cors: true }, async (request) => {
   const { bookId } = request.data || {};
   const auth = request.auth;
 

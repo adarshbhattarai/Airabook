@@ -10,8 +10,9 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/context/AuthContext';
 import AppLoader from '@/components/app/AppLoader';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { httpsCallable } from 'firebase/functions';
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { functions } from '@/lib/firebase';
 
 /**
  * Convert storage URL to emulator format if running in emulator mode
@@ -71,7 +72,6 @@ const AssetRegistry = () => {
   const { user, appUser } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const functions = getFunctions();
   const storage = getStorage(); // Initialize Firebase Storage
 
   useEffect(() => {

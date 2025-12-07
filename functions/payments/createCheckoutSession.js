@@ -41,7 +41,7 @@ const normalizeAmount = (value) => {
   return 0;
 };
 
-exports.createCheckoutSession = onCall({ region: 'us-central1' }, async (request) => {
+exports.createCheckoutSession = onCall({ region: 'us-central1', cors: true }, async (request) => {
   logger.info('createCheckoutSession called', { 
     hasAuth: !!request.auth,
     hasStripe: !!stripe,

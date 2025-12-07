@@ -143,7 +143,7 @@ function validateCreateBookRequest(data) {
  * Called from CreateBook.jsx via httpsCallable(functions, "createBook")
  */
 exports.createBook = onCall(
-  { region: "us-central1" },
+  { region: "us-central1", cors: true },
   async (request) => {
     console.log("=".repeat(80));
     console.log("🔥 createBook function called at:", new Date().toISOString());

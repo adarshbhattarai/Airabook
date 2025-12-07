@@ -18,6 +18,86 @@
     ],
     "rewrites": [
       {
+        "source": "/api/createUserDoc",
+        "function": "createUserDoc"
+      },
+      {
+        "source": "/api/createPage",
+        "function": "createPage"
+      },
+      {
+        "source": "/api/updatePage",
+        "function": "updatePage"
+      },
+      {
+        "source": "/api/createCheckoutSession",
+        "function": "createCheckoutSession"
+      },
+      {
+        "source": "/api/stripeWebhook",
+        "function": "stripeWebhook"
+      },
+      {
+        "source": "/api/uploadMedia",
+        "function": "uploadMedia"
+      },
+      {
+        "source": "/api/deleteMediaAsset",
+        "function": "deleteMediaAsset"
+      },
+      {
+        "source": "/api/deleteAlbumAssets",
+        "function": "deleteAlbumAssets"
+      },
+      {
+        "source": "/api/rewriteNote",
+        "function": "rewriteNote"
+      },
+      {
+        "source": "/api/createBook",
+        "function": "createBook"
+      },
+      {
+        "source": "/api/updateBook",
+        "function": "updateBook"
+      },
+      {
+        "source": "/api/createAlbum",
+        "function": "createAlbum"
+      },
+      {
+        "source": "/api/updateAlbum",
+        "function": "updateAlbum"
+      },
+      {
+        "source": "/api/inviteCoAuthor",
+        "function": "inviteCoAuthor"
+      },
+      {
+        "source": "/api/queryBookFlow",
+        "function": "queryBookFlow"
+      },
+      {
+        "source": "/api/trackMediaUsage",
+        "function": "trackMediaUsage"
+      },
+      {
+        "source": "/api/untrackMediaUsage",
+        "function": "untrackMediaUsage"
+      },
+      {
+        "source": "/api/getBookChapters",
+        "function": "getBookChapters"
+      },
+      {
+        "source": "/api/addChapter",
+        "function": "addChapter"
+      },
+      {
+        "source": "/api/addPageSummary",
+        "function": "addPageSummary"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

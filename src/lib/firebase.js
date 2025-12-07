@@ -27,7 +27,6 @@ const isProduction = currentMode === 'production';
 
 export const firestore = getFirestore(app);
 export const storage = getStorage(app);
-export const functions = getFunctions(app, "us-central1");
 
 // Determine if we should use emulators
 // NEVER use emulators in production mode - always use real Firebase services for deployed apps
@@ -45,6 +44,28 @@ if (!isProduction) {
   }
 }
 // In production mode, useEmulator is always false - use real Firebase services
+
+// Configure functions instance
+// For callable functions, we need to explicitly use the hosting domain when deployed
+// to avoid CORS issues. The SDK will use the current origin when on Firebase Hosting.
+let functions;
+if (typeof window !== 'undefined' && !useEmulator) {
+  const hostname = window.location.hostname;
+  // Check if we're on a Firebase Hosting domain
+  if (hostname.includes('.web.app') || hostname.includes('.firebaseapp.com')) {
+    // Use the hosting domain explicitly - this makes callable functions use the same origin
+    // The SDK will automatically route through the hosting domain
+    functions = getFunctions(app, "us-central1", hostname);
+  } else {
+    // Development or other domains - use default
+    functions = getFunctions(app, "us-central1");
+  }
+} else {
+  // Emulator or SSR - use default
+  functions = getFunctions(app, "us-central1");
+}
+
+export { functions };
 
 console.log("🔧 Firebase config check:");
 console.log("📍 Mode:", currentMode);

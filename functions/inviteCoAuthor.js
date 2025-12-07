@@ -19,7 +19,7 @@ const FieldValue = admin.firestore.FieldValue;
  * - email: string (optional; for email lookup)
  * - username: string (optional; for username lookup; matches displayNameLower)
  */
-exports.inviteCoAuthor = onCall({ region: "us-central1" }, async (request) => {
+exports.inviteCoAuthor = onCall({ region: "us-central1", cors: true }, async (request) => {
   const { data, auth } = request;
 
   // Authentication required

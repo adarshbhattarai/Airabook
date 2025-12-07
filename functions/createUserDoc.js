@@ -12,7 +12,7 @@ const { buildInitialQuotaCounters, loadConfig } = require("./utils/limits");
  * Designed to be called from the frontend immediately after authentication.
  */
 exports.createUserDoc = onCall(
-    { region: "us-central1" },
+    { region: "us-central1", cors: true },
     async (request) => {
         // 1. Authenticate Request
         if (!request.auth) {

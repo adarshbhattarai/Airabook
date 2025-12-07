@@ -4,7 +4,7 @@ const admin = require("firebase-admin");
 const FieldValue = require("firebase-admin/firestore").FieldValue;
 
 exports.createAlbum = onCall(
-    { region: "us-central1" },
+    { region: "us-central1", cors: true },
     async (request) => {
         const { data, auth } = request;
 
