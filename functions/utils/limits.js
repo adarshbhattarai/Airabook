@@ -1,9 +1,17 @@
 // functions/utils/limits.js
-// Centralized quota and plan helpers (per-env via functions:config)
-const functions = require("firebase-functions");
 const admin = require("firebase-admin");
-const { HttpsError } = require("firebase-functions/v2/https");
+const functions = require("firebase-functions/v1");
 const { FieldValue } = require("firebase-admin/firestore");
+
+// Create HttpsError compatible with both v1 and v2
+class HttpsError extends Error {
+  constructor(code, message, details) {
+    super(message);
+    this.code = code;
+    this.details = details;
+    this.name = 'HttpsError';
+  }
+}
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -19,6 +27,7 @@ const parseNumber = (value, fallback) => {
 };
 
 const parseList = (val) => {
+  if (!val) return [];
   if (Array.isArray(val)) return val.map((v) => String(v).toLowerCase());
   if (typeof val === "string") {
     return val
@@ -30,29 +39,31 @@ const parseList = (val) => {
 };
 
 function loadConfig() {
-  let cfg = {};
-  try {
-    if (typeof functions.config === "function") {
-      cfg = functions.config() || {};
-    }
-  } catch (e) {
-    cfg = {};
-  }
-  const plansCfg = cfg.plans || {};
-  const toPlan = (key) => ({
-    apiCalls: parseNumber(plansCfg[key]?.api_calls, defaultPlans[key].apiCalls),
-    storageMb: parseNumber(plansCfg[key]?.storage_mb, defaultPlans[key].storageMb),
-    books: parseNumber(plansCfg[key]?.books, defaultPlans[key].books),
-    pages: parseNumber(plansCfg[key]?.pages, defaultPlans[key].pages),
-  });
+  // Use process.env directly instead of functions.config()
+  const plans = {
+    free: {
+      apiCalls: parseNumber(process.env.PLAN_FREE_API_CALLS, defaultPlans.free.apiCalls),
+      storageMb: parseNumber(process.env.PLAN_FREE_STORAGE_MB, defaultPlans.free.storageMb),
+      books: parseNumber(process.env.PLAN_FREE_BOOKS, defaultPlans.free.books),
+      pages: parseNumber(process.env.PLAN_FREE_PAGES, defaultPlans.free.pages),
+    },
+    early: {
+      apiCalls: parseNumber(process.env.PLAN_EARLY_API_CALLS, defaultPlans.early.apiCalls),
+      storageMb: parseNumber(process.env.PLAN_EARLY_STORAGE_MB, defaultPlans.early.storageMb),
+      books: parseNumber(process.env.PLAN_EARLY_BOOKS, defaultPlans.early.books),
+      pages: parseNumber(process.env.PLAN_EARLY_PAGES, defaultPlans.early.pages),
+    },
+    god: {
+      apiCalls: parseNumber(process.env.PLAN_GOD_API_CALLS, defaultPlans.god.apiCalls),
+      storageMb: parseNumber(process.env.PLAN_GOD_STORAGE_MB, defaultPlans.god.storageMb),
+      books: parseNumber(process.env.PLAN_GOD_BOOKS, defaultPlans.god.books),
+      pages: parseNumber(process.env.PLAN_GOD_PAGES, defaultPlans.god.pages),
+    },
+  };
 
   return {
-    plans: {
-      free: toPlan("free"),
-      early: toPlan("early"),
-      god: toPlan("god"),
-    },
-    godUsers: new Set(parseList(cfg.limits?.god_users)),
+    plans,
+    godUsers: new Set(parseList(process.env.GOD_USERS)),
   };
 }
 
@@ -72,6 +83,8 @@ function toMillis(ts) {
   if (ts instanceof Date) return ts.getTime();
   return null;
 }
+
+
 
 function buildInitialQuotaCounters() {
   return {

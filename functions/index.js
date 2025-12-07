@@ -1,3 +1,32 @@
+// Disable noisy GCP residency checks in local emulators (sandboxed network)
+if (process.env.FUNCTIONS_EMULATOR === "true" || process.env.FIRESTORE_EMULATOR_HOST) {
+  process.env.GOOGLE_CLOUD_DISABLE_GCP_RESIDENCY_CHECK = "true";
+}
+
+// Guard against accidental calls to functions.config() (removed in v7) by stubbing it
+try {
+  const functionsV1 = require("firebase-functions/v1");
+  // Force overwrite of config
+  functionsV1.config = () => {
+    console.warn("functions.config() called (stubbed)");
+    return {};
+  };
+  console.log("✅ functions.config() stubbed successfully");
+} catch (e) {
+  console.warn("Failed to stub functions.config:", e?.message);
+}
+
+// Log uncaught errors early so emulator crashes show a stack trace
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception in functions runtime:", err?.stack || err);
+  throw err;
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled rejection in functions runtime:", reason?.stack || reason);
+  throw reason;
+});
+
 const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
@@ -94,10 +123,11 @@ const { onMediaUpload, onMediaDelete } = require("./mediaProcessor");
 const { inviteCoAuthor } = require("./inviteCoAuthor");
 const { createCheckoutSession } = require("./payments/createCheckoutSession");
 const { stripeWebhook } = require("./payments/stripeWebhook");
-const { searchAgent } = require("./agent");
+
 const { createPage } = require("./createPage");
 const { updatePage } = require("./updatePage");
 const { onUserCreate } = require("./onUserCreate");
+const { queryBookFlow } = require("./genkit");
 const { onBookDeleted, onPageDeleted, onChapterDeleted } = require("./usageTriggers");
 const { deleteMediaAsset, deleteAlbumAssets } = require("./deleteMedia");
 const { trackMediaUsage, untrackMediaUsage } = require("./mediaUsage");
@@ -117,9 +147,10 @@ exports.onMediaDelete = onMediaDelete;
 exports.inviteCoAuthor = inviteCoAuthor;
 exports.createCheckoutSession = createCheckoutSession;
 exports.stripeWebhook = stripeWebhook;
-exports.searchAgent = searchAgent;
+
 exports.createPage = createPage;
 exports.updatePage = updatePage;
+exports.queryBookFlow = queryBookFlow;
 exports.onUserCreate = onUserCreate;
 exports.onBookDeleted = onBookDeleted;
 exports.onPageDeleted = onPageDeleted;
