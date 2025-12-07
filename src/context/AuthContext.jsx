@@ -13,7 +13,11 @@ import {
   signInWithPopup,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
-import { auth, firestore } from '@/lib/firebase';
+import {
+  getFunctions,
+  httpsCallable
+} from 'firebase/functions';
+import { auth, firestore, functions } from '@/lib/firebase';
 import { useToast } from '@/components/ui/use-toast';
 
 const defaultEntitlements = {
@@ -123,10 +127,14 @@ export const AuthProvider = ({ children }) => {
       console.log("📧 Verification email sent to:", email);
 
       console.log("✅ Signup successful, user created:", userCredential.user.uid);
-      console.log("⏳ Waiting for backend trigger to create Firestore document...");
+
+      // Call the callable function to create the user document immediately
+      console.log("📞 Calling createUserDoc function...");
+      const createUserDoc = httpsCallable(functions, 'createUserDoc');
+      await createUserDoc();
+      console.log("✅ User document creation requested.");
 
       // The onAuthStateChanged listener will handle the rest
-      // It has retry logic to wait for the backend trigger to finish
 
     } catch (error) {
       console.error("❌ Error during signup:", error);
@@ -149,9 +157,13 @@ export const AuthProvider = ({ children }) => {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
 
-      // Backend handles user creation via triggers.
-      // We just wait for the auth state listener to pick up the new user doc.
       console.log("Google Sign-In successful for:", user.uid);
+
+      // Call the callable function to ensure user document exists (idempotent)
+      console.log("📞 Calling createUserDoc function...");
+      const createUserDoc = httpsCallable(functions, 'createUserDoc');
+      await createUserDoc();
+      console.log("✅ User document creation requested.");
     } catch (error) {
       console.error("Error during Google sign-in:", error);
       toast({

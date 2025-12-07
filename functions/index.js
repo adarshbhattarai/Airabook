@@ -34,6 +34,9 @@ const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
 const FieldValue = require("firebase-admin/firestore").FieldValue;
 
+// Import Gen 1 functions FIRST to avoid global config pollution from V2/Genkit
+// const { onUserCreate } = require("./onUserCreate");
+
 // --- UTILITY FOR FRACTIONAL INDEXING ---
 const getMidpointString = (prev = '', next = '') => {
   const alphabet = 'abcdefghijklmnopqrstuvwxyz';
@@ -126,15 +129,15 @@ const { onMediaUpload, onMediaDelete } = require("./mediaProcessor");
 const { inviteCoAuthor } = require("./inviteCoAuthor");
 const { createCheckoutSession } = require("./payments/createCheckoutSession");
 const { stripeWebhook } = require("./payments/stripeWebhook");
-
 const { createPage } = require("./createPage");
 const { updatePage } = require("./updatePage");
-const { onUserCreate } = require("./onUserCreate");
 const { queryBookFlow } = require("./genkit");
 const { onBookDeleted, onPageDeleted, onChapterDeleted } = require("./usageTriggers");
 const { deleteMediaAsset, deleteAlbumAssets } = require("./deleteMedia");
 const { trackMediaUsage, untrackMediaUsage } = require("./mediaUsage");
+const { createUserDoc } = require("./createUserDoc");
 
+exports.createUserDoc = createUserDoc;
 exports.helloWorld = onRequest({ region: "us-central1" }, (request, response) => {
   logger.info("Hello logs!", { structuredData: true });
   response.send("Hello from Firebase!");
@@ -154,7 +157,7 @@ exports.stripeWebhook = stripeWebhook;
 exports.createPage = createPage;
 exports.updatePage = updatePage;
 exports.queryBookFlow = queryBookFlow;
-exports.onUserCreate = onUserCreate;
+exports.createUserDoc = createUserDoc;
 exports.onBookDeleted = onBookDeleted;
 exports.onPageDeleted = onPageDeleted;
 exports.onChapterDeleted = onChapterDeleted;
