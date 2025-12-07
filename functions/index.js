@@ -5,18 +5,18 @@ if (isEmulator) {
   process.env.GOOGLE_CLOUD_DISABLE_GCP_RESIDENCY_CHECK = "true";
 }
 
-// Guard against accidental calls to functions.config() (removed in v7) by stubbing it
-try {
-  const functionsV1 = require("firebase-functions/v1");
-  // Force overwrite of config
-  functionsV1.config = () => {
-    console.warn("functions.config() called (stubbed)");
-    return {};
-  };
-  console.log("✅ functions.config() stubbed successfully");
-} catch (e) {
-  console.warn("Failed to stub functions.config:", e?.message);
-}
+// // Guard against accidental calls to functions.config() (removed in v7) by stubbing it
+// try {
+//   const functionsV1 = require("firebase-functions/v1");
+//   // Force overwrite of config
+//   functionsV1.config = () => {
+//     console.warn("functions.config() called (stubbed)");
+//     return {};
+//   };
+//   console.log("✅ functions.config() stubbed successfully");
+// } catch (e) {
+//   console.warn("Failed to stub functions.config:", e?.message);
+// }
 
 // Log uncaught errors early so emulator crashes show a stack trace
 process.on("uncaughtException", (err) => {
@@ -67,7 +67,6 @@ const STORAGE_BUCKET = process.env.FIREBASE_STORAGE_BUCKET || `${PROJECT_ID}.fir
 console.log(`🔧 Initializing Firebase Admin for project: ${PROJECT_ID}`);
 console.log(`📦 Storage bucket: ${STORAGE_BUCKET}`);
 
-console.log(`📦 Storage bucket: ${storageEmulatorBucket}`);
 // Initialize Firebase Admin (only if not already initialized)
 if (!admin.apps.length) {
   const runningInEmulator = process.env.FUNCTIONS_EMULATOR === 'true' || process.env.FIREBASE_AUTH_EMULATOR_HOST;
