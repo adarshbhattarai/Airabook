@@ -4,9 +4,12 @@ const FieldValue = require("firebase-admin/firestore").FieldValue;
 const { addStorageUsage } = require("./utils/limits");
 const { deleteMediaInternal } = require("./utils/deleteMediaInternal");
 
+const isEmulator = process.env.FUNCTIONS_EMULATOR === "true" || process.env.FIRESTORE_EMULATOR_HOST;
+
 // Project and bucket identifiers for trigger configuration
 const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || "airabook-dev";
-const STORAGE_BUCKET = process.env.FIREBASE_STORAGE_BUCKET || `${PROJECT_ID}.firebasestorage.app`;
+const STORAGE_BUCKET =
+  isEmulator ? "demo-project.appspot.com" : process.env.FIREBASE_STORAGE_BUCKET || `${PROJECT_ID}.firebasestorage.app`;
 
 
 // Ensure Firebase Admin is initialized (may be initialized by index.js)
