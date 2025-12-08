@@ -22,6 +22,10 @@
         "function": "createUserDoc"
       },
       {
+        "source": "/createUserDoc",
+        "function": "createUserDoc"
+      },
+      {
         "source": "/api/createPage",
         "function": "createPage"
       },
@@ -75,6 +79,10 @@
       },
       {
         "source": "/api/queryBookFlow",
+        "function": "queryBookFlow"
+      },
+      {
+        "source": "/queryBookFlow",
         "function": "queryBookFlow"
       },
       {
