@@ -1,12 +1,24 @@
 // functions/utils/aiClient.js
-// Centralized AI client initialization and utilities
+// Centralized AI client initialization and utilities (lazy-loaded to keep cold-start fast)
 
-const OpenAI = (() => { try { return require('openai'); } catch (e) { return null; } })();
+// Disable Genkit telemetry during function discovery to avoid extra network during cold start
+if (!process.env.GENKIT_DISABLE_TELEMETRY) {
+  process.env.GENKIT_DISABLE_TELEMETRY = 'true';
+}
+
+const OpenAI = (() => {
+  try {
+    return require('openai');
+  } catch (e) {
+    return null;
+  }
+})();
+
 const VertexAI = (() => {
   try {
     return require('@google-cloud/vertexai').VertexAI;
   } catch (e) {
-    console.warn('⚠️ @google-cloud/vertexai not available:', e?.message);
+    console.warn('ƒsÿ‹,? @google-cloud/vertexai not available:', e?.message);
     return null;
   }
 })();
@@ -16,13 +28,17 @@ const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'air
 const LOCATION = 'us-central1';
 const MODEL_NAME = 'gemini-2.5-flash';
 
-console.log(`🤖 AI Client initialized for project: ${PROJECT_ID}`);
+console.log(`dY- AI Client initialized for project: ${PROJECT_ID}`);
 
-// Initialize Vertex AI (wrap in try-catch to prevent module load errors)
 let vertex = null;
 let generativeModel = null;
+let openai = null;
 
-if (VertexAI) {
+// Lazy init helpers keep module load quick and retry-friendly in cloud deploy discovery
+const initVertex = () => {
+  if (generativeModel || !VertexAI) {
+    return generativeModel;
+  }
   try {
     vertex = new VertexAI({ project: PROJECT_ID, location: LOCATION });
     generativeModel = vertex.getGenerativeModel({
@@ -34,35 +50,39 @@ if (VertexAI) {
         topK: 40,
       },
     });
-    console.log('✅ Vertex AI initialized');
+    console.log('ƒo. Vertex AI initialized');
   } catch (e) {
-    console.warn('⚠️ Vertex AI initialization failed:', e?.message);
+    console.warn('ƒsÿ‹,? Vertex AI initialization failed:', e?.message);
     vertex = null;
     generativeModel = null;
   }
-} else {
-  console.warn('⚠️ Vertex AI not available - @google-cloud/vertexai package not found');
-}
+  return generativeModel;
+};
 
-// Initialize OpenAI client if key is present
-let openai = null;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-if (OPENAI_API_KEY && OpenAI) {
+const initOpenAI = () => {
+  if (openai || !OpenAI) {
+    return openai;
+  }
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+  if (!OPENAI_API_KEY) {
+    return null;
+  }
   try {
     openai = new OpenAI({ apiKey: OPENAI_API_KEY });
-    console.log('✅ OpenAI client initialized');
+    console.log('ƒo. OpenAI client initialized');
   } catch (e) {
-    console.warn('⚠️ OpenAI initialization failed:', e?.message);
+    console.warn('ƒsÿ‹,? OpenAI initialization failed:', e?.message);
     openai = null;
   }
-}
+  return openai;
+};
 
 /**
  * Get the active AI client
  * @returns {Object|null} OpenAI client or null
  */
 function getOpenAIClient() {
-  return openai;
+  return initOpenAI();
 }
 
 /**
@@ -70,7 +90,7 @@ function getOpenAIClient() {
  * @returns {Object} Vertex AI generative model
  */
 function getVertexAIModel() {
-  return generativeModel;
+  return initVertex();
 }
 
 /**
@@ -80,7 +100,8 @@ function getVertexAIModel() {
  * @returns {Promise<string>} The generated text
  */
 async function callOpenAI(prompt, options = {}) {
-  if (!openai) {
+  const client = initOpenAI();
+  if (!client) {
     throw new Error('OpenAI client not initialized');
   }
 
@@ -88,7 +109,7 @@ async function callOpenAI(prompt, options = {}) {
   const maxTokens = options.maxTokens || 1024;
   const temperature = options.temperature || 0.7;
 
-  const response = await openai.chat.completions.create({
+  const response = await client.chat.completions.create({
     model,
     messages: [{ role: 'user', content: prompt }],
     max_tokens: maxTokens,
@@ -105,14 +126,15 @@ async function callOpenAI(prompt, options = {}) {
  * @returns {Promise<string>} The generated text
  */
 async function callVertexAI(prompt, options = {}) {
-  if (!generativeModel) {
+  const model = initVertex();
+  if (!model) {
     throw new Error('Vertex AI not initialized');
   }
 
   const maxTokens = options.maxTokens || 1024;
   const temperature = options.temperature || 0.7;
 
-  const response = await generativeModel.generateContent({
+  const response = await model.generateContent({
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     generationConfig: {
       maxOutputTokens: maxTokens,
@@ -130,15 +152,19 @@ async function callVertexAI(prompt, options = {}) {
  * @returns {Promise<string>} The generated text
  */
 async function callAI(prompt, options = {}) {
-  if (openai) {
-    console.log('🤖 Using OpenAI');
+  const client = initOpenAI();
+  if (client) {
+    console.log('dY- Using OpenAI');
     return await callOpenAI(prompt, options);
-  } else if (generativeModel) {
-    console.log('🤖 Using Vertex AI');
-    return await callVertexAI(prompt, options);
-  } else {
-    throw new Error('No AI client available. Please configure OpenAI API key or Vertex AI credentials.');
   }
+
+  const model = initVertex();
+  if (model) {
+    console.log('dY- Using Vertex AI');
+    return await callVertexAI(prompt, options);
+  }
+
+  throw new Error('No AI client available. Please configure OpenAI API key or Vertex AI credentials.');
 }
 
 module.exports = {
@@ -150,4 +176,3 @@ module.exports = {
   openai,
   generativeModel,
 };
-
