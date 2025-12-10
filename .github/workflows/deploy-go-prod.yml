@@ -1,0 +1,84 @@
+name: Manual Deploy to GO / PROD
+
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - go
+          - prod
+      ref:
+        description: "Git ref (branch or tag) to deploy from (e.g. release, release-1.0.0)"
+        required: true
+        default: "release"
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      TARGET_ENV: ${{ github.event.inputs.env }}
+      TARGET_REF: ${{ github.event.inputs.ref }}
+
+    steps:
+      - name: Show deployment plan
+        run: |
+          echo "Deploying ref '${TARGET_REF}' to environment '${TARGET_ENV}'"
+
+      - name: Checkout ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_REF }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # If you need a .env for GO / PROD builds, we can add it here later
+      # - name: Create .env for GO/PROD
+      #   run: |
+      #     if [ "${TARGET_ENV}" = "go" ]; then
+      #       echo "VITE_API_KEY=${{ secrets.VITE_API_KEY_GO }}" >> .env
+      #       echo "VITE_ENV=go" >> .env
+      #     else
+      #       echo "VITE_API_KEY=${{ secrets.VITE_API_KEY_PROD }}" >> .env
+      #       echo "VITE_ENV=prod" >> .env
+      #     fi
+
+      - name: Install Firebase CLI, root deps & build frontend
+        run: |
+          npm install -g firebase-tools
+          npm ci
+          npm run build   # builds to dist/ (matches hosting.public in firebase.json)
+
+      - name: Install functions deps & build
+        working-directory: functions
+        run: |
+          npm ci
+          npm run build --if-present
+
+      - name: Prepare Firebase service account for target env
+        run: |
+          if [ "${TARGET_ENV}" = "go" ]; then
+            echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_GO }}' > $GITHUB_WORKSPACE/firebase-sa.json
+          else
+            echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_PROD }}' > $GITHUB_WORKSPACE/firebase-sa.json
+          fi
+        shell: bash
+
+      - name: Deploy to GO / PROD
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/firebase-sa.json
+        run: |
+          if [ "${TARGET_ENV}" = "go" ]; then
+            echo "Deploying to Firebase alias 'go' (airabook-21bf5)"
+            firebase deploy --project go
+          else
+            echo "Deploying to Firebase alias 'prod' (airabook-prod)"
+            firebase deploy --project prod
+          fi
