@@ -130,13 +130,13 @@ const { createCheckoutSession } = require("./payments/createCheckoutSession");
 const { stripeWebhook } = require("./payments/stripeWebhook");
 const { createPage } = require("./createPage");
 const { updatePage } = require("./updatePage");
+const { updateAlbum } = require("./updateAlbum");
 const { queryBookFlow } = require("./genkit");
 const { onBookDeleted, onPageDeleted, onChapterDeleted } = require("./usageTriggers");
 const { deleteMediaAsset, deleteAlbumAssets } = require("./deleteMedia");
 const { trackMediaUsage, untrackMediaUsage } = require("./mediaUsage");
 const { createUserDoc } = require("./createUserDoc");
 
-exports.createUserDoc = createUserDoc;
 exports.helloWorld = onRequest({ region: "us-central1" }, (request, response) => {
   logger.info("Hello logs!", { structuredData: true });
   response.send("Hello from Firebase!");
@@ -162,7 +162,6 @@ exports.onPageDeleted = onPageDeleted;
 exports.onChapterDeleted = onChapterDeleted;
 exports.deleteMediaAsset = deleteMediaAsset;
 exports.deleteAlbumAssets = deleteAlbumAssets;
-const { updateAlbum } = require("./updateAlbum");
 exports.updateAlbum = updateAlbum;
 exports.trackMediaUsage = trackMediaUsage;
 exports.untrackMediaUsage = untrackMediaUsage;
