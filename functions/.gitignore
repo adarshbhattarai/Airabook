@@ -7,7 +7,11 @@ node_modules/
 test.js
 
 .env
-
+.env.dev
+.env.prod
+.env.dev2
+.env.go
+.env.qa
 # Runtime config with actual secrets (DO NOT COMMIT)
 .runtimeconfig.json
 

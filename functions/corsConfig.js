@@ -15,6 +15,8 @@ const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
 // Construct the allowed origins list for Production
 const allowedOrigins = [
     // Regex for main domains and subdomains
+    airabook.com,
+    airabhattarai.com,
     /\.airabook\.com$/,       // Matches airabook.com, go.airabook.com, www.airabook.com
     /\.airabhattarai\.com$/,  // Matches airabhattarai.com, etc.
 ];
