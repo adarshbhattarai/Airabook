@@ -145,6 +145,33 @@ All functions use `admin.firestore()` without specifying a database ID, which au
 
 ---
 
+## 🔒 Deployment & Permissions (403/CORS)
+
+### Issue: 403 Forbidden / CORS Error on New Environments
+If you see `403` or `CORS` errors on a new environment (e.g., `qa`, `go`) but not on `dev`, it's because **Gen 2 Functions are private by default**.
+
+### Fix 1: Code Configuration
+We added `invoker: 'public'` to our function definitions:
+```javascript
+exports.myFunc = onCall({ invoker: 'public', ... }, ...);
+```
+
+### Fix 2: Manual Cloud Run Policy Override
+If the error persists after deployment, the IAM policy might not have updated. Fix it with `gcloud`:
+
+```bash
+# Example for 'createUserDoc' function on 'airabook-qa' project
+gcloud run services add-iam-policy-binding createuserdoc \
+  --region=us-central1 \
+  --project=airabook-qa \
+  --member=allUsers \
+  --role=roles/run.invoker
+```
+
+See `.agent/workflows/troubleshoot_cloud_run_permissions.md` for a full guide.
+
+---
+
 ## 📚 Learn More
 
 - Full debugging guide: See `FUNCTIONS_DEBUG_GUIDE.md` in project root
