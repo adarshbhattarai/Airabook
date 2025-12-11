@@ -33,12 +33,26 @@ jobs:
       - name: Install Firebase tools
         run: npm install -g firebase-tools
 
-      # 🧩 Functions deps (this was missing)
+      # 🔑 Create functions .env from environment secrets/vars
+      - name: Create functions .env
+        working-directory: functions
+        run: |
+          cat << EOF > .env
+          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          STRIPE_SECRET_KEY=${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET=${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          GCP_PROJECT_REGION=${{ vars.GCP_PROJECT_REGION }}
+          OPENAI_MODEL=${{ vars.OPENAI_MODEL }}
+          STRIPE_PUBLIC_URL=${{ vars.STRIPE_PUBLIC_URL }}
+          EOF
+
+      # Install functions deps
       - name: Install functions dependencies
         working-directory: functions
         run: npm install
 
-      # If you have a build step for functions (e.g. TypeScript), keep this
+      # Build functions (if you have a build script)
       - name: Build functions (if applicable)
         working-directory: functions
         run: |
