@@ -4,7 +4,7 @@ const Stripe = require('stripe');
 const { paymentService } = require('./paymentService');
 
 // Load local env when running in the emulator
-try { require('dotenv').config(); } catch (_) {}
+try { require('dotenv').config(); } catch (_) { }
 
 // Prefer environment variables; avoid functions.config()
 const stripeSecret =
@@ -12,10 +12,10 @@ const stripeSecret =
   process.env.STRIPE_SECRET ||
   process.env.STRIPE_API_KEY ||
   null;
+
+
 const appBaseUrl =
-  process.env.APP_PUBLIC_URL ||
-  process.env.PUBLIC_URL ||
-  process.env.BASE_URL ||
+  process.env.STRIPE_PUBLIC_URL ||
   'http://localhost:5173';
 
 logger.info('Loading Stripe config...', {
@@ -42,13 +42,13 @@ const normalizeAmount = (value) => {
 };
 
 exports.createCheckoutSession = onCall({ region: 'us-central1', cors: true }, async (request) => {
-  logger.info('createCheckoutSession called', { 
+  logger.info('createCheckoutSession called', {
     hasAuth: !!request.auth,
     hasStripe: !!stripe,
   });
 
   if (!stripe) {
-    logger.error('Stripe not initialized', { 
+    logger.error('Stripe not initialized', {
       hasSecret: !!stripeSecret,
     });
     throw new HttpsError(
@@ -128,8 +128,8 @@ exports.createCheckoutSession = onCall({ region: 'us-central1', cors: true }, as
     logger.info(`Checkout session created successfully`, { paymentId, sessionId: session.id });
 
     // Return both sessionId and the full checkout URL for fallback redirect
-    return { 
-      sessionId: session.id, 
+    return {
+      sessionId: session.id,
       paymentId,
       checkoutUrl: session.url  // Include the full Stripe checkout URL
     };
