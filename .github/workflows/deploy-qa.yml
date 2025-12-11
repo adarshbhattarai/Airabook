@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - release
+      - release-*
   workflow_dispatch:
 
 jobs:
@@ -21,21 +22,51 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install dependencies
+      # Root deps (Vite app, etc.)
+      - name: Install root dependencies
         run: npm install
 
-      - name: Create frontend .env file (QA)
+      # Frontend env for QA
+      - name: Create .env.qa for frontend
         run: echo "${{ vars.ENV_FILE_FRONTEND_QA }}" > .env.qa
 
-      - name: Write Firebase service account JSON
-        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_QA }}' > firebase-sa.json
-
+      # Install Firebase CLI
       - name: Install Firebase tools
         run: npm install -g firebase-tools
 
+      # 🔑 Functions .env from QA environment secrets/vars
+      - name: Create functions .env
+        working-directory: functions
+        run: |
+          cat << EOF > .env
+          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          STRIPE_SECRET_KEY=${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET=${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          GCP_PROJECT_REGION=${{ vars.GCP_PROJECT_REGION }}
+          OPENAI_MODEL=${{ vars.OPENAI_MODEL }}
+          STRIPE_PUBLIC_URL=${{ vars.STRIPE_PUBLIC_URL }}
+          EOF
+
+      # Optional: build functions if you ever add a build script
+      - name: Build functions (if applicable)
+        working-directory: functions
+        run: |
+          if npm run | grep -q " build"; then
+            npm run build
+          else
+            echo "No functions build script, skipping"
+          fi
+
+      # Build frontend
       - name: Build FE (QA)
         run: npm run build:qa
 
+      # Service account JSON (QA)
+      - name: Write Firebase service account JSON
+        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_QA }}' > firebase-sa.json
+
+      # Deploy
       - name: Firebase Deploy (QA)
         run: firebase deploy --project qa
         env:
