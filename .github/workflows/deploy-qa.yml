@@ -48,7 +48,12 @@ jobs:
           STRIPE_PUBLIC_URL=${{ vars.STRIPE_PUBLIC_URL }}
           EOF
 
-      # Optional: build functions if you ever add a build script
+      # ✅ Functions deps
+      - name: Install functions dependencies
+        working-directory: functions
+        run: npm install
+
+      # Optional: build functions
       - name: Build functions (if applicable)
         working-directory: functions
         run: |
