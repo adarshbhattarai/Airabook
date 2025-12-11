@@ -168,6 +168,39 @@ gcloud run services add-iam-policy-binding createuserdoc \
   --role=roles/run.invoker
 ```
 
+Shortcut to fix every callable in an environment (uses the `deployment-callable=true` label Firebase adds to `onCall` Gen 2 functions):
+
+```bash
+PROJECT=airabook-qa
+REGION=us-central1
+
+for svc in $(gcloud run services list \
+  --platform=managed \
+  --region=$REGION \
+  --project=$PROJECT \
+  --format='value(metadata.name)' \
+  --filter='metadata.labels.deployment-callable=true'); do
+
+  echo "Granting allUsers invoker on $svc..."
+  gcloud run services add-iam-policy-binding "$svc" \
+    --region=$REGION \
+    --member="allUsers" \
+    --role="roles/run.invoker" \
+    --project=$PROJECT
+done
+```
+
+To double-check a specific callable’s IAM (e.g., when seeing CORS/403 on a higher environment):
+
+```bash
+gcloud run services get-iam-policy querybookflow \
+  --region=us-central1 \
+  --project=airabook-qa \
+  --format=json
+```
+
+Confirm `roles/run.invoker` includes `allUsers`. If not, rerun the loop above for that environment.
+
 See `.agent/workflows/troubleshoot_cloud_run_permissions.md` for a full guide.
 
 ---
