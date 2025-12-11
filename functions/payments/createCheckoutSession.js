@@ -9,13 +9,8 @@ try { require('dotenv').config(); } catch (_) { }
 // Prefer environment variables; avoid functions.config()
 const stripeSecret =
   process.env.STRIPE_SECRET_KEY ||
-  process.env.STRIPE_SECRET ||
-  process.env.STRIPE_API_KEY ||
   null;
 const appBaseUrl =
-  process.env.APP_PUBLIC_URL ||
-  process.env.PUBLIC_URL ||
-  process.env.BASE_URL ||
   process.env.STRIPE_PUBLIC_URL ||
   'http://localhost:5173';
 
