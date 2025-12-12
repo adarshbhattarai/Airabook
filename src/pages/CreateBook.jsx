@@ -55,7 +55,7 @@ const CreateBook = () => {
     console.log("👤 User:", user ? user.uid : "No user");
     console.log("📝 Book title:", title);
     console.log("🔧 Creation type:", creationType);
-    
+
     if (!title.trim()) {
       toast({ title: "Error", description: "Book title cannot be empty.", variant: "destructive" });
       return;
@@ -66,15 +66,15 @@ const CreateBook = () => {
       toast({ title: "Error", description: "Please provide a prompt or disable prompt mode.", variant: "destructive" });
       return;
     }
-    
+
     if (creationType === 0 && promptMode && prompt.length > 500) {
       toast({ title: "Error", description: "Prompt cannot exceed 500 characters.", variant: "destructive" });
       return;
     }
-    
+
     if (!user) {
-        toast({ title: "Error", description: "You must be logged in to create a book.", variant: "destructive" });
-        return;
+      toast({ title: "Error", description: "You must be logged in to create a book.", variant: "destructive" });
+      return;
     }
 
     setLoading(true);
@@ -83,12 +83,12 @@ const CreateBook = () => {
       console.log("📞 CreateBook: Calling Firebase function...");
       console.log("🔧 Functions instance:", functions);
       console.log("🌐 Functions region:", functions.app.options.region);
-      
+
       // Debug: Check current user and token
       console.log("🔐 Current Firebase User:", auth.currentUser);
       console.log("🔐 User UID:", auth.currentUser?.uid);
       console.log("🔐 User Email:", auth.currentUser?.email);
-      
+
       // Force refresh the ID token
       const idToken = await auth.currentUser.getIdToken(true);
       console.log("🎫 Fresh ID Token obtained:", idToken ? "Token exists" : "No token");
@@ -98,7 +98,7 @@ const CreateBook = () => {
       if (coverImageFile) {
         try {
           const filename = `${Date.now()}_${coverImageFile.name}`;
-          const storageRef = ref(storage, `users/${user.uid}/covers/${filename}`);
+          const storageRef = ref(storage, `${user.uid}/covers/${filename}`);
           console.log("📤 Uploading cover image...");
           const snapshot = await uploadBytes(storageRef, coverImageFile);
           coverImageUrl = await getDownloadURL(snapshot.ref);
@@ -109,10 +109,10 @@ const CreateBook = () => {
           // Continue without cover image
         }
       }
-      
+
       const createBookFunction = httpsCallable(functions, 'createBook');
       console.log("✅ CreateBook: Function reference created");
-      
+
       const payload = {
         title: title,
         subtitle: subtitle.trim() || undefined,
@@ -122,7 +122,7 @@ const CreateBook = () => {
         coverImageUrl: coverImageUrl,
       };
       console.log("📦 CreateBook: Payload:", payload);
-      
+
       const functionStartTime = performance.now();
       const result = await createBookFunction(payload);
       const functionEndTime = performance.now();
@@ -133,11 +133,11 @@ const CreateBook = () => {
       if (!bookId) {
         throw new Error("Function did not return a book ID.");
       }
-      
+
       // Navigate immediately with prefetched data to avoid slow Firestore queries
       const navStartTime = performance.now();
       console.log("🚀 Navigating to book detail page with prefetched data...");
-      
+
       const navState = {
         prefetchedBook: {
           id: bookId,
@@ -149,7 +149,7 @@ const CreateBook = () => {
           ownerId: user.uid,
           isPublic: false,
           coverImageUrl: coverImageUrl,
-          createdAt: new Date().toISOString(), 
+          createdAt: new Date().toISOString(),
           ownerId: user.uid, // Ensure isOwner check passes in BookDetail
           members: { [user.uid]: 'Owner' } // Important for permission checks
         },
@@ -162,7 +162,7 @@ const CreateBook = () => {
         })),
         skipFetch: true,
       };
-      
+
       console.log("📦 Navigation State:", navState);
 
       navigate(`/book/${bookId}`, {
@@ -170,7 +170,7 @@ const CreateBook = () => {
       });
       const navEndTime = performance.now();
       console.log(`⏱️ Navigation took: ${(navEndTime - navStartTime).toFixed(2)}ms`);
-      
+
       // Show toast after navigation
       toast({
         title: "Book created",
@@ -182,7 +182,7 @@ const CreateBook = () => {
       console.error("❌ CreateBook: Error code:", error.code);
       console.error("❌ CreateBook: Error message:", error.message);
       console.error("❌ CreateBook: Error details:", error.details);
-      
+
       toast({
         title: "Error",
         description: `Book could not be created: ${error.message}`,
@@ -354,7 +354,7 @@ const CreateBook = () => {
                           </span>
                         </div>
                       </div>
-                      
+
                       {!promptMode && (
                         <div className="mt-3 p-3 bg-white/60 rounded-md border border-app-violet/10">
                           <p className="text-xs text-app-gray-600">
@@ -362,7 +362,7 @@ const CreateBook = () => {
                           </p>
                         </div>
                       )}
-                      
+
                       {promptMode && (
                         <div className="mt-3 transition-all">
                           <label htmlFor="prompt" className="text-xs font-semibold text-app-gray-600 mb-2 block">
@@ -434,9 +434,9 @@ const CreateBook = () => {
               title="What we'll set up"
               rows={[
                 { label: 'Book title', value: title.trim() || 'Not set yet' },
-                { 
-                  label: 'Mode', 
-                  value: creationType === 0 
+                {
+                  label: 'Mode',
+                  value: creationType === 0
                     ? (promptMode ? 'AI-assisted (Custom)' : 'AI-assisted (Baby Journal)')
                     : 'Start Blank'
                 },
