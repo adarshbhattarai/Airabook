@@ -103,7 +103,7 @@ async function getOrCreateAlbum(bookId, userId) {
  * Generate download URL for storage file
  * Handles both emulator and production environments
  */
-async function getDownloadURL(bucket, storagePath) {
+async function getDownloadURL(bucket, storagePath, fileMetadata = {}) {
   // Check if running in emulator
   const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true' ||
     process.env.FIREBASE_AUTH_EMULATOR_HOST ||
@@ -122,7 +122,19 @@ async function getDownloadURL(bucket, storagePath) {
     return downloadURL;
   }
 
-  // Production: use signed URL
+  // Check for download tokens in metadata (uploaded via Client SDK)
+  const downloadTokens = fileMetadata?.metadata?.firebaseStorageDownloadTokens ||
+    fileMetadata?.firebaseStorageDownloadTokens;
+
+  if (downloadTokens) {
+    const token = downloadTokens.split(',')[0]; // Use the first token
+    const encodedPath = encodeURIComponent(storagePath);
+    const downloadURL = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodedPath}?alt=media&token=${token}`;
+    console.log(`🔗 Generated Firebase Storage URL using token`);
+    return downloadURL;
+  }
+
+  // Production fallback: use signed URL
   try {
     const bucketObj = admin.storage().bucket(bucket);
     const file = bucketObj.file(storagePath);
@@ -130,7 +142,7 @@ async function getDownloadURL(bucket, storagePath) {
       action: 'read',
       expires: '03-09-2491', // Far future expiration
     });
-    console.log(`🔗 Generated signed URL for production`);
+    console.log(`🔗 Generated signed URL for production (fallback)`);
     return signedUrl;
   } catch (error) {
     // Fallback: construct public URL
@@ -414,7 +426,8 @@ exports.onMediaUpload = onObjectFinalized(
       const albumId = metadata.bookId;
 
       // Generate download URL
-      const downloadURL = await getDownloadURL(bucket, storagePath);
+      // Pass event.data as fileMetadata which should contain the necessary tokens
+      const downloadURL = await getDownloadURL(bucket, storagePath, event.data);
       console.log(`🔗 Generated download URL for ${metadata.type}`);
 
       // Update album with new media
