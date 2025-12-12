@@ -72,3 +72,14 @@ jobs:
         run: firebase deploy --project prod
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/firebase-sa.json
+      
+      # Roll back Cloud Functions if deploy fails
+      - name: Roll back Cloud Functions if deploy fails
+        if: failure()
+        run: |
+          echo "Deploy failed — rolling back to previous Functions revision..."
+
+          for FN in $(firebase functions:list --project prod | tail -n +2 | awk '{print $1}'); do
+            echo "Rolling back $FN..."
+            gcloud run services rollback $FN --region=us-central1 --project=airabook-prod
+          done
