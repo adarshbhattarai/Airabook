@@ -66,8 +66,13 @@ const EditBookModal = ({ isOpen, onClose, book, onUpdate }) => {
             // Handle Image Upload
             if (coverImageFile) {
                 const filename = `${Date.now()}_${coverImageFile.name}`;
-                const storageRef = ref(storage, `users/${user.uid}/covers/${filename}`);
-                const snapshot = await uploadBytes(storageRef, coverImageFile);
+                const storageRef = ref(storage, `${user.uid}/covers/${filename}`);
+                const metadata = {
+                    customMetadata: {
+                        bookId: book.id
+                    }
+                };
+                const snapshot = await uploadBytes(storageRef, coverImageFile, metadata);
                 newCoverImageUrl = await getDownloadURL(snapshot.ref);
             } else if (imageRemoved) {
                 newCoverImageUrl = null;
