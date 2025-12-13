@@ -165,6 +165,7 @@ exports.deleteAlbumAssets = deleteAlbumAssets;
 exports.updateAlbum = updateAlbum;
 exports.trackMediaUsage = trackMediaUsage;
 exports.untrackMediaUsage = untrackMediaUsage;
+exports.recalculateStorageUsage = require("./recalculateStorage").recalculateStorageUsage;
 
 // Function to get chapters for a book (hot reload test)
 exports.getBookChapters = onCall({ region: "us-central1", cors: true }, async (request) => {

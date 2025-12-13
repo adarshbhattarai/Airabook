@@ -351,7 +351,8 @@ const AlbumDetail = () => {
     // Add custom metadata for original name
     const metadata = {
       customMetadata: {
-        originalName: file.name
+        originalName: file.name,
+        albumId: bookId
       }
     };
 

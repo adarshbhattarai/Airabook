@@ -454,7 +454,8 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
     // Add custom metadata for original name
     const metadata = {
       customMetadata: {
-        originalName: file.name
+        originalName: file.name,
+        bookId: bookId
       }
     };
 

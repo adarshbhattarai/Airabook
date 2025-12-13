@@ -1,8 +1,15 @@
 rules_version = '2';
 service firebase.storage {
-    // Pattern 1: Root level userId (Albums, Pages, Avatars, Covers)
+  match /b/{bucket}/o {
     match /{userId}/{allPaths=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
+      
 
+      
+      // READ Rules: Publicly accessible (relying on token or just public)
+      allow read: if true;
+      
+      // WRITE Rules
+      allow write: if request.auth != null && (request.auth.uid == userId || request.auth.token.admin == true);
+    }
+  }
 }
