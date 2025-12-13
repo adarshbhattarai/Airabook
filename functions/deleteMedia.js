@@ -195,36 +195,13 @@ exports.deleteAlbumAssets = onCall({ region: "us-central1", cors: true }, async 
     return 0;
   }
 
-  // Step 2: Delete book if it exists
+  // Step 2: Do not delete a book-backed album; require book deletion first
   if (bookData) {
-    console.log(`📚 Deleting book ${bookId}...`);
-
-    // Delete book cover image (cover images are free, don't count towards storage)
-    if (bookData.coverImage) {
-      await deleteCoverImage(bookData.coverImage);
-    }
-
-    // Calculate and delete entire book directory
-    const bookDirPrefix = `${ownerId}/${bookId}/`;
-    const bookDirSize = await calculateDirectorySize(bookDirPrefix);
-    totalStorageSize += bookDirSize;
-    await deleteDirectory(bookDirPrefix);
-
-    // Delete book document and its subcollections
-    try {
-      const chaptersSnap = await bookRef.collection("chapters").get();
-      for (const chapterDoc of chaptersSnap.docs) {
-        const pagesSnap = await chapterDoc.ref.collection("pages").get();
-        for (const pageDoc of pagesSnap.docs) {
-          await pageDoc.ref.delete();
-        }
-        await chapterDoc.ref.delete();
-      }
-      await bookRef.delete();
-      console.log(`✅ Deleted book document and subcollections`);
-    } catch (err) {
-      console.error(`⚠️ Failed to delete book document:`, err?.message);
-    }
+    console.warn("🚫 Book exists for this album; refusing album deletion to avoid book loss.");
+    throw new HttpsError(
+      "failed-precondition",
+      "Book exists for this album; delete the book first or remove album media individually."
+    );
   }
 
   // Step 3: Delete album if it exists
