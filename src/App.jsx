@@ -22,6 +22,8 @@ import BookView from '@/pages/BookView';
 import AlbumDetail from '@/pages/AlbumDetail';
 import ErrorPage from '@/pages/ErrorPage';
 import ProfileSettings from '@/pages/ProfileSettings';
+import AdminDashboard from '@/pages/admin/AdminDashboard';
+import AdminRoute from '@/components/AdminRoute';
 
 // A wrapper to protect routes that require authentication
 const PrivateRoute = ({ children }) => {
@@ -168,6 +170,16 @@ function App() {
                     <ProfileSettings />
                   </ThemedAppShell>
                 </PrivateRoute>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <AdminRoute>
+                  <ThemedAppShell>
+                    <AdminDashboard />
+                  </ThemedAppShell>
+                </AdminRoute>
               }
             />
             <Route path="/error" element={<ErrorPage />} />

@@ -1,11 +1,13 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
+import { useAuth } from '@/context/AuthContext';
 import {
   LayoutDashboard,
   BookOpen,
   Image as ImageIcon,
   StickyNote,
   Heart,
+  ShieldCheck,
 } from 'lucide-react';
 
 const sections = [
@@ -27,6 +29,32 @@ const sections = [
 ];
 
 const SidebarContent = ({ onNavigate }) => {
+  const { user } = useAuth();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    const checkAdmin = async () => {
+      if (user) {
+        try {
+          const tokenResult = await user.getIdTokenResult();
+          setIsAdmin(!!tokenResult.claims.admin);
+        } catch (error) {
+          console.error("Error checking sidebar admin:", error);
+        }
+      }
+    };
+    checkAdmin();
+  }, [user]);
+
+  const adminSection = isAdmin ? {
+    label: 'Admin',
+    items: [
+      { name: 'Admin Dashboard', icon: ShieldCheck, to: '/admin' },
+    ],
+  } : null;
+
+  const displaySections = adminSection ? [...sections, adminSection] : sections;
+
   return (
     <div className="flex flex-col h-full">
       <div
@@ -43,7 +71,7 @@ const SidebarContent = ({ onNavigate }) => {
       </div>
 
       <nav className="flex-1 px-3 space-y-6">
-        {sections.map((section) => (
+        {displaySections.map((section) => (
           <div key={section.label}>
             <div className="px-2 mb-2 text-[11px] font-semibold text-app-gray-600 uppercase tracking-wide">
               {section.label}
@@ -103,5 +131,3 @@ const Sidebar = ({ open, onClose }) => {
 };
 
 export default Sidebar;
-
-
