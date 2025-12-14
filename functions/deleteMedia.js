@@ -104,6 +104,9 @@ exports.deleteAlbumAssets = onCall({ region: "us-central1", cors: true }, async 
 
   const bucket = admin.storage().bucket();
   let totalStorageSize = 0;
+  let coverSizeCounted = 0;
+  let albumDirSizeCounted = 0;
+  let deletedCoverPath = null;
   const userIds = new Set();
 
   // Step 1: Fetch book and album documents
@@ -210,6 +213,7 @@ exports.deleteAlbumAssets = onCall({ region: "us-central1", cors: true }, async 
     // Delete album cover image (cover images are free, don't count towards storage)
     if (albumData.coverImage) {
       const { size: coverSize, coverPath } = await deleteCoverImage(albumData.coverImage);
+      deletedCoverPath = coverPath || null;
 
       // IMPORTANT:
       // - Covers uploaded via the "Create album" flow live under `${uid}/covers/...` and are intentionally "free".
@@ -219,7 +223,13 @@ exports.deleteAlbumAssets = onCall({ region: "us-central1", cors: true }, async 
       const isFreeCover = !!coverPath && coverPath.includes('/covers/');
       if (!isFreeCover && coverSize > 0) {
         totalStorageSize += coverSize;
+        coverSizeCounted += coverSize;
         console.log(`🧮 Including cover bytes in storage decrement: +${coverSize} bytes (coverPath=${coverPath})`);
+      } else {
+        console.log(
+          `ℹ️  Cover deletion not counted towards storage usage: ` +
+          `isFreeCover=${isFreeCover} coverSize=${coverSize} coverPath=${coverPath || 'null'}`
+        );
       }
     }
 
@@ -227,7 +237,17 @@ exports.deleteAlbumAssets = onCall({ region: "us-central1", cors: true }, async 
     const albumDirPrefix = `${ownerId}/${bookId}/_album_/`;
     const albumDirSize = await calculateDirectorySize(albumDirPrefix);
     totalStorageSize += albumDirSize;
-    await deleteDirectory(albumDirPrefix);
+    albumDirSizeCounted += albumDirSize;
+    console.log(`🧮 Album directory size (post-cover delete): ${albumDirSize} bytes (prefix=${albumDirPrefix})`);
+    const deletedInPrefix = await deleteDirectory(albumDirPrefix);
+
+    const coverDeleted = !!deletedCoverPath;
+    const totalDeletedObjects = deletedInPrefix + (coverDeleted ? 1 : 0);
+    console.log(
+      `🧾 Album storage deletion summary: ` +
+      `coverDeleted=${coverDeleted} deletedInPrefix=${deletedInPrefix} totalDeletedObjects≈${totalDeletedObjects} ` +
+      `coverPath=${deletedCoverPath || 'null'}`
+    );
 
     // Clean up pages where album media is used (before deleting album document)
     try {
@@ -300,11 +320,20 @@ exports.deleteAlbumAssets = onCall({ region: "us-central1", cors: true }, async 
   // Step 5: Decrement storage usage for owner
   if (totalStorageSize > 0) {
     try {
-      await addStorageUsage(db, ownerId, -totalStorageSize);
-      console.log(`✅ Decremented ${totalStorageSize} bytes from user ${ownerId}`);
+      const usage = await addStorageUsage(db, ownerId, -totalStorageSize);
+      console.log(
+        `✅ Storage usage decremented for album delete: ` +
+        `delta=-${totalStorageSize}B (coverCounted=${coverSizeCounted}B dirCounted=${albumDirSizeCounted}B) ` +
+        `before=${usage.before}B after=${usage.after}B user=${ownerId} albumId=${bookId}`
+      );
     } catch (err) {
       console.error(`⚠️ Failed to decrement storage for ${ownerId}:`, err?.message);
     }
+  } else {
+    console.log(
+      `ℹ️  No storage decrement needed for album delete: ` +
+      `totalStorageSize=0B (coverCounted=${coverSizeCounted}B dirCounted=${albumDirSizeCounted}B) albumId=${bookId}`
+    );
   }
 
   return {
