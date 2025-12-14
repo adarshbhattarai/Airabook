@@ -81,12 +81,15 @@ exports.deleteMediaAsset = onCall({ region: "us-central1", cors: true }, async (
 
 /**
  * Delete an entire album (by bookId), removing:
- * - Book cover image (if book exists)
  * - Album cover image (if album exists)
- * - Entire book/album directory
- * - Book and album documents
+ * - Entire album directory
+ * - Album document
  * - User accessibleAlbums entries
  * - Storage usage
+ *
+ * Important: Albums that are created from a book share the same ID as the book.
+ * If a book document exists for this ID, we do NOT allow deleting the album here.
+ * Book deletion must be handled separately.
  */
 exports.deleteAlbumAssets = onCall({ region: "us-central1", cors: true }, async (request) => {
   const { bookId } = request.data || {};
@@ -115,16 +118,21 @@ exports.deleteAlbumAssets = onCall({ region: "us-central1", cors: true }, async 
   const bookData = bookSnap.exists ? bookSnap.data() : null;
   const albumData = albumSnap.exists ? albumSnap.data() : null;
 
-  // Verify access
+  // If the book exists, do NOT allow album deletion from here.
+  // (This album is book-derived and must be removed via book deletion flow.)
   if (bookData) {
     const isOwner = bookData.ownerId === auth.uid;
-    //const isMember = !!(bookData.members && bookData.members[auth.uid]);
     if (!isOwner) {
       throw new HttpsError("permission-denied", "You do not have access to this book.");
     }
-    userIds.add(bookData.ownerId);
-    Object.keys(bookData.members || {}).forEach((uid) => userIds.add(uid));
-  } else if (albumData) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Album cannot be deleted because its book still exists. Please delete the book first, then delete the album."
+    );
+  }
+
+  // Verify album access (only standalone albums can be deleted here)
+  if (albumData) {
     // No book, but album exists - check album permissions
     const albumOwnerId = albumData.accessPermission?.ownerId || auth.uid;
     const albumMembers = albumData.accessPermission?.members || {};
@@ -135,7 +143,7 @@ exports.deleteAlbumAssets = onCall({ region: "us-central1", cors: true }, async 
     userIds.add(albumOwnerId);
     Object.keys(albumMembers).forEach((uid) => userIds.add(uid));
   } else {
-    throw new HttpsError("not-found", "Neither book nor album found.");
+    throw new HttpsError("not-found", "Album not found.");
   }
 
   // Determine owner for storage paths
@@ -175,7 +183,7 @@ exports.deleteAlbumAssets = onCall({ region: "us-central1", cors: true }, async 
 
   // Helper function to delete cover image
   async function deleteCoverImage(coverImageUrl) {
-    if (!coverImageUrl) return 0;
+    if (!coverImageUrl) return { size: 0, coverPath: null };
     try {
       // Extract storage path from URL
       // URL format: https://storage.googleapis.com/bucket/path or https://firebasestorage.googleapis.com/...
@@ -187,56 +195,35 @@ exports.deleteAlbumAssets = onCall({ region: "us-central1", cors: true }, async 
         const size = parseInt(metadata.size || "0", 10);
         await coverFile.delete({ ignoreNotFound: true });
         console.log(`🗑️ Deleted cover image: ${coverPath} (${size} bytes)`);
-        return size;
+        return { size, coverPath };
       }
     } catch (err) {
       console.warn(`⚠️ Could not delete cover image:`, err?.message);
     }
-    return 0;
+    return { size: 0, coverPath: null };
   }
 
-  // Step 2: Delete book if it exists
-  if (bookData) {
-    console.log(`📚 Deleting book ${bookId}...`);
-
-    // Delete book cover image (cover images are free, don't count towards storage)
-    if (bookData.coverImage) {
-      await deleteCoverImage(bookData.coverImage);
-    }
-
-    // Calculate and delete entire book directory
-    const bookDirPrefix = `${ownerId}/${bookId}/`;
-    const bookDirSize = await calculateDirectorySize(bookDirPrefix);
-    totalStorageSize += bookDirSize;
-    await deleteDirectory(bookDirPrefix);
-
-    // Delete book document and its subcollections
-    try {
-      const chaptersSnap = await bookRef.collection("chapters").get();
-      for (const chapterDoc of chaptersSnap.docs) {
-        const pagesSnap = await chapterDoc.ref.collection("pages").get();
-        for (const pageDoc of pagesSnap.docs) {
-          await pageDoc.ref.delete();
-        }
-        await chapterDoc.ref.delete();
-      }
-      await bookRef.delete();
-      console.log(`✅ Deleted book document and subcollections`);
-    } catch (err) {
-      console.error(`⚠️ Failed to delete book document:`, err?.message);
-    }
-  }
-
-  // Step 3: Delete album if it exists
+  // Step 2: Delete album (standalone only - book does not exist)
   if (albumData) {
     console.log(`📸 Deleting album ${bookId}...`);
 
     // Delete album cover image (cover images are free, don't count towards storage)
     if (albumData.coverImage) {
-      await deleteCoverImage(albumData.coverImage);
+      const { size: coverSize, coverPath } = await deleteCoverImage(albumData.coverImage);
+
+      // IMPORTANT:
+      // - Covers uploaded via the "Create album" flow live under `${uid}/covers/...` and are intentionally "free".
+      // - But album coverImage can also point at a real media file under the album directory (e.g. /_album_/_album_/media/...),
+      //   which *is* counted during upload. If we delete it here, we must also decrement quota counters for it,
+      //   otherwise storageBytesUsed will drift high.
+      const isFreeCover = !!coverPath && coverPath.includes('/covers/');
+      if (!isFreeCover && coverSize > 0) {
+        totalStorageSize += coverSize;
+        console.log(`🧮 Including cover bytes in storage decrement: +${coverSize} bytes (coverPath=${coverPath})`);
+      }
     }
 
-    // Delete album directory (if not already deleted by book deletion)
+    // Delete album directory
     const albumDirPrefix = `${ownerId}/${bookId}/_album_/`;
     const albumDirSize = await calculateDirectorySize(albumDirPrefix);
     totalStorageSize += albumDirSize;

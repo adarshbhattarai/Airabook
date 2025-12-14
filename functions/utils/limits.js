@@ -167,7 +167,7 @@ async function addStorageUsage(db, uid, deltaBytes) {
     }
 
     tx.update(userRef, { "quotaCounters.storageBytesUsed": next });
-    return { tier, limits, used: next, limitBytes };
+    return { tier, limits, before: current, after: next, deltaBytes, limitBytes };
   });
 }
 
