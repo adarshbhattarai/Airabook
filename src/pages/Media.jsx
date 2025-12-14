@@ -63,6 +63,7 @@ const AssetRegistry = () => {
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [targetAlbum, setTargetAlbum] = useState(null);
+  const [deletingAlbum, setDeletingAlbum] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [newAlbumName, setNewAlbumName] = useState('');
   const [newAlbumCover, setNewAlbumCover] = useState(null); // Added state
@@ -127,6 +128,7 @@ const AssetRegistry = () => {
   const handleDeleteAlbum = async () => {
     if (!targetAlbum) return;
     try {
+      setDeletingAlbum(true);
       const call = httpsCallable(functions, 'deleteAlbumAssets');
       await call({ bookId: targetAlbum.id });
       toast({ title: 'Album deleted' });
@@ -135,6 +137,7 @@ const AssetRegistry = () => {
       console.error('Album delete failed:', err);
       toast({ title: 'Delete failed', description: err?.message || 'Could not delete album.', variant: 'destructive' });
     } finally {
+      setDeletingAlbum(false);
       cancelDelete();
     }
   };
@@ -368,8 +371,17 @@ const AssetRegistry = () => {
               Are you sure you want to delete this album? This will remove all media, delete files from storage, and remove references from books.
             </p>
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={cancelDelete}>Cancel</Button>
-              <Button variant="destructive" onClick={handleDeleteAlbum}>Delete</Button>
+              <Button variant="outline" onClick={cancelDelete} disabled={deletingAlbum}>Cancel</Button>
+              <Button variant="destructive" onClick={handleDeleteAlbum} disabled={deletingAlbum}>
+                {deletingAlbum ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  'Delete'
+                )}
+              </Button>
             </div>
           </div>
         </DialogContent>
