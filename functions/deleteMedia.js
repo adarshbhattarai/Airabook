@@ -183,7 +183,7 @@ exports.deleteAlbumAssets = onCall({ region: "us-central1", cors: true }, async 
 
   // Helper function to delete cover image
   async function deleteCoverImage(coverImageUrl) {
-    if (!coverImageUrl) return 0;
+    if (!coverImageUrl) return { size: 0, coverPath: null };
     try {
       // Extract storage path from URL
       // URL format: https://storage.googleapis.com/bucket/path or https://firebasestorage.googleapis.com/...
@@ -195,12 +195,12 @@ exports.deleteAlbumAssets = onCall({ region: "us-central1", cors: true }, async 
         const size = parseInt(metadata.size || "0", 10);
         await coverFile.delete({ ignoreNotFound: true });
         console.log(`🗑️ Deleted cover image: ${coverPath} (${size} bytes)`);
-        return size;
+        return { size, coverPath };
       }
     } catch (err) {
       console.warn(`⚠️ Could not delete cover image:`, err?.message);
     }
-    return 0;
+    return { size: 0, coverPath: null };
   }
 
   // Step 2: Delete album (standalone only - book does not exist)
@@ -209,7 +209,18 @@ exports.deleteAlbumAssets = onCall({ region: "us-central1", cors: true }, async 
 
     // Delete album cover image (cover images are free, don't count towards storage)
     if (albumData.coverImage) {
-      await deleteCoverImage(albumData.coverImage);
+      const { size: coverSize, coverPath } = await deleteCoverImage(albumData.coverImage);
+
+      // IMPORTANT:
+      // - Covers uploaded via the "Create album" flow live under `${uid}/covers/...` and are intentionally "free".
+      // - But album coverImage can also point at a real media file under the album directory (e.g. /_album_/_album_/media/...),
+      //   which *is* counted during upload. If we delete it here, we must also decrement quota counters for it,
+      //   otherwise storageBytesUsed will drift high.
+      const isFreeCover = !!coverPath && coverPath.includes('/covers/');
+      if (!isFreeCover && coverSize > 0) {
+        totalStorageSize += coverSize;
+        console.log(`🧮 Including cover bytes in storage decrement: +${coverSize} bytes (coverPath=${coverPath})`);
+      }
     }
 
     // Delete album directory

@@ -448,7 +448,7 @@ exports.onMediaUpload = onObjectFinalized(
       // Add storage usage - if limit is reached, rollback the upload
       if (!quotaCounted && metaSize > 0) {
         try {
-          await addStorageUsage(db, metadata.userId, metaSize);
+          const usage = await addStorageUsage(db, metadata.userId, metaSize);
           // Update user's accessibleAlbums
           await updateUserAccessibleAlbums(
             metadata.userId,
@@ -458,7 +458,11 @@ exports.onMediaUpload = onObjectFinalized(
             albumUpdate.mediaCount
           );
 
-          console.log(`📈 Added ${metaSize} bytes to storage usage for ${metadata.userId}`);
+          console.log(
+            `📈 [onMediaUpload] Storage usage updated: ` +
+            `delta=+${metaSize}B before=${usage.before}B after=${usage.after}B user=${metadata.userId} ` +
+            `albumId=${albumId} storagePath=${storagePath}`
+          );
         } catch (usageErr) {
           console.error("⚠️ Storage limit reached on media upload:", usageErr);
 
@@ -492,6 +496,17 @@ exports.onMediaUpload = onObjectFinalized(
             console.error("⚠️ Non-critical error adding storage usage:", usageErr);
           }
         }
+      }
+      if (quotaCounted) {
+        console.log(
+          `ℹ️  [onMediaUpload] Skipping storage increment (quotaCounted=true): ` +
+          `size=${metaSize}B user=${metadata.userId} albumId=${albumId} storagePath=${storagePath}`
+        );
+      } else if (metaSize <= 0) {
+        console.warn(
+          `⚠️ [onMediaUpload] Missing/zero size on upload event; skipping storage increment. ` +
+          `rawSize=${event.data?.size} user=${metadata.userId} albumId=${albumId} storagePath=${storagePath}`
+        );
       }
 
       console.log(`✅ Successfully processed media upload: ${storagePath} -> albums/${albumId}`);
