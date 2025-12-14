@@ -614,11 +614,21 @@ exports.onMediaDelete = onObjectDeleted(
         console.log(`ℹ️  [onMediaDelete] No matching media found in album - likely already removed by deleteMediaAsset`);
 
         // Still decrement storage usage if we have size info
-        const sizeBytes = parseInt(event.data?.size || "0", 10) || 0;
-        if (sizeBytes > 0) {
+        const rawSize = event.data?.size;
+        const sizeBytes = parseInt(rawSize || "0", 10) || 0;
+
+        if (sizeBytes <= 0) {
+          console.warn(
+            `⚠️ [onMediaDelete] Missing/zero size on delete event; skipping storage decrement. ` +
+            `rawSize=${rawSize} storagePath=${storagePath} bucket=${event.data?.bucket} metageneration=${event.data?.metageneration}`
+          );
+        } else {
           try {
-            await addStorageUsage(db, metadata.userId, -sizeBytes);
-            console.log(`✅ [onMediaDelete] Decremented storage usage by ${sizeBytes} bytes (orphaned file cleanup)`);
+            const usage = await addStorageUsage(db, metadata.userId, -sizeBytes);
+            console.log(
+              `✅ [onMediaDelete] Storage usage updated (orphaned cleanup): ` +
+              `delta=-${sizeBytes}B before=${usage.before}B after=${usage.after}B user=${metadata.userId}`
+            );
           } catch (usageErr) {
             console.error("❌ [onMediaDelete] Failed to update storage usage:", usageErr);
           }
@@ -681,11 +691,20 @@ exports.onMediaDelete = onObjectDeleted(
       );
       console.log(`✅ [onMediaDelete] Updated user accessible lists`);
 
-      const sizeBytes = parseInt(event.data?.size || "0", 10) || 0;
-      if (sizeBytes > 0) {
+      const rawSize = event.data?.size;
+      const sizeBytes = parseInt(rawSize || "0", 10) || 0;
+      if (sizeBytes <= 0) {
+        console.warn(
+          `⚠️ [onMediaDelete] Missing/zero size on delete event; skipping storage decrement. ` +
+          `rawSize=${rawSize} storagePath=${storagePath} bucket=${event.data?.bucket} metageneration=${event.data?.metageneration}`
+        );
+      } else {
         try {
-          await addStorageUsage(db, metadata.userId, -sizeBytes);
-          console.log(`✅ [onMediaDelete] Decremented storage usage by ${sizeBytes} bytes for user ${metadata.userId}`);
+          const usage = await addStorageUsage(db, metadata.userId, -sizeBytes);
+          console.log(
+            `✅ [onMediaDelete] Storage usage updated: ` +
+            `delta=-${sizeBytes}B before=${usage.before}B after=${usage.after}B user=${metadata.userId}`
+          );
         } catch (usageErr) {
           console.error("❌ [onMediaDelete] Failed to update storage usage:", usageErr);
         }

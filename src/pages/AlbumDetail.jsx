@@ -239,24 +239,68 @@ const AlbumDetail = () => {
       toast({ title: 'Media deleted' });
       setConfirmingDelete(false);
       setPreviewOpen(false);
-      // Refresh album
-      const albumRef = doc(firestore, 'albums', bookId);
-      const albumSnap = await getDoc(albumRef);
-      if (albumSnap.exists()) {
-        const albumData = { id: albumSnap.id, ...albumSnap.data() };
-        setAlbum(albumData);
-        const images = (albumData.images || []).map(m => ({
-          url: convertToEmulatorURL(typeof m === 'string' ? m : m.url),
-          storagePath: typeof m === 'string' ? null : m.storagePath,
-          type: 'image',
-        }));
-        const videos = (albumData.videos || []).map(m => ({
-          url: convertToEmulatorURL(typeof m === 'string' ? m : m.url),
-          storagePath: typeof m === 'string' ? null : m.storagePath,
-          type: 'video',
-        }));
-        setAllMedia([...images, ...videos]);
-      }
+
+      // Optimistic UI update:
+      // The Storage delete will trigger `onMediaDelete`, which updates Firestore async.
+      // If we re-fetch immediately, we can race the trigger and show stale data.
+      const deletedStoragePath = item.storagePath;
+      const deletedType = item.type;
+      const deletedUrl = item.url;
+
+      setAllMedia((prev) => {
+        const next = prev.filter((_, idx) => idx !== previewIndex);
+        // Keep previewIndex safe in case user re-opens preview quickly
+        if (previewIndex >= next.length && next.length > 0) {
+          setPreviewIndex(next.length - 1);
+          setPreviewType(next[next.length - 1]?.type || 'image');
+        } else if (next.length === 0) {
+          setPreviewIndex(0);
+          setPreviewType('image');
+        }
+        return next;
+      });
+
+      setAlbum((prev) => {
+        if (!prev) return prev;
+
+        const prevImages = prev.images || [];
+        const prevVideos = prev.videos || [];
+
+        const matchesStoragePath = (entry) => {
+          if (!entry) return false;
+          if (typeof entry === 'string') return false;
+          return entry.storagePath === deletedStoragePath;
+        };
+
+        const nextImages = deletedType === 'image'
+          ? prevImages.filter((e) => !matchesStoragePath(e))
+          : prevImages;
+        const nextVideos = deletedType === 'video'
+          ? prevVideos.filter((e) => !matchesStoragePath(e))
+          : prevVideos;
+
+        const nextCount = (nextImages?.length || 0) + (nextVideos?.length || 0);
+
+        // If we deleted the cover image, pick the next image (if any)
+        let nextCover = prev.coverImage;
+        if (deletedType === 'image' && prev.coverImage) {
+          const prevCoverEmu = convertToEmulatorURL(prev.coverImage);
+          if (prevCoverEmu === deletedUrl) {
+            const first = nextImages?.[0];
+            nextCover = first
+              ? (typeof first === 'string' ? first : first.url)
+              : null;
+          }
+        }
+
+        return {
+          ...prev,
+          images: nextImages,
+          videos: nextVideos,
+          mediaCount: nextCount,
+          coverImage: nextCover,
+        };
+      });
     } catch (err) {
       console.error('Delete media failed:', err);
       toast({ title: 'Delete failed', description: err?.message || 'Could not delete media.', variant: 'destructive' });
