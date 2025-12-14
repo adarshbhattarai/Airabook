@@ -96,6 +96,8 @@ const AlbumDetail = () => {
   const [allMedia, setAllMedia] = useState([]); // Combined images and videos for preview
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [confirmingAlbumDelete, setConfirmingAlbumDelete] = useState(false);
+  const [deletingMedia, setDeletingMedia] = useState(false);
+  const [deletingAlbum, setDeletingAlbum] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingName, setEditingName] = useState('');
@@ -234,6 +236,7 @@ const AlbumDetail = () => {
     }
 
     try {
+      setDeletingMedia(true);
       const call = httpsCallable(functions, 'deleteMediaAsset');
       await call({ storagePath: item.storagePath, bookId });
       toast({ title: 'Media deleted' });
@@ -305,11 +308,14 @@ const AlbumDetail = () => {
       console.error('Delete media failed:', err);
       toast({ title: 'Delete failed', description: err?.message || 'Could not delete media.', variant: 'destructive' });
       setConfirmingDelete(false);
+    } finally {
+      setDeletingMedia(false);
     }
   };
 
   const handleDeleteAlbum = async () => {
     try {
+      setDeletingAlbum(true);
       const call = httpsCallable(functions, 'deleteAlbumAssets');
       await call({ bookId });
       toast({ title: 'Album deleted' });
@@ -319,6 +325,8 @@ const AlbumDetail = () => {
       console.error('Delete album failed:', err);
       toast({ title: 'Delete failed', description: err?.message || 'Could not delete album.', variant: 'destructive' });
       setConfirmingAlbumDelete(false);
+    } finally {
+      setDeletingAlbum(false);
     }
   };
 
@@ -581,8 +589,16 @@ const AlbumDetail = () => {
               variant="destructive"
               size="sm"
               onClick={requestAlbumDelete}
+              disabled={deletingAlbum}
             >
-              Delete album
+              {deletingAlbum ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete album'
+              )}
             </Button>
           </div>
         </div>
@@ -776,8 +792,17 @@ const AlbumDetail = () => {
               Are you sure you want to delete this media? This will permanently remove it from all books and album references and delete it from storage.
             </p>
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={cancelDelete}>Cancel</Button>
-              <Button variant="destructive" onClick={handleDelete}>Delete</Button>
+              <Button variant="outline" onClick={cancelDelete} disabled={deletingMedia}>Cancel</Button>
+              <Button variant="destructive" onClick={handleDelete} disabled={deletingMedia}>
+                {deletingMedia ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  'Delete'
+                )}
+              </Button>
             </div>
           </div>
         </DialogContent>
@@ -792,8 +817,17 @@ const AlbumDetail = () => {
               Are you sure you want to delete this album? This will remove all media from this album, delete files from storage, and remove references from books.
             </p>
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={cancelAlbumDelete}>Cancel</Button>
-              <Button variant="destructive" onClick={handleDeleteAlbum}>Delete</Button>
+              <Button variant="outline" onClick={cancelAlbumDelete} disabled={deletingAlbum}>Cancel</Button>
+              <Button variant="destructive" onClick={handleDeleteAlbum} disabled={deletingAlbum}>
+                {deletingAlbum ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  'Delete'
+                )}
+              </Button>
             </div>
           </div>
         </DialogContent>
