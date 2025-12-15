@@ -131,11 +131,11 @@ const AssetRegistry = () => {
       setDeletingAlbum(true);
       const call = httpsCallable(functions, 'deleteAlbumAssets');
       await call({ bookId: targetAlbum.id });
-      toast({ title: 'Album deleted' });
+      toast({ title: 'Assets deleted' });
       setAlbums((prev) => prev.filter((a) => a.id !== targetAlbum.id));
     } catch (err) {
-      console.error('Album delete failed:', err);
-      toast({ title: 'Delete failed', description: err?.message || 'Could not delete album.', variant: 'destructive' });
+      console.error('Assets delete failed:', err);
+      toast({ title: 'Delete failed', description: err?.message || 'Could not delete assets.', variant: 'destructive' });
     } finally {
       setDeletingAlbum(false);
       cancelDelete();
@@ -174,7 +174,7 @@ const AssetRegistry = () => {
 
       toast({
         title: 'Success',
-        description: `Album "${newAlbum.name}" created successfully.`,
+        description: `Asset "${newAlbum.name}" created successfully.`,
       });
 
       setCreateModalOpen(false);
@@ -185,7 +185,7 @@ const AssetRegistry = () => {
       console.error('Error creating album:', error);
       toast({
         title: 'Error',
-        description: error.message || 'Failed to create album.',
+        description: error.message || 'Failed to create asset.',
         variant: 'destructive',
       });
     } finally {
@@ -206,7 +206,7 @@ const AssetRegistry = () => {
   };
 
   if (loading || !appUser) {
-    return <AppLoader message="Loading your albums..." />;
+    return <AppLoader message="Loading your assets..." />;
   }
 
   return (
@@ -239,7 +239,7 @@ const AssetRegistry = () => {
               className="inline-flex items-center gap-2 text-sm"
             >
               <PlusCircle className="h-4 w-4" />
-              Create new album
+              Create new asset
             </Button>
           </div>
         </motion.div>
@@ -254,7 +254,7 @@ const AssetRegistry = () => {
               className="text-center py-16 rounded-2xl border border-app-gray-100 bg-white shadow-appSoft"
             >
               <BookOpen className="h-16 w-16 mx-auto text-gray-400 mb-4" />
-              <h3 className="text-lg font-semibold text-app-gray-900 mb-2">No albums yet</h3>
+              <h3 className="text-lg font-semibold text-app-gray-900 mb-2">No assets yet</h3>
               <p className="text-sm text-app-gray-600 mb-6">
                 Start creating books and adding media to see them here.
               </p>
@@ -319,7 +319,7 @@ const AssetRegistry = () => {
                       {album.coverImage ? (
                         <img
                           src={convertToEmulatorURL(album.coverImage)}
-                          alt={album.name || 'Album cover'}
+                          alt={album.name || 'Asset cover'}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                           onError={(e) => {
                             console.error('Failed to load cover image:', album.coverImage);
@@ -333,7 +333,7 @@ const AssetRegistry = () => {
                       )}
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/15 transition-all duration-200 flex items-center justify-center">
                         <div className="opacity-0 group-hover:opacity-100 transition-opacity text-white font-semibold text-sm">
-                          View Album
+                          View Assets
                         </div>
                       </div>
                       {(album.mediaCount || 0) > 0 && (
@@ -347,7 +347,7 @@ const AssetRegistry = () => {
                     </div>
                     <div className="p-4">
                       <h3 className="text-sm font-semibold text-app-gray-900 mb-1 truncate">
-                        {album.name || 'Untitled Album'}
+                        {album.name || 'Untitled Asset'}
                       </h3>
                       <p className="text-xs text-app-gray-600">
                         {(album.mediaCount || 0) === 0
@@ -366,9 +366,9 @@ const AssetRegistry = () => {
       < Dialog open={confirmingDelete} onOpenChange={(open) => !open && cancelDelete()}>
         <DialogContent className="max-w-md p-6 bg-white rounded-2xl shadow-xl">
           <div className="space-y-3 text-left">
-            <h3 className="text-lg font-semibold text-app-gray-900">Delete album?</h3>
+            <h3 className="text-lg font-semibold text-app-gray-900">Delete assets?</h3>
             <p className="text-sm text-app-gray-700">
-              Are you sure you want to delete this album? This will remove all media, delete files from storage, and remove references from books.
+              Are you sure you want to delete this asset group? This will remove all media, delete files from storage, and remove references from books.
             </p>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={cancelDelete} disabled={deletingAlbum}>Cancel</Button>
@@ -391,7 +391,7 @@ const AssetRegistry = () => {
       < Dialog open={createModalOpen} onOpenChange={setCreateModalOpen} >
         <DialogContent className="max-w-md p-6 bg-white rounded-2xl shadow-xl">
           <DialogHeader>
-            <DialogTitle className="text-xl font-bold text-app-gray-900">Create new album</DialogTitle>
+            <DialogTitle className="text-xl font-bold text-app-gray-900">Create new asset</DialogTitle>
             <DialogDescription className="text-sm text-app-gray-600">
               Create a folder to organize your photos and videos.
             </DialogDescription>
@@ -400,7 +400,7 @@ const AssetRegistry = () => {
           <form onSubmit={handleCreateAlbum} className="mt-4">
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="new-album-name">Album Name</Label>
+                <Label htmlFor="new-album-name">Asset Name</Label>
                 <Input
                   id="new-album-name"
                   placeholder="e.g. Summer Vacation 2024"
@@ -475,7 +475,7 @@ const AssetRegistry = () => {
                     Creating...
                   </>
                 ) : (
-                  'Create Album'
+                  'Create Asset'
                 )}
               </Button>
             </div>
