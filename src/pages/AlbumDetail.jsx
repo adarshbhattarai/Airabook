@@ -786,9 +786,9 @@ const AlbumDetail = () => {
       <Dialog open={confirmingDelete} onOpenChange={(open) => !open && cancelDelete()}>
         <DialogContent className="max-w-md p-6 bg-white rounded-2xl shadow-xl">
           <div className="space-y-3 text-left">
-            <h3 className="text-lg font-semibold text-app-gray-900">Delete media?</h3>
+            <h3 className="text-lg font-semibold text-app-gray-900">Delete asset?</h3>
             <p className="text-sm text-app-gray-700">
-              Are you sure you want to delete this media? This will permanently remove it from all books and album references and delete it from storage.
+              Are you sure you want to delete this asset? This will permanently remove it from all books and asset references and delete it from storage.
             </p>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={cancelDelete} disabled={deletingMedia}>Cancel</Button>
@@ -811,9 +811,9 @@ const AlbumDetail = () => {
       <Dialog open={confirmingAlbumDelete} onOpenChange={(open) => !open && cancelAlbumDelete()}>
         <DialogContent className="max-w-md p-6 bg-white rounded-2xl shadow-xl">
           <div className="space-y-3 text-left">
-            <h3 className="text-lg font-semibold text-app-gray-900">Delete album?</h3>
+            <h3 className="text-lg font-semibold text-app-gray-900">Delete assets?</h3>
             <p className="text-sm text-app-gray-700">
-              Are you sure you want to delete this album? This will remove all media from this album, delete files from storage, and remove references from books.
+              Are you sure you want to delete these assets? This will remove all media from this group, delete files from storage, and remove references from books.
             </p>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={cancelAlbumDelete} disabled={deletingAlbum}>Cancel</Button>
@@ -835,17 +835,17 @@ const AlbumDetail = () => {
       <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
         <DialogContent className="max-w-md p-6 bg-white rounded-2xl shadow-xl">
           <DialogHeader>
-            <DialogTitle>Edit Album</DialogTitle>
-            <DialogDescription>Update album details and cover image.</DialogDescription>
+            <DialogTitle>Edit Assets</DialogTitle>
+            <DialogDescription>Update asset details and cover image.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleUpdateAlbum} className="space-y-4 mt-4">
             <div className="space-y-2">
-              <Label htmlFor="album-name">Album Name</Label>
+              <Label htmlFor="album-name">Asset Name</Label>
               <Input
                 id="album-name"
                 value={editingName}
                 onChange={(e) => setEditingName(e.target.value)}
-                placeholder="Enter album name"
+                placeholder="Enter asset name"
                 required
               />
             </div>
