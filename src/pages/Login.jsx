@@ -89,7 +89,7 @@ const Login = () => {
   const handleResendVerification = async () => {
     try {
       await resendVerificationEmail();
-      toast({ 
+      toast({
         title: '✅ Verification email sent!',
         description: 'Please check your inbox.'
       });
@@ -105,8 +105,8 @@ const Login = () => {
   return (
     <>
       <Helmet>
-        <title>Login - Baby Aira</title>
-        <meta name="description" content="Login to access Baby Aira's private gallery and notes." />
+        <title>Login - Airabook</title>
+        <meta name="description" content="Login to access your books and stories." />
       </Helmet>
       <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
         <motion.div
@@ -120,7 +120,7 @@ const Login = () => {
               Welcome Back
             </h1>
             <p className="mt-2 text-center text-sm text-gray-600">
-              Sign in to see Aira's journey
+              Sign in to continue your story
             </p>
           </div>
           <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
