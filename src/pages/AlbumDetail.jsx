@@ -318,12 +318,12 @@ const AlbumDetail = () => {
       setDeletingAlbum(true);
       const call = httpsCallable(functions, 'deleteAlbumAssets');
       await call({ bookId });
-      toast({ title: 'Album deleted' });
+      toast({ title: 'Assets deleted' });
       setConfirmingAlbumDelete(false);
       navigate('/media');
     } catch (err) {
-      console.error('Delete album failed:', err);
-      toast({ title: 'Delete failed', description: err?.message || 'Could not delete album.', variant: 'destructive' });
+      console.error('Delete assets failed:', err);
+      toast({ title: 'Delete failed', description: err?.message || 'Could not delete assets.', variant: 'destructive' });
       setConfirmingAlbumDelete(false);
     } finally {
       setDeletingAlbum(false);
@@ -358,12 +358,11 @@ const AlbumDetail = () => {
         name: editingName,
         coverImage: coverImageUrl,
       }));
-
-      toast({ title: 'Success', description: 'Album updated successfully.' });
+      toast({ title: 'Success', description: 'Asset updated successfully.' });
       setEditModalOpen(false);
     } catch (error) {
       console.error('Update failed:', error);
-      toast({ title: 'Error', description: error.message || 'Failed to update album.', variant: 'destructive' });
+      toast({ title: 'Error', description: error.message || 'Failed to update asset.', variant: 'destructive' });
     } finally {
       setUpdating(false);
     }
@@ -523,7 +522,7 @@ const AlbumDetail = () => {
   return (
     <div className="py-6 px-4 sm:px-6 lg:px-8">
       <Helmet>
-        <title>{album.name || 'Album'} - Media Gallery</title>
+        <title>{album.name || 'Assets'} - Media Gallery</title>
       </Helmet>
 
       <div className="max-w-7xl mx-auto">
@@ -536,11 +535,11 @@ const AlbumDetail = () => {
               className="mb-3 inline-flex items-center gap-2 text-xs"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
-              Back to albums
+              Back to assets
             </Button>
             <div className="flex items-center gap-3">
               <h1 className="text-[28px] font-semibold text-app-gray-900 leading-tight">
-                {album.name || 'Album'}
+                {album.name || 'Asset'}
               </h1>
               <Button
                 variant="ghost"
@@ -597,7 +596,7 @@ const AlbumDetail = () => {
                   Deleting...
                 </>
               ) : (
-                'Delete album'
+                'Delete assets'
               )}
             </Button>
           </div>
