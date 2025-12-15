@@ -75,8 +75,8 @@ const Signup = () => {
   return (
     <>
       <Helmet>
-        <title>Signup - Baby Aira</title>
-        <meta name="description" content="Create an account to access Baby Aira's private gallery and notes." />
+        <title>Signup - Airabook</title>
+        <meta name="description" content="Create an account to start writing your own stories." />
       </Helmet>
       <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
         <motion.div
@@ -90,12 +90,12 @@ const Signup = () => {
               Join the Family
             </h1>
             <p className="mt-2 text-center text-sm text-gray-600">
-              Create an account to follow Aira's journey
+              Create an account to write your story
             </p>
           </div>
           <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
             <div className="rounded-md shadow-sm -space-y-px">
-               <div className="relative">
+              <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
                   id="name"
