@@ -76,6 +76,7 @@ const queryBookFlowRaw = ai.defineFlow(
                 role: z.enum(['user', 'model', 'system', 'assistant']),
                 content: z.string(),
             })),
+            isSurprise: z.boolean().optional().default(false),
         }),
     },
     async (input, { context }) => {
@@ -83,7 +84,7 @@ const queryBookFlowRaw = ai.defineFlow(
             throw new Error('User must be authenticated.');
         }
         const userId = context.auth.uid;
-        const { messages } = input;
+        const { messages, isSurprise } = input;
 
         // Get the latest user query (last message)
         const lastMessage = messages[messages.length - 1];
@@ -92,6 +93,45 @@ const queryBookFlowRaw = ai.defineFlow(
         }
         const query = lastMessage.content;
 
+        // Handle Surprise Me mode - skip RAG retrieval and generate creative book idea
+        if (isSurprise) {
+            console.log('Surprise mode activated - generating random book idea');
+
+            // Construct history for the model (excluding the last message)
+            const history = messages.slice(0, -1).map(m => ({
+                role: m.role === 'assistant' ? 'model' : m.role,
+                content: [{ text: m.content }]
+            }));
+
+            // Generate creative random book idea
+            const llmResponse = await ai.generate({
+                history: history,
+                prompt: `
+You are a creative AI assistant for Airabook, a book writing application.
+
+Generate a unique and creative book idea for the user. Be imaginative and inspiring!
+
+Instructions:
+1. First, randomly select an interesting genre or topic (e.g., mystery, sci-fi, fantasy, romance, thriller, children's adventure, cookbook, self-help, historical fiction, biography, etc.)
+2. Create a compelling book concept with:
+   - An engaging title suggestion
+   - A unique premise or hook
+   - Interesting characters, setting, or themes (as appropriate for the genre)
+   - A brief but exciting overview that makes the user want to write this book
+3. Be enthusiastic and encouraging
+4. Make it specific enough to be actionable but open enough for creativity
+
+Generate a random creative book idea now!
+      `,
+            });
+
+            return {
+                answer: llmResponse.text,
+                sources: [], // No sources for surprise mode
+            };
+        }
+
+        // Normal RAG flow for regular queries
         // 1. Retrieve a larger set of candidate documents
         const initialDocs = await ai.retrieve({
             retriever: bookPagesRetriever,
