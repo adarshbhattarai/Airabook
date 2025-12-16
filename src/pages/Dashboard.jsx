@@ -24,10 +24,16 @@ const Dashboard = () => {
     scrollToBottom();
   }, [messages]);
 
-  const submitPrompt = async (promptText) => {
-    if (!promptText.trim() || isSubmitting) return;
+  const submitPrompt = async (promptText, options = {}) => {
+    const isSurprise = options.isSurprise || false;
 
-    const userMessage = { role: 'user', content: promptText };
+    // For surprise mode, allow empty prompt
+    if (!isSurprise && !promptText.trim()) return;
+    if (isSubmitting) return;
+
+    // Display user-friendly message in chat for surprise mode
+    const displayContent = isSurprise ? "Surprise me with a creative book idea!" : promptText;
+    const userMessage = { role: 'user', content: displayContent };
     setMessages(prev => [...prev, userMessage]);
     setPrompt('');
     setIsChatStarted(true);
@@ -39,7 +45,10 @@ const Dashboard = () => {
       // Prepare history for backend (including the new message)
       const history = [...messages, userMessage];
 
-      const result = await queryBookFlow({ messages: history });
+      const result = await queryBookFlow({
+        messages: history,
+        isSurprise: isSurprise
+      });
 
       const aiMessage = {
         role: 'model',
@@ -171,6 +180,8 @@ const Dashboard = () => {
                       type="button"
                       variant="ghost"
                       size="sm"
+                      onClick={() => submitPrompt("", { isSurprise: true })}
+                      disabled={isSubmitting}
                       className="text-app-gray-500 hover:text-app-iris hover:bg-app-iris/10 rounded-full px-3"
                     >
                       <Sparkles className="h-4 w-4 mr-2" />
