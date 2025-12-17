@@ -14,6 +14,19 @@ service cloud.firestore {
         ));
     }
 
+    // Payments collection
+    match /payments/{paymentId} {
+      // Allow the owner (or admin) to read a single payment doc
+      allow get: if isAdminRequest() ||
+        (request.auth != null && request.auth.uid == resource.data.userId);
+
+      // Do not allow listing payments from the client
+      allow list: if false;
+
+      // Keep writes server-only (Cloud Functions uses Admin SDK; rules don't apply)
+      allow create, update, delete: if isAdminRequest();
+    }
+
     // Books collection with public/private and co-author support
     match /books/{bookId} {
       // Helper function to get book data
