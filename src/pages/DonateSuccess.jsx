@@ -51,10 +51,9 @@ const DonateSuccess = () => {
     };
   }, [paymentId]);
 
-  const headline =
-    status === 'ready' && payment?.status === 'completed'
-      ? 'Thank you for fueling more stories!'
-      : 'Thanks for your kindness!';
+  const isCompleted = status === 'ready' && payment?.status === 'completed';
+
+  const headline = isCompleted ? 'Payment successful' : 'Thanks for your kindness!';
 
   return (
     <div className="min-h-screen bg-[#ecf0f1] flex items-center justify-center px-4 py-16">
@@ -66,9 +65,11 @@ const DonateSuccess = () => {
         <p className="text-sm uppercase tracking-[0.4em] text-[#3498db]">Donation received</p>
         <h1 className="text-4xl font-bold text-slate-900">{headline}</h1>
         <p className="text-slate-600">
-          {status === 'ready' && payment?.planLabel
-            ? `You are now on the ${payment.planLabel} plan.`
-            : 'We are confirming things with Stripe. This usually takes a few seconds.'}
+          {isCompleted && payment
+            ? `Your payment of ${formatAmount(payment.amount, payment.currency)} is successful.`
+            : status === 'ready' && payment?.planLabel
+              ? `You are now on the ${payment.planLabel} plan.`
+              : 'We are confirming things with Stripe. This usually takes a few seconds.'}
         </p>
 
         <div className="bg-[#f5fbff] border border-[#3498db]/30 rounded-2xl p-6 text-left space-y-2">
