@@ -24,7 +24,7 @@ jobs:
 
       # Root deps (Vite app, etc.)
       - name: Install root dependencies
-        run: npm install
+        run: npm ci
 
       # Frontend env for QA
       - name: Create .env.qa for frontend
@@ -51,7 +51,7 @@ jobs:
       # ✅ Functions deps
       - name: Install functions dependencies
         working-directory: functions
-        run: npm install
+        run: npm ci
 
       # Optional: build functions
       - name: Build functions (if applicable)

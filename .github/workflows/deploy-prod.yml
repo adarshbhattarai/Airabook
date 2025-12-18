@@ -20,7 +20,7 @@ jobs:
 
       # Root deps
       - name: Install root dependencies
-        run: npm install
+        run: npm ci
 
       # Frontend env for PROD
       - name: Create .env.production for frontend
@@ -47,7 +47,7 @@ jobs:
 
       - name: Install functions dependencies
         working-directory: functions
-        run: npm install
+        run: npm ci
 
       # Optional: build functions
       - name: Build functions (if applicable)

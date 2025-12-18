@@ -20,7 +20,7 @@ jobs:
 
       # Root deps
       - name: Install root dependencies
-        run: npm install
+        run: npm ci
 
       # Frontend env for GO
       - name: Create .env.go for frontend
@@ -46,7 +46,7 @@ jobs:
 
       - name: Install functions dependencies
         working-directory: functions
-        run: npm install
+        run: npm ci
 
 
       # Optional: build functions
