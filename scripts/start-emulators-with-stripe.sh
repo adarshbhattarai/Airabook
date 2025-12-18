@@ -20,7 +20,15 @@ WEBHOOK_URL="http://localhost:5001/demo-project/us-central1/stripeWebhook"
 
 # Function to extract webhook secret
 extract_webhook_secret() {
-    echo "$1" | grep -oP 'whsec_[a-zA-Z0-9]+' | head -1
+    # macOS/BSD grep doesn't support `-P`, so use Python for portability
+    python3 - "$1" <<'PY'
+import re
+import sys
+
+s = sys.argv[1] if len(sys.argv) > 1 else ""
+m = re.search(r"whsec_[A-Za-z0-9]+", s)
+print(m.group(0) if m else "")
+PY
 }
 
 # Function to update runtime config
