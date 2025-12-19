@@ -32,6 +32,7 @@ export const storage = getStorage(app);
 // NEVER use emulators in production mode - always use real Firebase services for deployed apps
 // Only use emulators in development mode, running on localhost, with explicit flag
 let useEmulator = false;
+let useFunctionsEmulatorOnly = false;
 if (!isProduction) {
   // Only check for localhost if not in production
   if (typeof window !== 'undefined') {
@@ -41,6 +42,12 @@ if (!isProduction) {
     // Check for string 'true' or boolean true
     const emulatorFlag = import.meta.env.VITE_USE_EMULATOR;
     useEmulator = isLocalhost && (emulatorFlag === 'true' || emulatorFlag === true);
+
+    // Allow routing ONLY callable functions to emulator (for debugging)
+    // while keeping Auth/Firestore/Storage pointed at real Firebase.
+    const functionsEmulatorFlag = import.meta.env.VITE_USE_FUNCTIONS_EMULATOR;
+    useFunctionsEmulatorOnly =
+      !useEmulator && isLocalhost && (functionsEmulatorFlag === 'true' || functionsEmulatorFlag === true);
   }
 }
 // In production mode, useEmulator is always false - use real Firebase services
@@ -75,6 +82,8 @@ console.log("🔧 VITE_USE_EMULATOR:", import.meta.env.VITE_USE_EMULATOR);
 console.log("🔧 VITE_USE_EMULATOR type:", typeof import.meta.env.VITE_USE_EMULATOR);
 console.log("🔧 VITE_USE_EMULATOR === 'true':", import.meta.env.VITE_USE_EMULATOR === 'true');
 console.log("🔧 useEmulator:", useEmulator);
+console.log("🔧 VITE_USE_FUNCTIONS_EMULATOR:", import.meta.env.VITE_USE_FUNCTIONS_EMULATOR);
+console.log("🔧 useFunctionsEmulatorOnly:", useFunctionsEmulatorOnly);
 
 // CRITICAL: Connect to emulators BEFORE enabling persistence
 if (useEmulator) {
@@ -97,6 +106,15 @@ if (useEmulator) {
     console.log(`📍 Environment: ${currentMode}`);
   } catch (error) {
     console.log("Emulator connection error:", error.message);
+  }
+} else if (useFunctionsEmulatorOnly) {
+  try {
+    const host = '127.0.0.1';
+    connectFunctionsEmulator(functions, host, 5001);
+    console.log("🔥 Connected ONLY Functions to emulator");
+    console.log(`📍 Environment: ${currentMode}`);
+  } catch (error) {
+    console.log("Functions emulator connection error:", error.message);
   }
 } else {
   // Using real Firebase services
