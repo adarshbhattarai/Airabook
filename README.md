@@ -156,6 +156,38 @@ npm run dev
 - Uses real Firebase services (not emulators)
 - Data persists in the dev project
 
+### Option 3: Real Dev Auth/Firestore/Storage + Local Functions (Debug)
+
+This setup runs the frontend locally against the **real** `airabook-dev` backend for Auth/Firestore/Storage,
+but routes **callable Cloud Functions** to your local Functions emulator so you can debug function code without
+running the full emulator suite.
+
+#### Prereqs
+
+- In `.env.development` (or `.env.development.local`), set:
+  - `VITE_USE_EMULATOR=false`
+  - `VITE_USE_FUNCTIONS_EMULATOR=true`
+
+#### Step 1: Start local Functions emulator (dev project)
+
+```bash
+# Optional but recommended so Functions Admin SDK uses dev credentials:
+# export GOOGLE_APPLICATION_CREDENTIALS=/path/to/airabook-dev-service-account.json
+
+npm run emulators:functions:dev
+```
+
+#### Step 2: Start frontend (routes functions to localhost)
+
+```bash
+npm run dev:functions-emulator
+```
+
+**What happens**:
+- Frontend connects to real `airabook-dev` for Auth/Firestore/Storage
+- Frontend calls callable functions at `http://127.0.0.1:5001/...`
+- Your local function code runs with debugger enabled (`--inspect-functions`)
+
 ### Quick Reference: Local Development Commands
 
 | Command | Frontend Config | Backend | Use Case |
@@ -163,6 +195,7 @@ npm run dev
 | `npm start` | `.env.localemulator` | Emulators | Local testing |
 | `npm run local` | `.env.localemulator` | Emulators | Same as above |
 | `npm run dev` | `.env.development` | Real Dev Firebase | Test against dev data |
+| `npm run emulators:functions:dev` + `npm run dev:functions-emulator` | `.env.development` (+ functions emulator flag) | Real Dev + Local Functions | Debug Cloud Functions locally |
 
 ## Build Commands
 
