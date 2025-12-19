@@ -201,8 +201,8 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description }) =
 // ======================
 // PageEditor (UPDATED)
 // ======================
-const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNavigate, pageIndex, totalPages, clearEditor, chapterTitle }) => {
-  const [note, setNote] = useState(page.note || '');
+const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNavigate, pageIndex, totalPages, chapterTitle, draftNote, onDraftChange }) => {
+  const [note, setNote] = useState(draftNote ?? page.note ?? '');
   const [isSaving, setIsSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({});
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -214,7 +214,6 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
   // AI preview dialog state
   const [aiPreviewOpen, setAiPreviewOpen] = useState(false);
   const [aiPreviewText, setAiPreviewText] = useState('');
-  const [isAutoSaving, setIsAutoSaving] = useState(false);
 
   const [pendingNote, setPendingNote] = useState(null);
   const [mediaToDelete, setMediaToDelete] = useState(null);
@@ -223,7 +222,6 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
   const { user, appUser } = useAuth();
   const { toast } = useToast();
   const fileInputRef = useRef(null);
-  const saveTimeoutRef = useRef(null);
 
   const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
   const [mediaPickerTab, setMediaPickerTab] = useState('upload');
@@ -237,15 +235,8 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
   const previewItem = mediaList[previewIndex] || null;
 
   useEffect(() => {
-    setNote(page.note || '');
-  }, [page]);
-
-  // Clear editor when clearEditor prop is true
-  useEffect(() => {
-    if (clearEditor) {
-      setNote('');
-    }
-  }, [clearEditor]);
+    setNote(draftNote ?? page.note ?? '');
+  }, [page?.id, draftNote]);
 
   useEffect(() => {
     const availableAlbums = appUser?.accessibleAlbums || [];
@@ -312,15 +303,6 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
     return () => { isMounted = false; };
   }, [mediaPickerOpen, mediaPickerTab, selectedAlbumId, toast]);
 
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-    };
-  }, []);
-
   // Close style dropdown when clicking outside
   useEffect(() => {
     if (!showStyleDropdown) return;
@@ -362,6 +344,7 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
       });
 
       onPageUpdate({ ...page, note, shortNote });
+      onDraftChange?.(page.id, null);
       toast({ title: 'Success', description: 'Page saved.' });
     } catch (error) {
       console.error('Save error:', error);
@@ -370,44 +353,9 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
     setIsSaving(false);
   };
 
-  const autoSave = async () => {
-    if (!note || note === page.note) return; // Don't save if no changes
-
-    setIsAutoSaving(true);
-    const plain = stripHtml(note);
-    const shortNote = plain.substring(0, 40) + (plain.length > 40 ? '...' : '');
-
-    try {
-      const updatePageFn = httpsCallable(functions, 'updatePage');
-      await updatePageFn({
-        bookId,
-        chapterId,
-        pageId: page.id,
-        note,
-        media: page.media || []
-      });
-
-      onPageUpdate({ ...page, note, shortNote });
-      console.log('Auto-saved page content');
-    } catch (error) {
-      console.error('Auto-save failed:', error);
-    } finally {
-      setIsAutoSaving(false);
-    }
-  };
-
   const handleNoteChange = (newNote) => {
     setNote(newNote);
-
-    // Clear existing timeout
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-
-    // Set new timeout for auto-save (2 seconds after user stops typing)
-    saveTimeoutRef.current = setTimeout(() => {
-      autoSave();
-    }, 2000);
+    onDraftChange?.(page.id, newNote);
   };
 
   const handleFileSelect = (event) => {
@@ -773,6 +721,7 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
       onPageUpdate({ ...page, note: pendingNote, shortNote });
       setPendingNote(null);
       setAiPreviewOpen(false);
+      onDraftChange?.(page.id, null);
       toast({ title: 'Success', description: 'Changes saved successfully.' });
     } catch (error) {
       console.error('Failed to save changes:', error);
@@ -1088,10 +1037,9 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
 
           {/* AI controls + Save */}
           <div className="flex flex-wrap items-center gap-2">
-            {isAutoSaving && (
+            {draftNote != null && draftNote !== (page.note || '') && (
               <span className="text-xs text-gray-500 flex items-center shrink-0">
-                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-500 mr-1"></div>
-                Auto-saving...
+                Unsaved changes
               </span>
             )}
 
@@ -1562,7 +1510,9 @@ const BookDetail = () => {
   // UI States
   const [newChapterTitle, setNewChapterTitle] = useState('');
   const [modalState, setModalState] = useState({ isOpen: false });
-  const [clearEditor, setClearEditor] = useState(false);
+  const [pageDrafts, setPageDrafts] = useState({});
+  const [pageSaveConfirmOpen, setPageSaveConfirmOpen] = useState(false);
+  const [pendingPageAction, setPendingPageAction] = useState(null);
   const [editingChapterId, setEditingChapterId] = useState(null);
   const [editingChapterTitle, setEditingChapterTitle] = useState('');
   const [saveConfirmOpen, setSaveConfirmOpen] = useState(false);
@@ -2105,9 +2055,6 @@ const BookDetail = () => {
     }
     if (!selectedChapterId) return;
 
-    // Clear the editor form content first
-    setClearEditor(true);
-
     try {
       const newOrder = getMidpointString(pages[pages.length - 1]?.order);
 
@@ -2140,12 +2087,10 @@ const BookDetail = () => {
         pagesSummary: [...(c.pagesSummary || []), newPageSummary].sort((a, b) => a.order.localeCompare(b.order))
       } : c));
 
-      setClearEditor(false);
       toast({ title: 'New Page Added' });
 
     } catch (error) {
       console.error('Error creating page:', error);
-      setClearEditor(false);
       toast({
         title: 'Error',
         description: error.message || 'Failed to create page. Please try again.',
@@ -2154,7 +2099,97 @@ const BookDetail = () => {
     }
   };
 
-  const handlePageUpdate = async (update) => {
+  const selectedPage = selectedPageId ? pages.find(p => p.id === selectedPageId) : null;
+  const selectedDraft = selectedPageId ? pageDrafts[selectedPageId] : undefined;
+  const isSelectedPageDirty = !!(selectedPageId && selectedPage && selectedDraft != null && selectedDraft !== (selectedPage.note || ''));
+
+  const onDraftChange = useCallback((pageId, nextNote) => {
+    setPageDrafts(prev => {
+      const next = { ...prev };
+      if (nextNote == null) {
+        delete next[pageId];
+      } else {
+        next[pageId] = nextNote;
+      }
+      return next;
+    });
+  }, []);
+
+  const proceedPendingPageAction = useCallback(async () => {
+    const action = pendingPageAction;
+    setPendingPageAction(null);
+    setPageSaveConfirmOpen(false);
+    if (!action) return;
+
+    if (action.type === 'select') {
+      setSelectedChapterId(action.chapterId);
+      setSelectedPageId(action.pageId);
+      return;
+    }
+
+    if (action.type === 'addPage') {
+      await handleAddPage();
+    }
+  }, [pendingPageAction, handleAddPage]);
+
+  const requestSelectPage = useCallback((chapterId, pageId) => {
+    if (isSelectedPageDirty && pageId !== selectedPageId) {
+      setPendingPageAction({ type: 'select', chapterId, pageId });
+      setPageSaveConfirmOpen(true);
+      return;
+    }
+    setSelectedChapterId(chapterId);
+    setSelectedPageId(pageId);
+  }, [isSelectedPageDirty, selectedPageId]);
+
+  const requestAddPage = useCallback(() => {
+    if (isSelectedPageDirty) {
+      setPendingPageAction({ type: 'addPage' });
+      setPageSaveConfirmOpen(true);
+      return;
+    }
+    handleAddPage();
+  }, [isSelectedPageDirty, handleAddPage]);
+
+  const saveSelectedDraft = useCallback(async () => {
+    if (!selectedPageId || !selectedPage) return;
+    const noteToSave = selectedDraft ?? selectedPage.note ?? '';
+    const plain = stripHtml(noteToSave);
+    const shortNote = plain.substring(0, 40) + (plain.length > 40 ? '...' : '');
+
+    try {
+      const updatePageFn = httpsCallable(functions, 'updatePage');
+      await updatePageFn({
+        bookId,
+        chapterId: selectedChapterId,
+        pageId: selectedPageId,
+        note: noteToSave,
+        media: selectedPage.media || [],
+      });
+      handlePageUpdate({ ...selectedPage, note: noteToSave, shortNote });
+      onDraftChange(selectedPageId, null);
+    } catch (e) {
+      console.error('Failed to save page before leaving:', e);
+      toast({ title: 'Error', description: 'Failed to save page.', variant: 'destructive' });
+      throw e;
+    }
+  }, [bookId, selectedChapterId, selectedPageId, selectedPage, selectedDraft, onDraftChange, toast]);
+
+  const handlePageLeaveSave = useCallback(async () => {
+    try {
+      await saveSelectedDraft();
+      await proceedPendingPageAction();
+    } catch (_) {
+      // keep modal open on error
+    }
+  }, [saveSelectedDraft, proceedPendingPageAction]);
+
+  const handlePageLeaveDiscard = useCallback(async () => {
+    if (selectedPageId) onDraftChange(selectedPageId, null);
+    await proceedPendingPageAction();
+  }, [selectedPageId, onDraftChange, proceedPendingPageAction]);
+
+  function handlePageUpdate(update) {
     setPages(prevPages => {
       // Figure out the current page being edited
       const current = prevPages.find(p => p.id === selectedPageId);
@@ -2181,7 +2216,7 @@ const BookDetail = () => {
 
       return nextPages;
     });
-  };
+  }
 
   // ---------- Chapter Title Editing ----------
   const handleStartEditChapter = (chapter) => {
@@ -2334,6 +2369,21 @@ const BookDetail = () => {
   return (
     <DragDropContext onDragEnd={onDragEnd}>
       <ConfirmationModal {...modalState} onClose={closeModal} onConfirm={handleConfirmDelete} />
+      <Dialog open={pageSaveConfirmOpen} onOpenChange={setPageSaveConfirmOpen}>
+        <DialogContent className="w-full max-w-md p-6 bg-white rounded-2xl shadow-lg text-center">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold text-gray-800">Save changes?</DialogTitle>
+            <DialogDescription className="mt-2 text-gray-600">
+              You have unsaved changes on this page. What would you like to do?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-6 flex justify-center space-x-4">
+            <Button variant="outline" onClick={() => setPageSaveConfirmOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={handlePageLeaveDiscard}>Discard</Button>
+            <Button onClick={handlePageLeaveSave}>Save</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={saveConfirmOpen} onOpenChange={setSaveConfirmOpen}>
         <DialogContent className="w-full max-w-md p-6 bg-white rounded-2xl shadow-lg text-center">
           <DialogHeader>
@@ -2630,8 +2680,7 @@ const BookDetail = () => {
                                     ref={provided2.innerRef}
                                     {...provided2.draggableProps}
                                     onClick={() => {
-                                      setSelectedChapterId(chapter.id);
-                                      setSelectedPageId(pageSummary.pageId);
+                                      requestSelectPage(chapter.id, pageSummary.pageId);
                                     }}
                                     role="button"
                                     tabIndex={0}
@@ -2672,16 +2721,17 @@ const BookDetail = () => {
                   chapterId={selectedChapterId}
                   page={pages.find(p => p.id === selectedPageId)}
                   onPageUpdate={handlePageUpdate}
-                  onAddPage={handleAddPage}
+                  onAddPage={requestAddPage}
                   onNavigate={(dir) => {
                     const currentIndex = pages.findIndex(p => p.id === selectedPageId);
-                    if (dir === 'next' && currentIndex < pages.length - 1) setSelectedPageId(pages[currentIndex + 1].id);
-                    else if (dir === 'prev' && currentIndex > 0) setSelectedPageId(pages[currentIndex - 1].id);
+                    if (dir === 'next' && currentIndex < pages.length - 1) requestSelectPage(selectedChapterId, pages[currentIndex + 1].id);
+                    else if (dir === 'prev' && currentIndex > 0) requestSelectPage(selectedChapterId, pages[currentIndex - 1].id);
                   }}
                   pageIndex={pages.findIndex(p => p.id === selectedPageId)}
                   totalPages={pages.length}
-                  clearEditor={clearEditor}
                   chapterTitle={chapters.find(c => c.id === selectedChapterId)?.title}
+                  draftNote={pageDrafts[selectedPageId]}
+                  onDraftChange={onDraftChange}
                 />
               ) : (
                 <div className="flex flex-col justify-center items-center text-center h-full p-6">
@@ -2695,7 +2745,7 @@ const BookDetail = () => {
                   )}
                   <h2 className="text-xl font-semibold text-gray-800">{selectedChapterId ? 'Ready to write?' : 'Select a chapter'}</h2>
                   <p className="mt-2 text-gray-500 max-w-xs">{selectedChapterId ? 'Select a page or create a new one to start writing.' : 'Create a new chapter to get started.'}</p>
-                  {selectedChapterId && canEdit && <Button onClick={handleAddPage} className="mt-6"><PlusCircle className="h-4 w-4 mr-2" />Add Page</Button>}
+                  {selectedChapterId && canEdit && <Button onClick={requestAddPage} className="mt-6"><PlusCircle className="h-4 w-4 mr-2" />Add Page</Button>}
                 </div>
               )}
             </div>
