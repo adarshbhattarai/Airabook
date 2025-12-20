@@ -1438,6 +1438,17 @@ const BookDetail = () => {
     setChapters(chaptersList);
   }, [bookId]);
 
+  const handleDraftChange = useCallback((pageId, newContent) => {
+    setPageDrafts(prev => {
+      if (newContent === null) {
+        const next = { ...prev };
+        delete next[pageId];
+        return next;
+      }
+      return { ...prev, [pageId]: newContent };
+    });
+  }, []);
+
   // Permission checks
   // Permission checks
   const isOwner = book?.ownerId === user?.uid || book?.members?.[user?.uid] === 'Owner';
