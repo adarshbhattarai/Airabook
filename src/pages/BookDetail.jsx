@@ -4,7 +4,7 @@ import {
   doc, getDoc, collection, getDocs, addDoc, deleteDoc, updateDoc, writeBatch, query, orderBy, arrayUnion, arrayRemove, where, limit
 } from 'firebase/firestore';
 import { firestore, storage, functions } from '@/lib/firebase';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { ref as firebaseRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -402,7 +402,7 @@ const PageEditor = forwardRef(({ bookId, chapterId, page, onPageUpdate, onAddPag
     const uniqueFileName = `${Date.now()}_${file.name}`;
     // Construct path: {userId}/{bookId}/{chapterId}/{pageId}/media/{type}/{filename}
     const storagePath = `${user.uid}/${bookId}/${chapterId}/${page.id}/media/${mediaType}/${uniqueFileName}`;
-    const storageRef = ref(storage, storagePath);
+    const storageRef = firebaseRef(storage, storagePath);
 
     // Add custom metadata for original name
     const metadata = {
@@ -1000,6 +1000,57 @@ const PageEditor = forwardRef(({ bookId, chapterId, page, onPageUpdate, onAddPag
           onClick={() => onFocus && onFocus()}
         />
       </div>
+
+      {/* Media Preview Overlay */}
+      {
+        previewOpen && previewItem && (
+          <div
+            className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4 backdrop-blur-sm"
+            onClick={closePreview}
+          >
+            <button
+              className="absolute top-4 right-4 text-white/70 hover:text-white transition-colors"
+              onClick={closePreview}
+            >
+              <X className="h-8 w-8" />
+            </button>
+
+            <button
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-2 rounded-full hover:bg-white/10 transition-all"
+              onClick={(e) => { e.stopPropagation(); goPrev(); }}
+            >
+              <ChevronLeft className="h-8 w-8" />
+            </button>
+
+            <button
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-2 rounded-full hover:bg-white/10 transition-all"
+              onClick={(e) => { e.stopPropagation(); goNext(); }}
+            >
+              <ChevronRight className="h-8 w-8" />
+            </button>
+
+            <div className="relative max-w-5xl w-full max-h-[85vh] flex flex-col items-center" onClick={e => e.stopPropagation()}>
+              {previewItem.type === 'video' ? (
+                <video src={previewItem.url} controls autoPlay className="max-w-full max-h-[80vh] rounded-lg shadow-2xl" />
+              ) : (
+                <img src={previewItem.url} alt={previewItem.name} className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl" />
+              )}
+              <div className="mt-4 text-white/80 text-sm font-medium">
+                {previewIndex + 1} / {mediaList.length}
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={!!mediaToDelete}
+        onClose={() => setMediaToDelete(null)}
+        onConfirm={confirmMediaDelete}
+        title="Delete Media"
+        description="Are you sure you want to remove this media from the page? This cannot be undone."
+      />
     </div >
   );
 });
