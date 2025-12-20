@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   doc, getDoc, collection, getDocs, addDoc, deleteDoc, updateDoc, writeBatch, query, orderBy, arrayUnion, arrayRemove, where, limit
@@ -20,6 +20,9 @@ import {
 } from '@/components/ui/dialog';
 import { httpsCallable } from 'firebase/functions';
 import EditBookModal from '@/components/EditBookModal';
+import BlockEditor from '@/components/BlockEditor';
+import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Type } from 'lucide-react';
+
 
 // --- UTILITY FOR FRACTIONAL INDEXING ---
 const getMidpointString = (prev = '', next = '') => {
@@ -201,15 +204,13 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description }) =
 // ======================
 // PageEditor (UPDATED)
 // ======================
-const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNavigate, pageIndex, totalPages, chapterTitle, draftNote, onDraftChange }) => {
+const PageEditor = forwardRef(({ bookId, chapterId, page, onPageUpdate, onAddPage, onNavigate, pageIndex, totalPages, chapterTitle, draftNote, onDraftChange, onFocus }, ref) => {
   const [note, setNote] = useState(draftNote ?? page.note ?? '');
   const [isSaving, setIsSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({});
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [aiBusy, setAiBusy] = useState(false);
-  const [aiStyle, setAiStyle] = useState('');
-  const [showStyleDropdown, setShowStyleDropdown] = useState(false);
 
   // AI preview dialog state
   const [aiPreviewOpen, setAiPreviewOpen] = useState(false);
@@ -303,18 +304,22 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
     return () => { isMounted = false; };
   }, [mediaPickerOpen, mediaPickerTab, selectedAlbumId, toast]);
 
+  // Expose methods to parent via ref
+  useImperativeHandle(ref, () => ({
+    save: async () => {
+      return handleSave();
+    },
+    insertAI: async (style) => {
+      // Call rewrite with the provided style
+      return callRewrite(style);
+    },
+    hasUnsavedChanges: () => {
+      return draftNote != null && draftNote !== (page.note || '');
+    }
+  }));
+
   // Close style dropdown when clicking outside
-  useEffect(() => {
-    if (!showStyleDropdown) return;
-    const handleClickOutside = (event) => {
-      const target = event.target;
-      if (!target.closest('.style-dropdown-container')) {
-        setShowStyleDropdown(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showStyleDropdown]);
+  // (Removed internal style dropdown logic)
 
   // keyboard arrows for media modal
   useEffect(() => {
@@ -347,8 +352,8 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
       onDraftChange?.(page.id, null);
       toast({ title: 'Success', description: 'Page saved.' });
     } catch (error) {
-      console.error('Save error:', error);
-      toast({ title: 'Error', description: 'Failed to save page.', variant: 'destructive' });
+      console.error('Save error detailed:', error);
+      toast({ title: 'Save Failed', description: error.message || 'Unknown save error', variant: 'destructive' });
     }
     setIsSaving(false);
   };
@@ -607,158 +612,89 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
   };
 
   // --- AI: callable + preview modal ---
-  const callRewrite = async () => {
+  const callRewrite = async (styleToUse) => {
+    // If we're already rewriting, ignore
+    if (aiBusy) return;
+
+    // Use passed style or default
+    const style = styleToUse || 'Improve clarity';
+
+    // We need current content from editor
+    let currentContent = note;
+    if (quillRef.current && quillRef.current.getHTML) {
+      currentContent = await quillRef.current.getHTML();
+    }
+
+    const text = stripHtml(currentContent);
+    if (!text || !text.trim()) {
+      toast({ title: 'Nothing to rewrite', description: 'Please write some text first.', variant: 'warning' });
+      return;
+    }
+
     setAiBusy(true);
     try {
-      const call = httpsCallable(functions, 'rewriteNote');
-      const { data } = await call({
-        note: note, // Full note content (HTML or plain text)
-        noteText: stripHtml(note), // Plain text version (fallback)
-        prompt: aiStyle, // User-selected preset or custom prompt (up to 25 characters)
-        maxTokens: 512,
-        bookId: bookId, // Book ID for context
-        chapterId: chapterId, // Chapter ID for context
-        pageId: page.id, // Page ID for context
+
+      const rewriteFn = httpsCallable(functions, 'rewriteNote');
+      const response = await rewriteFn({
+        noteText: text,
+        prompt: style,
+        bookId: bookId,
+        chapterId: chapterId,
+        pageId: page.id
       });
-      // Handle both direct response and wrapped response structure
-      const candidate = data?.rewritten ?? data?.result?.rewritten ?? '';
-      if (!candidate) {
-        toast({ title: 'No rewrite returned', description: 'Try again.', variant: 'destructive' });
-        return;
+
+      const data = response.data;
+      if (data.rewritten) {
+        setAiPreviewText(data.rewritten);
+        setAiPreviewOpen(true);
+      } else {
+        throw new Error(data.error || 'Unknown error');
       }
-      setAiPreviewText(candidate);
-      setAiPreviewOpen(true);
-    } catch (e) {
-      toast({ title: 'AI error', description: String(e?.message || e), variant: 'destructive' });
+    } catch (error) {
+      console.error('AI Rewrite error:', error);
+      toast({ title: 'Rewrite failed', description: error.message, variant: 'destructive' });
     } finally {
       setAiBusy(false);
     }
   };
-
-  const insertAtCursor = () => {
-    const editor = quillRef.current?.getEditor?.();
-    const candidate = aiPreviewText || '';
-
-    if (!editor) {
-      // Fallback: update state directly
-      const newNote = note + candidate;
-      setPendingNote(newNote);
-      return;
-    }
-
-    const range = editor.getSelection(true);
-    const currentIndex = range ? range.index : editor.getLength();
-
-    // Insert at cursor position
-    if (isLikelyHtml(candidate)) {
-      editor.clipboard.dangerouslyPasteHTML(currentIndex, candidate);
-    } else {
-      editor.insertText(currentIndex, candidate);
-    }
-
-    // Get updated content
-    const updatedContent = editor.root.innerHTML;
-    setPendingNote(updatedContent);
-    setNote(updatedContent);
-  };
-
-  const replaceAll = () => {
-    const editor = quillRef.current?.getEditor?.();
-    const candidate = aiPreviewText || '';
-
-    if (!editor) {
-      // Fallback: update state directly
-      setPendingNote(candidate);
-      return;
-    }
-
-    // Replace all content
-    const length = editor.getLength();
-    editor.deleteText(0, length);
-
-    if (isLikelyHtml(candidate)) {
-      editor.clipboard.dangerouslyPasteHTML(0, candidate);
-    } else {
-      editor.insertText(0, candidate);
-    }
-
-    // Get updated content
-    const updatedContent = editor.root.innerHTML;
-    setPendingNote(updatedContent);
-    setNote(updatedContent);
-  };
-
-  const handleSaveChanges = async () => {
-    if (!pendingNote) return;
-
-    setIsSaving(true);
-    const plain = stripHtml(pendingNote);
-    const shortNote = plain.substring(0, 40) + (plain.length > 40 ? '...' : '');
+  const applyRewrite = async (mode = 'replace') => {
+    if (!quillRef.current) return;
 
     try {
-      const updatePageFn = httpsCallable(functions, 'updatePage');
-      await updatePageFn({
-        bookId,
-        chapterId,
-        pageId: page.id,
-        note: pendingNote,
-        media: page.media || []
-      });
-
-      // Update editor content
-      const editor = quillRef.current?.getEditor?.();
-      if (editor) {
-        const length = editor.getLength();
-        editor.deleteText(0, length);
-        if (isLikelyHtml(pendingNote)) {
-          editor.clipboard.dangerouslyPasteHTML(0, pendingNote);
+      if (mode === 'replace') {
+        if (quillRef.current.setHTML) {
+          await quillRef.current.setHTML(aiPreviewText);
         } else {
-          editor.insertText(0, pendingNote);
+          // Fallback
+          setNote(aiPreviewText);
+          handleNoteChange(aiPreviewText);
+        }
+        toast({ title: 'Rewrite Applied', description: 'Your note has been completely updated.' });
+      } else if (mode === 'insert') {
+        if (quillRef.current.insertHTML) {
+          await quillRef.current.insertHTML(aiPreviewText);
+          toast({ title: 'Text Inserted', description: 'AI text inserted at cursor.' });
+        } else {
+          toast({ title: 'Error', description: 'Insert not supported in this editor mode.', variant: 'destructive' });
         }
       }
-
-      setNote(pendingNote);
-      onPageUpdate({ ...page, note: pendingNote, shortNote });
-      setPendingNote(null);
-      setAiPreviewOpen(false);
-      onDraftChange?.(page.id, null);
-      toast({ title: 'Success', description: 'Changes saved successfully.' });
     } catch (error) {
-      console.error('Failed to save changes:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to save changes. Please try again.',
-        variant: 'destructive'
-      });
+      console.error('Error applying rewrite:', error);
+      toast({ title: 'Application Failed', description: 'Could not apply changes.', variant: 'destructive' });
     } finally {
-      setIsSaving(false);
+      setAiPreviewOpen(false);
     }
   };
 
-  const handleCancelChanges = () => {
-    // Restore original content if changes were made
-    if (pendingNote) {
-      const editor = quillRef.current?.getEditor?.();
-      if (editor) {
-        const length = editor.getLength();
-        editor.deleteText(0, length);
-        if (isLikelyHtml(page.note)) {
-          editor.clipboard.dangerouslyPasteHTML(0, page.note || '');
-        } else {
-          editor.insertText(0, page.note || '');
-        }
-      }
-      setNote(page.note || '');
-    }
-    setPendingNote(null);
-    setAiPreviewOpen(false);
-  };
+
+
 
   return (
-    <div className="p-6 bg-white rounded-2xl shadow-lg border border-gray-200 flex flex-col h-full">
-      <div className="flex justify-between items-center mb-4">
-        <div>
-          {chapterTitle && (
+    <div className="flex flex-col h-full max-w-5xl mx-auto p-8">
+
+      <div className="flex justify-center items-center mb-6 relative">
+        <div className="text-center">
+          {pageIndex === 0 && chapterTitle && (
             <div className="text-xs font-semibold text-violet-600 uppercase tracking-wider mb-1">
               {chapterTitle}
             </div>
@@ -767,7 +703,7 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
             Page {pageIndex + 1}
           </h2>
         </div>
-        <div className="relative group">
+        <div className="absolute right-0 top-1/2 -translate-y-1/2 group">
           <Button
             variant="secondary"
             size="icon"
@@ -935,6 +871,43 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
         </DialogContent>
       </Dialog>
 
+      {/* AI Rewrite Preview Dialog */}
+      <Dialog open={aiPreviewOpen} onOpenChange={setAiPreviewOpen}>
+        <DialogContent className="max-w-2xl bg-white rounded-2xl shadow-2xl border border-gray-100 p-6">
+          <DialogHeader>
+            <DialogTitle>AI Rewrite Suggestion</DialogTitle>
+            <DialogDescription>
+              Here is the suggested rewrite. You can apply it or discard it.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="bg-gray-50 p-4 rounded-md text-sm text-gray-800 max-h-[60vh] overflow-y-auto whitespace-pre-wrap">
+            {aiPreviewText}
+          </div>
+
+          <div className="flex justify-end gap-2 mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setAiPreviewOpen(false)}
+            >
+              Discard
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => applyRewrite('insert')}
+            >
+              Insert at Cursor
+            </Button>
+            <Button
+              variant="appPrimary"
+              onClick={() => applyRewrite('replace')}
+            >
+              Replace All
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Dropzone / uploader */}
       <div
         className="mb-4 p-4 border-2 border-dashed rounded-lg flex flex-col justify-center items-center bg-gray-50 text-gray-500 hover:bg-violet-50 hover:border-violet-400 transition-colors"
@@ -1009,289 +982,27 @@ const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNaviga
 
           <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
           <div className="flex-grow">
-            <ReactQuill
-              ref={quillRef}
-              value={note}
-              onChange={handleNoteChange}
-              modules={quillModules}
-              formats={quillFormats}
-              theme="snow"
-              placeholder="Add notes for this page..."
-              className="[&_.ql-container]:min-h-[200px] [&_.ql-container]:rounded-b-md [&_.ql-toolbar]:rounded-t-md"
-            />
+            <div className="flex-grow bg-transparent overflow-hidden relative">
+              <BlockEditor
+                key={page.id} // Remount on page change
+                ref={quillRef}
+                initialContent={note || ""}
+                onChange={handleNoteChange}
+                onSave={handleSave}
+                onFocus={() => onFocus?.(page.id)}
+              /></div>
           </div>
         </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-          {/* Page navigation */}
-          <div className="flex items-center space-x-2 shrink-0">
-            <Button variant="outline" size="icon" onClick={() => onNavigate('prev')} disabled={pageIndex === 0}>
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <span className="text-sm font-medium text-gray-600 whitespace-nowrap">
-              Page {pageIndex + 1} of {totalPages}
-            </span>
-            <Button variant="outline" size="icon" onClick={() => onNavigate('next')} disabled={pageIndex === totalPages - 1}>
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </div>
 
-          {/* AI controls + Save */}
-          <div className="flex flex-wrap items-center gap-2">
-            {draftNote != null && draftNote !== (page.note || '') && (
-              <span className="text-xs text-gray-500 flex items-center shrink-0">
-                Unsaved changes
-              </span>
-            )}
-
-            {/* AI style input + dropdown */}
-            <div className="relative flex items-center style-dropdown-container min-w-0">
-              <Input
-                type="text"
-                value={aiStyle}
-                onChange={(e) => setAiStyle(e.target.value)}
-                maxLength={25}
-                placeholder="Custom style or choose pre"
-                className="text-sm h-9 rounded-r-none border-r-0 pr-2 min-w-0 w-full max-w-[180px]"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setShowStyleDropdown(!showStyleDropdown);
-                }}
-                className="h-9 rounded-l-none px-2 shrink-0"
-              >
-                <ChevronDown className="h-4 w-4" />
-              </Button>
-              {showStyleDropdown && (
-                <div className="absolute top-full right-0 mt-1 z-50 bg-white border rounded-md shadow-lg min-w-[200px]">
-                  <div className="py-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAiStyle('Improve clarity');
-                        setShowStyleDropdown(false);
-                      }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
-                    >
-                      Improve clarity
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAiStyle('Warm & supportive');
-                        setShowStyleDropdown(false);
-                      }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
-                    >
-                      Warm & supportive
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAiStyle('Concise summary');
-                        setShowStyleDropdown(false);
-                      }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
-                    >
-                      Concise summary
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAiStyle('Fix grammar only');
-                        setShowStyleDropdown(false);
-                      }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
-                    >
-                      Fix grammar only
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Rewrite button */}
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={aiBusy || !stripHtml(note)?.trim() || !aiStyle?.trim()}
-              onClick={callRewrite}
-              className="flex items-center gap-1 shrink-0 whitespace-nowrap"
-            >
-              <Sparkles className="h-4 w-4" />
-              {aiBusy ? 'Rewriting...' : 'Rewrite with AI'}
-            </Button>
-
-            {/* Save button */}
-            <Button onClick={handleSave} disabled={isSaving} variant="appSuccess" className="shrink-0">
-              {isSaving ? 'Saving...' : 'Save'}
-            </Button>
-          </div>
-        </div>
+        {/* Focus Trigger */}
+        <div
+          className="absolute inset-0 -z-10"
+          onClick={() => onFocus && onFocus()}
+        />
       </div>
-
-      {/* Media Preview Modal */}
-      <Dialog open={previewOpen} onOpenChange={(open) => (open ? setPreviewOpen(true) : closePreview())}>
-        <DialogContent className="relative max-w-4xl p-0 overflow-hidden bg-transparent border-0 shadow-none">
-          <DialogHeader className="px-6 pt-6">
-            <DialogTitle className="text-lg font-semibold text-gray-200 truncate">
-              {previewItem?.name || 'Preview'}
-            </DialogTitle>
-            <DialogDescription className="text-sm text-gray-400 truncate">
-              {previewItem?.type}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div
-            className="relative flex justify-center items-center p-4 group transition-all"
-            style={{ maxHeight: '80vh' }}
-          >
-            {previewItem?.type === 'image' ? (
-              <img
-                src={previewItem.url}
-                alt={previewItem.name}
-                className="object-contain max-h-[75vh] w-auto rounded-md"
-              />
-            ) : previewItem ? (
-              <video
-                src={previewItem.url}
-                controls
-                className="object-contain max-h-[75vh] w-auto rounded-md"
-              />
-            ) : null}
-
-            {mediaList.length > 1 && (
-              <>
-                <button
-                  onClick={goPrev}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 z-20 h-10 w-10 flex items-center justify-center 
-                       rounded-full bg-white/60 hover:bg-white/90 transition-all shadow-md backdrop-blur-md 
-                       opacity-0 group-hover:opacity-100"
-                  aria-label="Previous"
-                >
-                  <ChevronLeft className="h-5 w-5 text-gray-800" />
-                </button>
-                <button
-                  onClick={goNext}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 z-20 h-10 w-10 flex items-center justify-center 
-                       rounded-full bg-white/60 hover:bg-white/90 transition-all shadow-md backdrop-blur-md 
-                       opacity-0 group-hover:opacity-100"
-                  aria-label="Next"
-                >
-                  <ChevronRight className="h-5 w-5 text-gray-800" />
-                </button>
-              </>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* AI Preview Modal */}
-      <Dialog open={aiPreviewOpen} onOpenChange={(open) => !open && handleCancelChanges()}>
-        <DialogContent className="max-w-3xl bg-gradient-to-br from-violet-50 via-rose-50 to-amber-50 border-2 border-violet-200 shadow-2xl">
-          {/* Header with prompt type */}
-          <DialogHeader className="bg-white rounded-t-lg p-6 border-b-2 border-violet-200">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-violet-100 rounded-full">
-                <Sparkles className="h-6 w-6 text-violet-600" />
-              </div>
-              <div className="flex-1">
-                <DialogTitle className="text-2xl font-bold text-violet-900">
-                  Suggestion
-                </DialogTitle>
-                <DialogDescription className="text-base text-violet-700 mt-1">
-                  {aiStyle || 'Custom prompt'}
-                </DialogDescription>
-              </div>
-            </div>
-          </DialogHeader>
-
-          {/* Suggested content */}
-          <div className="p-6 bg-white/90 backdrop-blur-sm rounded-lg mx-4 my-4 max-h-[50vh] overflow-auto border border-violet-100 shadow-inner">
-            <div
-              className="prose prose-lg max-w-none text-gray-800"
-              dangerouslySetInnerHTML={{
-                __html: isLikelyHtml(aiPreviewText)
-                  ? aiPreviewText
-                  : textToHtml(aiPreviewText || '')
-              }}
-            />
-          </div>
-
-          {/* Action buttons */}
-          <div className="px-6 pb-6 space-y-3">
-            <div className="flex items-center justify-center gap-3">
-              <Button
-                variant="outline"
-                onClick={insertAtCursor}
-                className="bg-white hover:bg-violet-50 border-violet-300 text-violet-700 hover:text-violet-900"
-              >
-                Insert at cursor
-              </Button>
-              <Button
-                variant="outline"
-                onClick={replaceAll}
-                className="bg-white hover:bg-rose-50 border-rose-300 text-rose-700 hover:text-rose-900"
-              >
-                Replace all
-              </Button>
-            </div>
-
-            {pendingNote && (
-              <div className="pt-3 border-t border-violet-200">
-                <p className="text-sm text-center text-gray-600 mb-3">
-                  Changes are ready. Save to update or cancel to discard.
-                </p>
-                <div className="flex items-center justify-center gap-3">
-                  <Button
-                    variant="outline"
-                    onClick={handleCancelChanges}
-                    className="bg-white hover:bg-gray-50 border-gray-300"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleSaveChanges}
-                    disabled={isSaving}
-                    className="bg-gradient-to-r from-violet-500 to-rose-500 hover:from-violet-600 hover:to-rose-600 text-white shadow-lg"
-                  >
-                    {isSaving ? 'Saving...' : 'Save Changes'}
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {!pendingNote && (
-              <div className="flex items-center justify-center pt-3 border-t border-violet-200">
-                <Button
-                  variant="outline"
-                  onClick={handleCancelChanges}
-                  className="bg-white hover:bg-gray-50 border-gray-300"
-                >
-                  Close
-                </Button>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Confirmation Modal for Media Deletion */}
-      <ConfirmationModal
-        isOpen={!!mediaToDelete}
-        onClose={() => setMediaToDelete(null)}
-        onConfirm={confirmMediaDelete}
-        title="Remove Media"
-        description="Removing this media only deletes the reference from this page. The file remains in your Assets Registry. To permanently delete the file and free up storage space, please remove it from the Assets Registry."
-      />
-    </div>
+    </div >
   );
-};
+});
 
 // --- MAIN COMPONENT ---
 
@@ -1370,18 +1081,17 @@ const ChatPanel = () => {
 
   if (isMinimized) {
     return (
-      <div className="shrink-0 bg-card border-l border-border flex flex-col items-center py-4 px-2 w-12">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setIsMinimized(false)}
-          className="h-8 w-8 text-app-iris hover:bg-app-iris/10"
-          title="Expand AI Assistant"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <div className="mt-4 writing-mode-vertical text-xs font-semibold text-muted-foreground transform rotate-180">
-          AI Assistant
+      <div className="shrink-0 bg-card border-l border-border flex flex-col items-center w-12 transition-all duration-300">
+        <div className="h-[57px] flex items-center justify-center w-full border-b border-border bg-card/80 backdrop-blur-sm">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsMinimized(false)}
+            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+            title="Expand AI Assistant"
+          >
+            <PanelRightOpen className="h-4 w-4" />
+          </Button>
         </div>
       </div>
     );
@@ -1399,7 +1109,7 @@ const ChatPanel = () => {
         title="Drag to resize"
       />
 
-      <div className="p-4 border-b border-border flex items-center justify-between bg-app-gray-50/70">
+      <div className="h-[57px] px-4 border-b border-border flex items-center justify-between bg-card/80 backdrop-blur-sm">
         <div className="flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-app-iris" />
           <h3 className="font-semibold text-foreground text-sm">AI Assistant</h3>
@@ -1408,10 +1118,10 @@ const ChatPanel = () => {
           variant="ghost"
           size="icon"
           onClick={() => setIsMinimized(true)}
-          className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-app-gray-100"
+          className="h-6 w-6 text-muted-foreground hover:text-foreground"
           title="Minimize"
         >
-          <ChevronRight className="h-4 w-4" />
+          <PanelRightClose className="h-4 w-4" />
         </Button>
       </div>
 
@@ -1474,6 +1184,7 @@ const ChatPanel = () => {
 
 
 const BookDetail = () => {
+  console.log('BookDetail: Component Mounting');
   const { bookId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -1508,6 +1219,35 @@ const BookDetail = () => {
   const [selectedPageId, setSelectedPageId] = useState(null);
 
   // UI States
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
+  const [leftSidebarWidth, setLeftSidebarWidth] = useState(288);
+  const [isResizingLeft, setIsResizingLeft] = useState(false);
+
+  // Resize Handler Logic
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isResizingLeft) return;
+      const newWidth = e.clientX;
+      setLeftSidebarWidth(Math.max(200, Math.min(480, newWidth)));
+    };
+    const handleMouseUp = () => setIsResizingLeft(false);
+
+    if (isResizingLeft) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'ew-resize';
+      document.body.style.userSelect = 'none';
+    } else {
+      document.body.style.cursor = 'default';
+      document.body.style.userSelect = 'auto';
+    }
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'default';
+      document.body.style.userSelect = 'auto';
+    };
+  }, [isResizingLeft]);
   const [newChapterTitle, setNewChapterTitle] = useState('');
   const [modalState, setModalState] = useState({ isOpen: false });
   const [pageDrafts, setPageDrafts] = useState({});
@@ -1526,6 +1266,66 @@ const BookDetail = () => {
   const [coAuthorUsers, setCoAuthorUsers] = useState([]);
   const searchTimeoutRef = useRef(null);
   const { toast } = useToast();
+
+  // ---------------------------------------------------------------------------
+  // 📜 Continuous Scroll & Footer Logic
+  // ---------------------------------------------------------------------------
+  const pageRefs = useRef({});
+  const pageContainerRefs = useRef({});
+  const scrollContainerRef = useRef(null);
+  const [activePageId, setActivePageId] = useState(null);
+  const [footerAiStyle, setFooterAiStyle] = useState('Improve clarity');
+  const [showFooterStyleDropdown, setShowFooterStyleDropdown] = useState(false);
+
+  // Update active page on scroll
+  useEffect(() => {
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting && entry.intersectionRatio > 0.3) {
+          const pageId = entry.target.getAttribute('data-page-id');
+          if (pageId) {
+            setActivePageId(pageId);
+          }
+        }
+      });
+    }, {
+      root: scrollContainerRef.current,
+      threshold: [0.1, 0.3, 0.5]
+    });
+
+    const currentRefs = pageContainerRefs.current;
+
+    // Register all pages
+    Object.values(currentRefs).forEach(el => {
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, [pages]);
+
+  // Sync activePageId with selectedPageId when user clicks sidebar
+  useEffect(() => {
+    if (selectedPageId) {
+      // If user clicked sidebar, scroll to that page
+      const el = pageContainerRefs.current[selectedPageId];
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        setActivePageId(selectedPageId);
+      }
+    }
+  }, [selectedPageId]);
+
+  const handleFooterSave = async () => {
+    if (activePageId && pageRefs.current[activePageId]) {
+      await pageRefs.current[activePageId].save();
+    }
+  };
+
+  const handleFooterRewrite = async () => {
+    if (activePageId && pageRefs.current[activePageId]) {
+      await pageRefs.current[activePageId].insertAI(footerAiStyle);
+    }
+  };
 
   // Refs
   const isFetchingRef = useRef(false);
@@ -1643,6 +1443,8 @@ const BookDetail = () => {
   const isOwner = book?.ownerId === user?.uid || book?.members?.[user?.uid] === 'Owner';
   const isCoAuthor = book?.members?.[user?.uid] === 'Co-author';
   const canEdit = isOwner || isCoAuthor;
+  const chapterTitle = chapters.find(c => c.id === selectedChapterId)?.title;
+
 
   console.log('👤 Auth Check:', {
     userId: user?.uid,
@@ -2044,6 +1846,38 @@ const BookDetail = () => {
     setNewChapterTitle('');
   };
 
+  // Legacy AI functions removed. PageEditor handles AI writes internally.
+  // Keeping this comment as placeholder if logic path is needed.
+
+  const handlePageFocus = useCallback((pageId) => {
+    // console.log('Focus triggered for:', pageId);
+    if (pageId && activePageId !== pageId) {
+      console.log('Set active page (focus):', pageId);
+      setActivePageId(pageId);
+    }
+  }, [activePageId]);
+
+  const handlePageNavigate = useCallback((pageId, direction) => {
+    const currentIndex = pages.findIndex(p => p.id === pageId);
+    if (currentIndex === -1) return;
+
+    let targetPageId = null;
+    if (direction === 'next' && currentIndex < pages.length - 1) {
+      targetPageId = pages[currentIndex + 1].id;
+    } else if (direction === 'prev' && currentIndex > 0) {
+      targetPageId = pages[currentIndex - 1].id;
+    }
+
+    if (targetPageId) {
+      // Scroll to the target page
+      const el = pageContainerRefs.current[targetPageId];
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        setActivePageId(targetPageId); // Footer updates
+      }
+    }
+  }, [pages]);
+
   const handleAddPage = async () => {
     if (!canEdit) {
       toast({
@@ -2367,7 +2201,7 @@ const BookDetail = () => {
   }
 
   return (
-    <DragDropContext onDragEnd={onDragEnd}>
+    <>
       <ConfirmationModal {...modalState} onClose={closeModal} onConfirm={handleConfirmDelete} />
       <Dialog open={pageSaveConfirmOpen} onOpenChange={setPageSaveConfirmOpen}>
         <DialogContent className="w-full max-w-md p-6 bg-white rounded-2xl shadow-lg text-center">
@@ -2523,239 +2357,376 @@ const BookDetail = () => {
         </DialogContent>
       </Dialog>
 
-      <div className="flex flex-col h-full overflow-hidden">
-        {/* Header */}
-        <div className="shrink-0 py-3 px-4 border-b border-border bg-card flex items-center justify-between z-10">
-          <div className="flex items-center gap-4">
-            <Button
-              variant="appGhost"
-              onClick={() => navigate('/books')}
-              className="flex items-center gap-2 text-xs"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back
-            </Button>
-            {book?.coverImageUrl && (
-              <img
-                src={book.coverImageUrl}
-                alt="Cover"
-                className="h-8 w-8 rounded object-cover border border-gray-200"
-              />
-            )}
-            <h1 className="text-lg font-semibold text-app-gray-900 truncate max-w-md" title={book?.babyName}>
-              {book?.babyName}
-            </h1>
-            {isOwner && (
+      <DragDropContext onDragEnd={onDragEnd}>
+        <div className="flex flex-col h-full overflow-hidden">
+          {/* Header */}
+          <div className="shrink-0 py-3 px-4 border-b border-border bg-card flex items-center justify-between z-10">
+            <div className="flex items-center gap-4">
               <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setEditBookModalOpen(true)}
-                className="ml-2 h-6 w-6 text-app-gray-400 hover:text-app-gray-900"
-                title="Edit book details"
+                variant="appGhost"
+                onClick={() => navigate('/books')}
+                className="flex items-center gap-2 text-xs"
               >
-                <Edit className="h-3 w-3" />
+                <ArrowLeft className="h-4 w-4" />
+                Back
               </Button>
+              {book?.coverImageUrl && (
+                <img
+                  src={book.coverImageUrl}
+                  alt="Cover"
+                  className="h-8 w-8 rounded object-cover border border-gray-200"
+                />
+              )}
+              <h1 className="text-lg font-semibold text-app-gray-900 truncate max-w-md" title={book?.babyName}>
+                {book?.babyName}
+              </h1>
+              {isOwner && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setEditBookModalOpen(true)}
+                  className="ml-2 h-6 w-6 text-app-gray-400 hover:text-app-gray-900"
+                  title="Edit book details"
+                >
+                  <Edit className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
+
+            {isOwner && (
+              <div className="flex items-center gap-2">
+                <span title="Currently Disabled, Coming Soon">
+                  <Button
+                    variant="appGhost"
+                    disabled
+                    className="flex items-center gap-2 h-8 text-xs pointer-events-none"
+                  >
+                    <Globe className="h-3 w-3" />
+                    Publish
+                  </Button>
+                </span>
+                <span title="Currently Disabled, Coming Soon">
+                  <Button
+                    variant="outline"
+                    disabled
+                    className="flex items-center gap-2 h-8 text-xs pointer-events-none"
+                  >
+                    <Users className="h-3 w-3" />
+                    Co-Authors
+                  </Button>
+                </span>
+              </div>
             )}
           </div>
 
-          {isOwner && (
-            <div className="flex items-center gap-2">
-              <span title="Currently Disabled, Coming Soon">
-                <Button
-                  variant="appGhost"
-                  disabled
-                  className="flex items-center gap-2 h-8 text-xs pointer-events-none"
-                >
-                  <Globe className="h-3 w-3" />
-                  Publish
-                </Button>
-              </span>
-              <span title="Currently Disabled, Coming Soon">
-                <Button
-                  variant="outline"
-                  disabled
-                  className="flex items-center gap-2 h-8 text-xs pointer-events-none"
-                >
-                  <Users className="h-3 w-3" />
-                  Co-Authors
-                </Button>
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Main Content */}
-        <div className="flex flex-1 overflow-hidden">
-          {/* Left Sidebar: Chapters */}
-          <div className="w-72 bg-app-gray-50 border-r border-border flex flex-col shrink-0 overflow-visible relative z-20">
-            <div className="p-3 border-b border-border bg-card/80 backdrop-blur-sm">
-              <form onSubmit={handleCreateChapter} className="flex items-center space-x-2">
-                <Input
-                  value={newChapterTitle}
-                  onChange={(e) => setNewChapterTitle(e.target.value)}
-                  placeholder="New chapter..."
-                  disabled={!canEdit}
-                  className="h-8 text-sm"
+          {/* Main Content */}
+          <div className="flex flex-1 overflow-hidden">
+            {/* Left Sidebar: Chapters */}
+            <div
+              className={`${leftSidebarOpen ? '' : 'w-12 items-center'} bg-app-gray-50 border-r border-border flex flex-col shrink-0 overflow-visible relative z-20 transition-all duration-300`}
+              style={leftSidebarOpen ? { width: leftSidebarWidth } : {}}
+            >
+              {leftSidebarOpen && (
+                <div
+                  className={`absolute right-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-app-iris/40 transition-colors z-30 ${isResizingLeft ? 'bg-app-iris/60' : 'bg-transparent'}`}
+                  onMouseDown={(e) => { e.preventDefault(); setIsResizingLeft(true); }}
                 />
-                <Button type="submit" size="icon" disabled={!canEdit} className="h-8 w-8">
-                  <PlusCircle className="h-4 w-4" />
-                </Button>
-              </form>
+              )}
+              <div className="p-2 border-b border-border flex justify-between items-center bg-card/80 backdrop-blur-sm h-[57px]">
+                {leftSidebarOpen ? (
+                  <>
+                    <span className="font-semibold text-sm pl-2">Chapters</span>
+                    <Button variant="ghost" size="icon" onClick={() => setLeftSidebarOpen(false)} className="h-6 w-6">
+                      <PanelLeftClose className="h-4 w-4" />
+                    </Button>
+                  </>
+                ) : (
+                  <Button variant="ghost" size="icon" onClick={() => setLeftSidebarOpen(true)} className="h-6 w-6 mt-1">
+                    <PanelLeftOpen className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+
+              {leftSidebarOpen && (
+                <>
+                  <div className="p-3 border-b border-border bg-card/80 backdrop-blur-sm">
+                    <form onSubmit={handleCreateChapter} className="flex items-center space-x-2">
+                      <Input
+                        value={newChapterTitle}
+                        onChange={(e) => setNewChapterTitle(e.target.value)}
+                        placeholder="New chapter..."
+                        disabled={!canEdit}
+                        className="h-8 text-sm"
+                      />
+                      <Button type="submit" size="icon" disabled={!canEdit} className="h-8 w-8">
+                        <PlusCircle className="h-4 w-4" />
+                      </Button>
+                    </form>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto overflow-x-visible p-2">
+                    <div className="space-y-1">
+                      {[...chapters].sort((a, b) => a.order.localeCompare(b.order)).map(chapter => (
+                        <div key={chapter.id} className="group">
+                          <div
+                            onClick={(e) => {
+                              if (editingChapterId === chapter.id) return;
+                              if (editingChapterId && editingChapterId !== chapter.id) {
+                                const chapterTitle = chapters.find(c => c.id === chapter.id)?.title || '';
+                                setPendingChapterEdit({ chapterId: chapter.id, originalTitle: chapterTitle });
+                                setSaveConfirmOpen(true);
+                                return;
+                              }
+                              setSelectedChapterId(chapter.id);
+                              setExpandedChapters(new Set([chapter.id]));
+                            }}
+                            className={`w-full text-left p-2 rounded-lg flex items-center justify-between ${editingChapterId === chapter.id ? '' : 'cursor-pointer'} ${selectedChapterId === chapter.id ? 'bg-app-iris/10 text-app-iris font-medium' : 'hover:bg-app-gray-100 text-foreground'}`}
+                          >
+                            <div className="flex items-center flex-1 min-w-0 mr-2">
+                              {isOwner && <HoverDeleteMenu onDelete={() => openDeleteModal('chapter', chapter)} />}
+                              {editingChapterId === chapter.id ? (
+                                <input
+                                  value={editingChapterTitle}
+                                  onChange={(e) => setEditingChapterTitle(e.target.value)}
+                                  onBlur={handleChapterTitleBlur}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      handleSaveChapterTitle(chapter.id);
+                                    }
+                                    if (e.key === 'Escape') {
+                                      e.preventDefault();
+                                      handleCancelChapterEdit();
+                                    }
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="flex-1 ml-1 px-2 py-1 border border-border rounded text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary"
+                                  autoFocus
+                                />
+                              ) : (
+                                <span
+                                  className="truncate pr-2 ml-1 text-sm"
+                                  title={chapter.title}
+                                  onDoubleClick={(e) => {
+                                    e.stopPropagation();
+                                    handleStartEditChapter(chapter);
+                                  }}
+                                >
+                                  {chapter.title}
+                                </span>
+                              )}
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 shrink-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const s = new Set(expandedChapters);
+                                s.has(chapter.id) ? s.delete(chapter.id) : s.add(chapter.id);
+                                setExpandedChapters(s);
+                              }}
+                            >
+                              {expandedChapters.has(chapter.id) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                            </Button>
+                          </div>
+                          {expandedChapters.has(chapter.id) && (
+                            <Droppable droppableId={chapter.id} type="PAGE">
+                              {(provided) => (
+                                <div ref={provided.innerRef} {...provided.droppableProps} className="ml-3 pl-3 border-l border-border py-1 space-y-0.5">
+                                  {chapter.pagesSummary?.length > 0 ? chapter.pagesSummary.map((pageSummary, index) => (
+                                    <Draggable key={pageSummary.pageId} draggableId={pageSummary.pageId} index={index}>
+                                      {(provided2) => (
+                                        <div
+                                          ref={provided2.innerRef}
+                                          {...provided2.draggableProps}
+                                          onClick={() => {
+                                            requestSelectPage(chapter.id, pageSummary.pageId);
+                                          }}
+                                          role="button"
+                                          tabIndex={0}
+                                          className={`group w-full text-left p-1.5 rounded-md text-sm flex items-center justify-between cursor-pointer ${selectedPageId === pageSummary.pageId ? 'bg-app-iris/10 text-app-iris font-medium' : 'hover:bg-app-gray-50 text-app-gray-600'}`}
+                                        >
+                                          <div className="flex items-center truncate">
+                                            <span
+                                              {...provided2.dragHandleProps}
+                                              className="mr-2 text-app-gray-300 hover:text-foreground shrink-0 cursor-grab active:cursor-grabbing"
+                                            >
+                                              <GripVertical className="h-3 w-3" />
+                                            </span>
+                                            <span className="truncate text-xs">{pageSummary.shortNote || 'Untitled Page'}</span>
+                                          </div>
+
+                                          {canEdit && <HoverDeleteMenu side="right" onDelete={() => openDeleteModal('page', { ...pageSummary, chapterId: chapter.id, pageIndex: index })} />}
+                                        </div>
+                                      )}
+                                    </Draggable>
+                                  )) : <div className="p-2 text-xs text-muted-foreground italic">No pages</div>}
+                                  {provided.placeholder}
+                                </div>
+                              )}
+                            </Droppable>
+                          )}
+                        </div>
+                      ))}
+
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
-            <div className="flex-1 overflow-y-auto overflow-x-visible p-2">
-              <div className="space-y-1">
-                {[...chapters].sort((a, b) => a.order.localeCompare(b.order)).map(chapter => (
-                  <div key={chapter.id} className="group">
-                    <div
-                      onClick={(e) => {
-                        if (editingChapterId === chapter.id) return;
-                        if (editingChapterId && editingChapterId !== chapter.id) {
-                          const chapterTitle = chapters.find(c => c.id === chapter.id)?.title || '';
-                          setPendingChapterEdit({ chapterId: chapter.id, originalTitle: chapterTitle });
-                          setSaveConfirmOpen(true);
-                          return;
-                        }
-                        setSelectedChapterId(chapter.id);
-                        setExpandedChapters(new Set([chapter.id]));
-                      }}
-                      className={`w-full text-left p-2 rounded-lg flex items-center justify-between ${editingChapterId === chapter.id ? '' : 'cursor-pointer'} ${selectedChapterId === chapter.id ? 'bg-app-iris/10 text-app-iris font-medium' : 'hover:bg-app-gray-100 text-foreground'}`}
-                    >
-                      <div className="flex items-center flex-1 min-w-0 mr-2">
-                        {isOwner && <HoverDeleteMenu onDelete={() => openDeleteModal('chapter', chapter)} />}
-                        {editingChapterId === chapter.id ? (
-                          <input
-                            value={editingChapterTitle}
-                            onChange={(e) => setEditingChapterTitle(e.target.value)}
-                            onBlur={handleChapterTitleBlur}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                handleSaveChapterTitle(chapter.id);
-                              }
-                              if (e.key === 'Escape') {
-                                e.preventDefault();
-                                handleCancelChapterEdit();
-                              }
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            className="flex-1 ml-1 px-2 py-1 border border-border rounded text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary"
-                            autoFocus
-                          />
-                        ) : (
-                          <span
-                            className="truncate pr-2 ml-1 text-sm"
-                            title={chapter.title}
-                            onDoubleClick={(e) => {
-                              e.stopPropagation();
-                              handleStartEditChapter(chapter);
-                            }}
-                          >
-                            {chapter.title}
-                          </span>
-                        )}
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 shrink-0"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const s = new Set(expandedChapters);
-                          s.has(chapter.id) ? s.delete(chapter.id) : s.add(chapter.id);
-                          setExpandedChapters(s);
-                        }}
+            {/* Center: Editor List */}
+            <div className="flex-1 flex flex-col min-h-0 relative bg-white overflow-hidden">
+              <div className="flex-1 overflow-y-auto h-full scroll-smooth" ref={scrollContainerRef}>
+                <div className="min-h-full pb-32">
+                  {pages.length > 0 ? (
+                    pages.map((p, index) => (
+                      <div
+                        key={p.id}
+                        ref={el => pageContainerRefs.current[p.id] = el}
+                        data-page-id={p.id}
+                        className="max-w-5xl mx-auto px-8"
                       >
-                        {expandedChapters.has(chapter.id) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                      </Button>
-                    </div>
-                    {expandedChapters.has(chapter.id) && (
-                      <Droppable droppableId={chapter.id} type="PAGE">
-                        {(provided) => (
-                          <div ref={provided.innerRef} {...provided.droppableProps} className="ml-3 pl-3 border-l border-border py-1 space-y-0.5">
-                            {chapter.pagesSummary?.length > 0 ? chapter.pagesSummary.map((pageSummary, index) => (
-                              <Draggable key={pageSummary.pageId} draggableId={pageSummary.pageId} index={index}>
-                                {(provided2) => (
-                                  <div
-                                    ref={provided2.innerRef}
-                                    {...provided2.draggableProps}
-                                    onClick={() => {
-                                      requestSelectPage(chapter.id, pageSummary.pageId);
-                                    }}
-                                    role="button"
-                                    tabIndex={0}
-                                    className={`group w-full text-left p-1.5 rounded-md text-sm flex items-center justify-between cursor-pointer ${selectedPageId === pageSummary.pageId ? 'bg-app-iris/10 text-app-iris font-medium' : 'hover:bg-app-gray-50 text-app-gray-600'}`}
-                                  >
-                                    <div className="flex items-center truncate">
-                                      <span
-                                        {...provided2.dragHandleProps}
-                                        className="mr-2 text-app-gray-300 hover:text-foreground shrink-0 cursor-grab active:cursor-grabbing"
-                                      >
-                                        <GripVertical className="h-3 w-3" />
-                                      </span>
-                                      <span className="truncate text-xs">{pageSummary.shortNote || 'Untitled Page'}</span>
-                                    </div>
-
-                                    {canEdit && <HoverDeleteMenu side="right" onDelete={() => openDeleteModal('page', { ...pageSummary, chapterId: chapter.id, pageIndex: index })} />}
-                                  </div>
-                                )}
-                              </Draggable>
-                            )) : <div className="p-2 text-xs text-muted-foreground italic">No pages</div>}
-                            {provided.placeholder}
+                        {/* Page Divider (except for first page) */}
+                        {index > 0 && (
+                          <div className="w-full h-px bg-gray-100 my-10 flex items-center justify-center">
+                            <span className="bg-white px-3 text-xs font-medium text-gray-400 uppercase tracking-widest">
+                              Page {index + 1}
+                            </span>
                           </div>
                         )}
-                      </Droppable>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
 
-          {/* Center: Editor */}
-          <div className="flex-1 overflow-y-auto bg-card relative">
-            <div className="max-w-4xl mx-auto min-h-full p-8">
-              {selectedPageId && pages.find(p => p.id === selectedPageId) ? (
-                <PageEditor
-                  bookId={bookId}
-                  chapterId={selectedChapterId}
-                  page={pages.find(p => p.id === selectedPageId)}
-                  onPageUpdate={handlePageUpdate}
-                  onAddPage={requestAddPage}
-                  onNavigate={(dir) => {
-                    const currentIndex = pages.findIndex(p => p.id === selectedPageId);
-                    if (dir === 'next' && currentIndex < pages.length - 1) requestSelectPage(selectedChapterId, pages[currentIndex + 1].id);
-                    else if (dir === 'prev' && currentIndex > 0) requestSelectPage(selectedChapterId, pages[currentIndex - 1].id);
-                  }}
-                  pageIndex={pages.findIndex(p => p.id === selectedPageId)}
-                  totalPages={pages.length}
-                  chapterTitle={chapters.find(c => c.id === selectedChapterId)?.title}
-                  draftNote={pageDrafts[selectedPageId]}
-                  onDraftChange={onDraftChange}
-                />
-              ) : (
-                <div className="flex flex-col justify-center items-center text-center h-full p-6">
-                  <div className="bg-app-gray-50 rounded-full p-6 mb-4">
-                    <Sparkles className="h-8 w-8 text-app-iris" />
-                  </div>
-                  {selectedChapterId && (
-                    <h3 className="text-lg font-medium text-app-iris mb-1">
-                      {chapters.find(c => c.id === selectedChapterId)?.title}
-                    </h3>
+                        {/* Page Header (First page only or all?) User said "page 1, 2" */}
+
+
+                        <PageEditor
+                          ref={el => pageRefs.current[p.id] = el}
+                          bookId={bookId}
+                          chapterId={selectedChapterId}
+                          page={p}
+                          onPageUpdate={handlePageUpdate}
+                          onAddPage={handleAddPage}
+                          onNavigate={(dir) => handlePageNavigate(p.id, dir)}
+                          pageIndex={index}
+                          totalPages={pages.length}
+                          chapterTitle={chapterTitle}
+                          draftNote={pageDrafts[p.id]}
+                          onDraftChange={(val) => handleDraftChange(p.id, val)}
+                          onFocus={handlePageFocus}
+                        />
+                      </div>
+                    ))
+                  ) : (
+                    <div className="flex flex-col justify-center items-center text-center h-full p-6">
+                      <div className="bg-app-gray-50 rounded-full p-6 mb-4">
+                        <Sparkles className="h-8 w-8 text-app-iris" />
+                      </div>
+                      {selectedChapterId && (
+                        <h3 className="text-lg font-medium text-app-iris mb-1">
+                          {chapters.find(c => c.id === selectedChapterId)?.title}
+                        </h3>
+                      )}
+                      <h2 className="text-xl font-semibold text-gray-800">{selectedChapterId ? 'Ready to write?' : 'Select a chapter'}</h2>
+                      <p className="mt-2 text-gray-500 max-w-xs">{selectedChapterId ? 'Select a page or create a new one to start writing.' : 'Create a new chapter to get started.'}</p>
+                      {selectedChapterId && canEdit && <Button onClick={requestAddPage} className="mt-6"><PlusCircle className="h-4 w-4 mr-2" />Add Page</Button>}
+                    </div>
                   )}
-                  <h2 className="text-xl font-semibold text-gray-800">{selectedChapterId ? 'Ready to write?' : 'Select a chapter'}</h2>
-                  <p className="mt-2 text-gray-500 max-w-xs">{selectedChapterId ? 'Select a page or create a new one to start writing.' : 'Create a new chapter to get started.'}</p>
-                  {selectedChapterId && canEdit && <Button onClick={requestAddPage} className="mt-6"><PlusCircle className="h-4 w-4 mr-2" />Add Page</Button>}
+
+                  {/* Space at bottom for scrolling past last page */}
+                  <div className="h-20"></div>
+                </div>
+              </div>
+
+              {/* Sticky Footer */}
+              {pages.length > 0 && (
+                <div className="shrink-0 border-t border-gray-100 bg-white/80 backdrop-blur-md p-4 z-30">
+                  <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-4">
+                    {/* Status Indicator */}
+                    <div className="flex items-center gap-4 text-sm text-gray-500">
+                      <span className="font-medium text-gray-800">
+                        {activePageId
+                          ? `Page ${pages.findIndex(p => p.id === activePageId) + 1} of ${pages.length}`
+                          : 'No page selected'}
+                      </span>
+                      {activePageId && pageDrafts[activePageId] && (
+                        <span className="text-amber-600 flex items-center gap-1 text-xs">
+                          <div className="w-2 h-2 rounded-full bg-amber-500"></div>
+                          Unsaved changes
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Controls */}
+                    <div className="flex items-center gap-2">
+                      {/* AI Style */}
+                      <div className="relative flex items-center style-dropdown-container">
+                        <Input
+                          type="text"
+                          value={footerAiStyle}
+                          onChange={(e) => setFooterAiStyle(e.target.value)}
+                          className="h-9 w-48 text-sm"
+                          placeholder="AI Instruction..."
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowFooterStyleDropdown(!showFooterStyleDropdown)}
+                          className="ml-1 h-9 px-2"
+                        >
+                          <ChevronDown className="h-4 w-4" />
+                        </Button>
+
+                        {showFooterStyleDropdown && (
+                          <div className="absolute bottom-full right-0 mb-2 w-48 bg-white border rounded-md shadow-lg py-1 z-50">
+                            {['Improve clarity', 'Make it concise', 'Fix grammar', 'Expand this'].map(style => (
+                              <button
+                                key={style}
+                                onClick={() => {
+                                  setFooterAiStyle(style);
+                                  setShowFooterStyleDropdown(false);
+                                }}
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                              >
+                                {style}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <Button
+                        onClick={handleFooterRewrite}
+                        variant="secondary"
+                        size="sm"
+                        disabled={!activePageId}
+                      >
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        Rewrite
+                      </Button>
+
+                      <Button
+                        onClick={handleFooterSave}
+                        variant="appSuccess"
+                        size="sm"
+                        className="min-w-[100px]"
+                        disabled={!activePageId}
+                      >
+                        Save Page {activePageId ? pages.findIndex(p => p.id === activePageId) + 1 : ''}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
-          </div>
 
-          {/* Right Sidebar: Chat */}
-          <ChatPanel />
+            {/* Right Sidebar: Chat */}
+            <ChatPanel />
+          </div>
         </div>
-      </div>
-    </DragDropContext>
+      </DragDropContext>
+    </>
   );
 };
 

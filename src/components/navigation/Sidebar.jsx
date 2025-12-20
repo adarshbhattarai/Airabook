@@ -8,6 +8,9 @@ import {
   StickyNote,
   Heart,
   ShieldCheck,
+  PanelLeftClose,
+  PanelLeftOpen,
+  LogOut
 } from 'lucide-react';
 
 const sections = [
@@ -28,8 +31,8 @@ const sections = [
   },
 ];
 
-const SidebarContent = ({ onNavigate }) => {
-  const { user } = useAuth();
+const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile }) => {
+  const { user, logout } = useAuth();
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
@@ -58,24 +61,28 @@ const SidebarContent = ({ onNavigate }) => {
   return (
     <div className="flex flex-col h-full">
       <div
-        className="flex items-center gap-2 px-4 pt-4 pb-6 cursor-pointer"
-        onClick={() => window.location.href = '/dashboard'}
+        className={`flex items-center gap-2 px-4 pt-4 pb-6 cursor-pointer ${collapsed ? 'justify-center px-0' : ''}`}
+        onClick={() => { if (!collapsed) window.location.href = '/dashboard'; }}
       >
-        <div className="h-9 w-9 rounded-2xl bg-app-iris text-white flex items-center justify-center text-lg font-semibold shadow-appCard">
+        <div className="h-9 w-9 min-w-[36px] rounded-2xl bg-app-iris text-white flex items-center justify-center text-lg font-semibold shadow-appCard">
           A
         </div>
-        <div className="flex flex-col">
-          <span className="text-sm font-semibold text-app-gray-900">Airäbook</span>
-          <span className="text-xs text-app-gray-600">Creative studio</span>
-        </div>
+        {!collapsed && (
+          <div className="flex flex-col overflow-hidden">
+            <span className="text-sm font-semibold text-app-gray-900 truncate">Airäbook</span>
+            <span className="text-xs text-app-gray-600 truncate">Creative studio</span>
+          </div>
+        )}
       </div>
 
-      <nav className="flex-1 px-3 space-y-6">
+      <nav className="flex-1 px-3 space-y-6 overflow-y-auto overflow-x-hidden scrollbar-hide">
         {displaySections.map((section) => (
           <div key={section.label}>
-            <div className="px-2 mb-2 text-[11px] font-semibold text-app-gray-600 uppercase tracking-wide">
-              {section.label}
-            </div>
+            {!collapsed && (
+              <div className="px-2 mb-2 text-[11px] font-semibold text-app-gray-600 uppercase tracking-wide truncate">
+                {section.label}
+              </div>
+            )}
             <div className="space-y-1">
               {section.items.map((item) => {
                 const Icon = item.icon;
@@ -86,15 +93,17 @@ const SidebarContent = ({ onNavigate }) => {
                     className={({ isActive }) =>
                       [
                         'flex items-center gap-3 px-3 py-2 text-sm rounded-xl border-l-4 transition-colors',
+                        collapsed ? 'justify-center px-0' : '',
                         isActive
                           ? 'bg-app-iris/10 border-app-iris text-app-iris font-medium'
                           : 'border-transparent text-app-gray-600 hover:bg-app-gray-50 hover:text-app-gray-900',
                       ].join(' ')
                     }
                     onClick={onNavigate}
+                    title={collapsed ? item.name : ''}
                   >
-                    <Icon className="h-4 w-4" />
-                    <span>{item.name}</span>
+                    <Icon className="h-4 w-4 min-w-[16px]" />
+                    {!collapsed && <span className="truncate">{item.name}</span>}
                   </NavLink>
                 );
               })}
@@ -102,16 +111,60 @@ const SidebarContent = ({ onNavigate }) => {
           </div>
         ))}
       </nav>
+
+      {/* Footer / User / Toggle */}
+      <div className="p-3 border-t border-app-gray-300 space-y-2">
+        {/* Toggle Button (Desktop only) */}
+        {!isMobile && (
+          <button
+            onClick={toggleCollapse}
+            className={`flex items-center gap-3 px-3 py-2 text-sm text-app-gray-500 hover:bg-app-gray-50 rounded-xl w-full transition-colors ${collapsed ? 'justify-center' : ''}`}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            {!collapsed && <span>Collapse</span>}
+          </button>
+        )}
+
+        {/* User / Logout */}
+        {user && !collapsed && (
+          <div className="flex items-center gap-3 px-3 py-2">
+            {/* Simple user info could go here */}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
 
 const Sidebar = ({ open, onClose }) => {
+  // Initialize from localStorage or default to false (expanded)
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('sidebarCollapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleCollapse = () => {
+    const newState = !collapsed;
+    setCollapsed(newState);
+    try {
+      localStorage.setItem('sidebarCollapsed', String(newState));
+    } catch (e) {
+      console.error("Failed to save sidebar state", e);
+    }
+  };
+
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex md:flex-col w-64 bg-white border-r border-app-gray-300 shadow-sm">
-        <SidebarContent />
+      <aside
+        className={`hidden md:flex flex-col bg-white border-r border-app-gray-300 shadow-sm transition-all duration-300 ${collapsed ? 'w-20' : 'w-64'
+          }`}
+      >
+        <SidebarContent collapsed={collapsed} toggleCollapse={toggleCollapse} isMobile={false} />
       </aside>
 
       {/* Mobile drawer */}
@@ -122,7 +175,7 @@ const Sidebar = ({ open, onClose }) => {
             onClick={onClose}
           />
           <div className="relative z-50 h-full w-72 bg-white border-r border-app-gray-300 shadow-appCard">
-            <SidebarContent onNavigate={onClose} />
+            <SidebarContent onNavigate={onClose} collapsed={false} isMobile={true} />
           </div>
         </div>
       )}
