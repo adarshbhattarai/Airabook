@@ -222,7 +222,7 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description }) =
 // ======================
 // PageEditor (UPDATED)
 // ======================
-const PageEditor = forwardRef(({ bookId, chapterId, page, onPageUpdate, onAddPage, onNavigate, pageIndex, totalPages, chapterTitle, draftNote, onDraftChange, onFocus, onReplacePageId, layoutMode = 'standard' }, ref) => {
+const PageEditor = forwardRef(({ bookId, chapterId, page, onPageUpdate, onAddPage, onMoveOverflow, onNavigate, pageIndex, totalPages, pages, chapterTitle, draftNote, onDraftChange, onFocus, onReplacePageId, layoutMode = 'standard' }, ref) => {
   const [note, setNote] = useState(draftNote ?? page.note ?? '');
   const [isSaving, setIsSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({});
@@ -259,7 +259,7 @@ const PageEditor = forwardRef(({ bookId, chapterId, page, onPageUpdate, onAddPag
     setNote(draftNote ?? page.note ?? '');
     // Reset auto-add trigger when switching pages
     hasAutoAddedRef.current = false;
-  }, [page?.id, draftNote]);
+  }, [page?.id, draftNote, totalPages]);
 
   useEffect(() => {
     const availableAlbums = appUser?.accessibleAlbums || [];
@@ -413,12 +413,36 @@ const PageEditor = forwardRef(({ bookId, chapterId, page, onPageUpdate, onAddPag
       setLimitStatus('ok');
     }
 
-    // Auto-Pagination Logic
-    const isLastPage = (pageIndex === totalPages - 1);
-    if (limitStatus === 'full' && isLastPage && !hasAutoAddedRef.current) {
-      // Trigger auto-add draft page
+    // Forward Reflow Logic
+    if (score > 4000 && !hasAutoAddedRef.current) {
       hasAutoAddedRef.current = true;
-      onAddPage?.(false); // saveImmediately = false
+
+      // Split the content
+      const { keep, move } = splitHtmlByCharLimit(newNote, 3500);
+
+      const hasNextPage = pageIndex < totalPages - 1;
+
+      if (hasNextPage && move) {
+        // Push overflow to existing next page
+        const nextPageId = pages[pageIndex + 1]?.id;
+        if (nextPageId) {
+          onMoveOverflow?.({
+            fromPageId: page.id,
+            toPageId: nextPageId,
+            keepHtml: keep,
+            moveHtml: move
+          });
+          setNote(keep);
+          onDraftChange?.(page.id, keep);
+          return; // Don't proceed to normal update
+        }
+      } else if (move) {
+        // No next page exists, create one with the overflow
+        onAddPage?.(false, move); // saveImmediately = false, with overflow content
+        setNote(keep);
+        onDraftChange?.(page.id, keep);
+        return;
+      }
     }
 
     setNote(newNote);
@@ -1309,6 +1333,32 @@ const ChatPanel = () => {
 };
 
 
+const splitHtmlByCharLimit = (html, limit = 4000) => {
+  // Simple splitter: find the last closing tag before the limit
+  // This is a naive implementation but works for block-based editors
+  if (!html || html.length <= limit) return { keep: html, move: '' };
+
+  // Find the last block-closing tag (</p>, </div>, </li>) before limit
+  const splitRegex = /<\/(p|div|li|h[1-6])>/gi;
+  let match;
+  let splitIndex = -1;
+
+  while ((match = splitRegex.exec(html)) !== null) {
+    if (match.index + match[0].length > limit) break;
+    splitIndex = match.index + match[0].length;
+  }
+
+  if (splitIndex === -1) {
+    // faster fallback: just split at limit
+    return { keep: html.substring(0, limit), move: html.substring(limit) };
+  }
+
+  return {
+    keep: html.substring(0, splitIndex),
+    move: html.substring(splitIndex)
+  };
+};
+
 const BookDetail = () => {
   console.log('BookDetail: Component Mounting');
   const { bookId } = useParams();
@@ -2041,7 +2091,7 @@ const BookDetail = () => {
     }
   }, [selectedPageId, pages]);
 
-  const handleAddPage = async (saveImmediately = true) => {
+  const handleAddPage = async (saveImmediately = true, overflowContent = '') => {
     if (!canEdit) {
       toast({
         title: 'Permission Denied',
@@ -2060,7 +2110,7 @@ const BookDetail = () => {
         const newPage = {
           id: tempId,
           chapterId: selectedChapterId,
-          note: '',
+          note: overflowContent, // Use overflow content if provided
           media: [],
           order: newOrder,
         };
@@ -2070,9 +2120,10 @@ const BookDetail = () => {
         setSelectedPageId(tempId);
 
         // Update sidebar
+        const plain = stripHtml(overflowContent);
         const newPageSummary = {
           pageId: tempId,
-          shortNote: 'New Page (Draft)',
+          shortNote: plain ? plain.substring(0, 40) + (plain.length > 40 ? '...' : '') : 'New Page (Draft)',
           order: newOrder
         };
 
@@ -2081,7 +2132,16 @@ const BookDetail = () => {
           pagesSummary: [...(c.pagesSummary || []), newPageSummary].sort((a, b) => a.order.localeCompare(b.order))
         } : c));
 
-        toast({ title: 'New Page Added', description: 'This page is a draft and will be saved when you click Save.' });
+        toast({ title: 'New Page Added', description: overflowContent ? 'Content has been moved to the new page.' : 'This page is a draft and will be saved when you click Save.' });
+
+        // UX: Scroll and focus on the new draft page
+        setTimeout(() => {
+          const el = pageContainerRefs.current[tempId];
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            pageRefs.current[tempId]?.focus?.();
+          }
+        }, 50);
         return;
       }
 
@@ -2260,6 +2320,41 @@ const BookDetail = () => {
     });
     if (selectedPageId === oldId) setSelectedPageId(newPage.id);
   };
+
+  // Handle moving overflow content to the next page (forward reflow)
+  const handleMoveOverflow = useCallback(({ fromPageId, toPageId, keepHtml, moveHtml }) => {
+    // Update the source page with the kept content
+    setPages(prev => prev.map(p => {
+      if (p.id === fromPageId) return { ...p, note: keepHtml };
+      if (p.id === toPageId) return { ...p, note: moveHtml + (p.note || '') };
+      return p;
+    }));
+
+    // Mark both pages as dirty
+    setPageDrafts(prev => ({
+      ...prev,
+      [fromPageId]: keepHtml,
+      [toPageId]: moveHtml + (pageDrafts[toPageId] || pages.find(p => p.id === toPageId)?.note || '')
+    }));
+
+    // Update chapter sidebar summaries
+    setChapters(prev => prev.map(c => ({
+      ...c,
+      pagesSummary: (c.pagesSummary || []).map(ps => {
+        if (ps.pageId === fromPageId) {
+          const plain = stripHtml(keepHtml);
+          return { ...ps, shortNote: plain.substring(0, 40) + (plain.length > 40 ? '...' : '') };
+        }
+        if (ps.pageId === toPageId) {
+          const plain = stripHtml(moveHtml);
+          return { ...ps, shortNote: plain.substring(0, 40) + (plain.length > 40 ? '...' : '') + ' (overflow)' };
+        }
+        return ps;
+      })
+    })));
+
+    toast({ title: 'Content Overflow', description: 'Excess content moved to the next page.' });
+  }, [pages, pageDrafts]);
 
   // ---------- Chapter Title Editing ----------
   const handleStartEditChapter = (chapter) => {
@@ -2824,6 +2919,8 @@ const BookDetail = () => {
                           onDraftChange={(pageId, val) => handleDraftChange(pageId, val)}
                           onFocus={handlePageFocus}
                           onReplacePageId={handleReplacePageId}
+                          onMoveOverflow={handleMoveOverflow}
+                          pages={pages}
                           layoutMode={book?.layoutMode}
                         />
                       </div>
