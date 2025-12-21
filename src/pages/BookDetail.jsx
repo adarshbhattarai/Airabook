@@ -56,6 +56,24 @@ const stripHtml = (html = '') =>
     .replace(/\s+/g, ' ')
     .trim();
 
+// --- Smart Page Score Calculator ---
+// Calculates "fullness" based on text length + vertical space (newlines/images)
+const calculatePageScore = (html = '') => {
+  if (!html) return 0;
+
+  // 1. Count actual text characters
+  const textLength = stripHtml(html).length;
+
+  // 2. Count vertical blockers
+  // - Paragraphs/Divs/Breaks: ~60 chars of vertical space
+  // - Images: ~500 chars of vertical space
+  const blockCount = (html.match(/<\/(p|div|li)|<br/gi) || []).length;
+  const imgCount = (html.match(/<img/gi) || []).length;
+
+  const score = textLength + (blockCount * 60) + (imgCount * 500);
+  return score;
+};
+
 // Turn plain text into simple HTML paragraphs for preview fallback
 const textToHtml = (text = '') =>
   String(text)
@@ -204,7 +222,7 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description }) =
 // ======================
 // PageEditor (UPDATED)
 // ======================
-const PageEditor = forwardRef(({ bookId, chapterId, page, onPageUpdate, onAddPage, onNavigate, pageIndex, totalPages, chapterTitle, draftNote, onDraftChange, onFocus }, ref) => {
+const PageEditor = forwardRef(({ bookId, chapterId, page, onPageUpdate, onAddPage, onNavigate, pageIndex, totalPages, chapterTitle, draftNote, onDraftChange, onFocus, onReplacePageId, layoutMode = 'standard' }, ref) => {
   const [note, setNote] = useState(draftNote ?? page.note ?? '');
   const [isSaving, setIsSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({});
@@ -218,6 +236,8 @@ const PageEditor = forwardRef(({ bookId, chapterId, page, onPageUpdate, onAddPag
 
   const [pendingNote, setPendingNote] = useState(null);
   const [mediaToDelete, setMediaToDelete] = useState(null);
+  const [limitStatus, setLimitStatus] = useState('ok'); // 'ok', 'warning', 'full'
+  const hasAutoAddedRef = useRef(false);
 
   const quillRef = useRef(null);
   const { user, appUser } = useAuth();
@@ -237,6 +257,8 @@ const PageEditor = forwardRef(({ bookId, chapterId, page, onPageUpdate, onAddPag
 
   useEffect(() => {
     setNote(draftNote ?? page.note ?? '');
+    // Reset auto-add trigger when switching pages
+    hasAutoAddedRef.current = false;
   }, [page?.id, draftNote]);
 
   useEffect(() => {
@@ -305,6 +327,7 @@ const PageEditor = forwardRef(({ bookId, chapterId, page, onPageUpdate, onAddPag
   }, [mediaPickerOpen, mediaPickerTab, selectedAlbumId, toast]);
 
   // Expose methods to parent via ref
+  // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({
     save: async () => {
       return handleSave();
@@ -315,6 +338,9 @@ const PageEditor = forwardRef(({ bookId, chapterId, page, onPageUpdate, onAddPag
     },
     hasUnsavedChanges: () => {
       return draftNote != null && draftNote !== (page.note || '');
+    },
+    focus: () => {
+      return quillRef.current?.focus?.();
     }
   }));
 
@@ -339,18 +365,34 @@ const PageEditor = forwardRef(({ bookId, chapterId, page, onPageUpdate, onAddPag
     const shortNote = plain.substring(0, 40) + (plain.length > 40 ? '...' : '');
 
     try {
-      const updatePageFn = httpsCallable(functions, 'updatePage');
-      await updatePageFn({
-        bookId,
-        chapterId,
-        pageId: page.id,
-        note,
-        media: page.media || []
-      });
+      if (page.id.startsWith('temp_')) {
+        // Create new page instead of updating
+        const createPageFn = httpsCallable(functions, 'createPage');
+        const result = await createPageFn({
+          bookId,
+          chapterId,
+          note,
+          media: page.media || [],
+          order: page.order // Use the order we assigned
+        });
+        const newPage = result.data.page;
+        onReplacePageId?.(page.id, newPage);
+        toast({ title: 'Page Created', description: 'Your draft page has been saved.' });
+      } else {
+        // Regular update
+        const updatePageFn = httpsCallable(functions, 'updatePage');
+        await updatePageFn({
+          bookId,
+          chapterId,
+          pageId: page.id,
+          note,
+          media: page.media || []
+        });
+        onPageUpdate({ ...page, note, shortNote });
+        toast({ title: 'Success', description: 'Page saved.' });
+      }
 
-      onPageUpdate({ ...page, note, shortNote });
       onDraftChange?.(page.id, null);
-      toast({ title: 'Success', description: 'Page saved.' });
     } catch (error) {
       console.error('Save error detailed:', error);
       toast({ title: 'Save Failed', description: error.message || 'Unknown save error', variant: 'destructive' });
@@ -359,6 +401,26 @@ const PageEditor = forwardRef(({ bookId, chapterId, page, onPageUpdate, onAddPag
   };
 
   const handleNoteChange = (newNote) => {
+    // Check limits using smart score
+    const score = calculatePageScore(newNote);
+
+    // Thresholds: ~4000 score is a full page
+    if (score > 4000) {
+      setLimitStatus('full');
+    } else if (score > 3000) {
+      setLimitStatus('warning');
+    } else {
+      setLimitStatus('ok');
+    }
+
+    // Auto-Pagination Logic
+    const isLastPage = (pageIndex === totalPages - 1);
+    if (limitStatus === 'full' && isLastPage && !hasAutoAddedRef.current) {
+      // Trigger auto-add draft page
+      hasAutoAddedRef.current = true;
+      onAddPage?.(false); // saveImmediately = false
+    }
+
     setNote(newNote);
     onDraftChange?.(page.id, newNote);
   };
@@ -689,20 +751,22 @@ const PageEditor = forwardRef(({ bookId, chapterId, page, onPageUpdate, onAddPag
 
 
 
+  const layoutStyles = {
+    a4: "aspect-[210/297] max-w-[800px] mx-auto bg-white shadow-2xl p-[5%]",
+    scrapbook: "aspect-square max-w-[800px] mx-auto bg-white shadow-2xl p-[5%]",
+    standard: "flex flex-col h-full max-w-5xl mx-auto p-8"
+  };
+
   return (
-    <div className="flex flex-col h-full max-w-5xl mx-auto p-8">
+    <div className={layoutStyles[layoutMode] || layoutStyles.standard}>
 
       <div className="flex justify-center items-center mb-6 relative">
-        <div className="text-center">
-          {pageIndex === 0 && chapterTitle && (
-            <div className="text-xs font-semibold text-violet-600 uppercase tracking-wider mb-1">
-              {chapterTitle}
-            </div>
-          )}
-          <h2 className="text-2xl font-bold text-gray-800">
-            Page {pageIndex + 1}
-          </h2>
-        </div>
+        {pageIndex === 0 && chapterTitle && (
+          <div className="text-xs font-semibold text-violet-600 uppercase tracking-wider mb-1">
+            {chapterTitle}
+          </div>
+        )}
+
         <div className="absolute right-0 top-1/2 -translate-y-1/2 group">
           <Button
             variant="secondary"
@@ -980,7 +1044,7 @@ const PageEditor = forwardRef(({ bookId, chapterId, page, onPageUpdate, onAddPag
         <div className="flex-grow flex flex-col">
           <div className="flex items-center justify-between mb-1"></div>
 
-          <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+
           <div className="flex-grow">
             <div className="flex-grow bg-transparent overflow-hidden relative">
               <BlockEditor
@@ -1051,6 +1115,17 @@ const PageEditor = forwardRef(({ bookId, chapterId, page, onPageUpdate, onAddPag
         title="Delete Media"
         description="Are you sure you want to remove this media from the page? This cannot be undone."
       />
+
+      {/* Book-like Footer */}
+      <div className="mt-8 flex flex-col items-center gap-2 text-gray-400 text-sm font-serif">
+        <span>- {pageIndex + 1} -</span>
+        {limitStatus === 'warning' && (
+          <span className="text-amber-500 text-xs font-sans">Page is getting full...</span>
+        )}
+        {limitStatus === 'full' && (
+          <span className="text-red-500 text-xs font-sans font-semibold">Page full. Please start a new page.</span>
+        )}
+      </div>
     </div >
   );
 });
@@ -1355,6 +1430,7 @@ const BookDetail = () => {
   }, [pages]);
 
   // Sync activePageId with selectedPageId when user clicks sidebar
+  // Sync activePageId with selectedPageId when user clicks sidebar
   useEffect(() => {
     if (selectedPageId) {
       // If user clicked sidebar, scroll to that page
@@ -1362,6 +1438,24 @@ const BookDetail = () => {
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         setActivePageId(selectedPageId);
+
+        // Auto-focus with retry (wait for BlockNote init)
+        const tryFocus = async (attempt = 0) => {
+          if (attempt > 20) return; // Stop after ~2 seconds
+
+          let success = false;
+          if (el.focus) {
+            // el.focus() returns true if editor was ready and focused
+            success = el.focus();
+          }
+
+          if (success) {
+            // console.log("Focused on page", selectedPageId);
+          } else {
+            setTimeout(() => tryFocus(attempt + 1), 100);
+          }
+        };
+        tryFocus();
       }
     }
   }, [selectedPageId]);
@@ -1935,12 +2029,19 @@ const BookDetail = () => {
       const el = pageContainerRefs.current[targetPageId];
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        setActivePageId(targetPageId); // Footer updates
+        // Auto-focus logic:
+        // We need a slight timeout to ensure inner editor is mounted/ready
+        setTimeout(() => {
+          if (el.focus) {
+            el.focus();
+            console.log("Called focus on page", selectedPageId);
+          }
+        }, 100);
       }
     }
-  }, [pages]);
+  }, [selectedPageId, pages]);
 
-  const handleAddPage = async () => {
+  const handleAddPage = async (saveImmediately = true) => {
     if (!canEdit) {
       toast({
         title: 'Permission Denied',
@@ -1953,6 +2054,36 @@ const BookDetail = () => {
 
     try {
       const newOrder = getMidpointString(pages[pages.length - 1]?.order);
+
+      if (!saveImmediately) {
+        const tempId = `temp_${Date.now()}`;
+        const newPage = {
+          id: tempId,
+          chapterId: selectedChapterId,
+          note: '',
+          media: [],
+          order: newOrder,
+        };
+
+        // Update local state immediately
+        setPages([...pages, newPage].sort((a, b) => a.order.localeCompare(b.order)));
+        setSelectedPageId(tempId);
+
+        // Update sidebar
+        const newPageSummary = {
+          pageId: tempId,
+          shortNote: 'New Page (Draft)',
+          order: newOrder
+        };
+
+        setChapters(chapters.map(c => c.id === selectedChapterId ? {
+          ...c,
+          pagesSummary: [...(c.pagesSummary || []), newPageSummary].sort((a, b) => a.order.localeCompare(b.order))
+        } : c));
+
+        toast({ title: 'New Page Added', description: 'This page is a draft and will be saved when you click Save.' });
+        return;
+      }
 
       // Call Cloud Function to create NEW page with embeddings
       const createPageFn = httpsCallable(functions, 'createPage');
@@ -2113,6 +2244,22 @@ const BookDetail = () => {
       return nextPages;
     });
   }
+
+  const handleReplacePageId = (oldId, newPage) => {
+    setPages(prev => prev.map(p => p.id === oldId ? newPage : p));
+    setChapters(prev => prev.map(c => ({
+      ...c,
+      pagesSummary: (c.pagesSummary || []).map(ps => ps.pageId === oldId ? { ...ps, pageId: newPage.id, shortNote: stripHtml(newPage.note || '').substring(0, 40) } : ps)
+    })));
+    setPageDrafts(prev => {
+      const val = prev[oldId];
+      const next = { ...prev };
+      delete next[oldId];
+      if (val !== undefined) next[newPage.id] = val;
+      return next;
+    });
+    if (selectedPageId === oldId) setSelectedPageId(newPage.id);
+  };
 
   // ---------- Chapter Title Editing ----------
   const handleStartEditChapter = (chapter) => {
@@ -2674,8 +2821,10 @@ const BookDetail = () => {
                           totalPages={pages.length}
                           chapterTitle={chapterTitle}
                           draftNote={pageDrafts[p.id]}
-                          onDraftChange={(val) => handleDraftChange(p.id, val)}
+                          onDraftChange={(pageId, val) => handleDraftChange(pageId, val)}
                           onFocus={handlePageFocus}
+                          onReplacePageId={handleReplacePageId}
+                          layoutMode={book?.layoutMode}
                         />
                       </div>
                     ))

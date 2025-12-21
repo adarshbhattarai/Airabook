@@ -24,7 +24,7 @@ const textToHtml = (text = '') =>
     .split('\n')
     .map(seg => seg.trim())
     .filter(Boolean)
-    .map(seg => `<p>${seg.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`) 
+    .map(seg => `<p>${seg.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`)
     .join('');
 
 const BookView = () => {
@@ -173,73 +173,83 @@ const BookView = () => {
 
         {/* Main content: Media on top, Page note below (read-only) */}
         <div className="lg:col-span-2">
-          <div className="p-6 bg-white rounded-2xl shadow-appSoft border border-app-gray-100 flex flex-col h-full">
-            {/* Media Section - On Top */}
-            {selectedPage?.media && selectedPage.media.length > 0 && (
-              <div className="mb-6">
-                <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3 w-full">
-                  {selectedPage.media.map((media, idx) => (
-                    <div
-                      key={media.storagePath}
-                      className="relative group aspect-square bg-gray-200 rounded-md overflow-hidden cursor-pointer"
-                      onClick={() => openPreview(idx)}
-                    >
-                      {media.type === 'image' ? (
-                        <img src={media.url} alt={media.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <video src={media.url} className="w-full h-full object-cover" />
-                      )}
-                      <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex justify-center items-center text-white text-xs font-medium">
-                        <span>Click to view</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            
-            {/* Page Content Section - Below Media */}
-            <div className="prose max-w-none flex-grow mb-6 text-app-gray-900">
-              <div dangerouslySetInnerHTML={{ __html: noteHtml }} />
-            </div>
+          {(() => {
+            const layoutStyles = {
+              a4: "aspect-[210/297] max-w-[800px] mx-auto bg-white shadow-2xl p-[5%]",
+              scrapbook: "aspect-square max-w-[800px] mx-auto bg-white shadow-2xl p-[5%]",
+              standard: "p-6 bg-white rounded-2xl shadow-appSoft border border-app-gray-100 flex flex-col h-full"
+            };
 
-            {/* Page Navigation - At Bottom */}
-            {pages.length > 0 && (
-              <div className="flex justify-between items-center">
-                <div className="flex items-center space-x-2">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => {
-                      const currentIndex = pages.findIndex(p => p.id === selectedPageId);
-                      if (currentIndex > 0) {
-                        setSelectedPageId(pages[currentIndex - 1].id);
-                      }
-                    }}
-                    disabled={pages.findIndex(p => p.id === selectedPageId) === 0}
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                  </Button>
-                  <span className="text-sm font-medium text-gray-600">
-                    Page {pages.findIndex(p => p.id === selectedPageId) + 1} of {pages.length}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => {
-                      const currentIndex = pages.findIndex(p => p.id === selectedPageId);
-                      if (currentIndex < pages.length - 1) {
-                        setSelectedPageId(pages[currentIndex + 1].id);
-                      }
-                    }}
-                    disabled={pages.findIndex(p => p.id === selectedPageId) === pages.length - 1}
-                  >
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
+            return (
+              <div className={layoutStyles[book?.layoutMode] || layoutStyles.standard}>
+                {/* Media Section - On Top */}
+                {selectedPage?.media && selectedPage.media.length > 0 && (
+                  <div className="mb-6">
+                    <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3 w-full">
+                      {selectedPage.media.map((media, idx) => (
+                        <div
+                          key={media.storagePath}
+                          className="relative group aspect-square bg-gray-200 rounded-md overflow-hidden cursor-pointer"
+                          onClick={() => openPreview(idx)}
+                        >
+                          {media.type === 'image' ? (
+                            <img src={media.url} alt={media.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <video src={media.url} className="w-full h-full object-cover" />
+                          )}
+                          <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex justify-center items-center text-white text-xs font-medium">
+                            <span>Click to view</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Page Content Section - Below Media */}
+                <div className="prose max-w-none flex-grow mb-6 text-app-gray-900">
+                  <div dangerouslySetInnerHTML={{ __html: noteHtml }} />
                 </div>
+
+                {/* Page Navigation - At Bottom */}
+                {pages.length > 0 && (
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center space-x-2">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => {
+                          const currentIndex = pages.findIndex(p => p.id === selectedPageId);
+                          if (currentIndex > 0) {
+                            setSelectedPageId(pages[currentIndex - 1].id);
+                          }
+                        }}
+                        disabled={pages.findIndex(p => p.id === selectedPageId) === 0}
+                      >
+                        <ArrowLeft className="h-4 w-4" />
+                      </Button>
+                      <span className="text-sm font-medium text-gray-600">
+                        Page {pages.findIndex(p => p.id === selectedPageId) + 1} of {pages.length}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => {
+                          const currentIndex = pages.findIndex(p => p.id === selectedPageId);
+                          if (currentIndex < pages.length - 1) {
+                            setSelectedPageId(pages[currentIndex + 1].id);
+                          }
+                        }}
+                        disabled={pages.findIndex(p => p.id === selectedPageId) === pages.length - 1}
+                      >
+                        <ArrowRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            );
+          })()}
         </div>
       </div>
 

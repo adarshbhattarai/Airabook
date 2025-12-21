@@ -38,6 +38,13 @@ const BlockEditor = forwardRef(({ initialContent, onChange, onSave, onFocus }, r
         getHTML: async () => {
             if (!editor) return "";
             return await editor.blocksToFullHTML(editor.document);
+        },
+        focus: () => {
+            if (editor) {
+                editor.focus();
+                return true;
+            }
+            return false;
         }
     }));
 
