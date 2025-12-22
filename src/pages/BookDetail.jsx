@@ -1,1363 +1,61 @@
-import React, { useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
-  doc, getDoc, collection, getDocs, addDoc, deleteDoc, updateDoc, writeBatch, query, orderBy, arrayUnion, arrayRemove, where, limit
+  doc, getDoc, collection, getDocs, addDoc, deleteDoc, updateDoc, writeBatch, query, orderBy, where, limit
 } from 'firebase/firestore';
-import { firestore, storage, functions } from '@/lib/firebase';
-import { ref as firebaseRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { firestore, functions } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
-import ReactQuill from 'react-quill';
-import 'react-quill/dist/quill.snow.css';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import {
-  Trash2, PlusCircle, ChevronRight, ChevronDown, ArrowLeft, ArrowRight, UploadCloud, GripVertical, MoreVertical, ChevronLeft, Sparkles, Globe, Users, UserPlus, X, Send, Edit
+  Trash2, PlusCircle, ChevronRight, ChevronDown, ArrowLeft, GripVertical, Sparkles, Globe, Users, UserPlus, X, Edit
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
 } from '@/components/ui/dialog';
 import { httpsCallable } from 'firebase/functions';
 import EditBookModal from '@/components/EditBookModal';
-import BlockEditor from '@/components/BlockEditor';
-import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Type } from 'lucide-react';
+import PageEditor from '@/components/PageEditor';
+import ChatPanel from '@/components/ChatPanel';
+import HoverDeleteMenu from '@/components/ui/HoverDeleteMenu';
+import ConfirmationModal from '@/components/ui/ConfirmationModal';
+import { usePaginationReflow } from '@/hooks/usePaginationReflow';
+import { PanelLeftClose, PanelLeftOpen, Type } from 'lucide-react';
+import {
+  getMidpointString,
+  getNewOrderBetween,
+  stripHtml,
+  calculatePageScore,
+  textToHtml,
+  isLikelyHtml,
+  convertToEmulatorURL
+} from '@/lib/pageUtils';
 
-
-// --- UTILITY FOR FRACTIONAL INDEXING ---
-const getMidpointString = (prev = '', next = '') => {
-  const alphabet = 'abcdefghijklmnopqrstuvwxyz';
-  let p = 0;
-  while (p < prev.length || p < next.length) {
-    const prevChar = prev.charAt(p) || 'a';
-    const nextChar = next.charAt(p) || 'z';
-    if (prevChar !== nextChar) {
-      const prevIndex = alphabet.indexOf(prevChar);
-      const nextIndex = alphabet.indexOf(nextChar);
-      if (nextIndex - prevIndex > 1) {
-        const midIndex = Math.round((prevIndex + nextIndex) / 2);
-        return prev.substring(0, p) + alphabet[midIndex];
+// --- focusWithRetry: helper for reliable cursor placement on newly created pages ---
+const focusWithRetry = async (pageRefs, pageId, position = 'start', maxAttempts = 20) => {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const api = pageRefs.current?.[pageId];
+    if (api) {
+      const focusFn = position === 'end' ? api.focusAtEnd : api.focusAtStart;
+      if (focusFn?.()) {
+        return true;
       }
     }
-    p++;
+    await new Promise(resolve => setTimeout(resolve, 100));
   }
-  return prev + 'm';
-};
-const getNewOrderBetween = (prevOrder = '', nextOrder = '') =>
-  getMidpointString(prevOrder, nextOrder);
-
-// --- helper to strip HTML for shortNote ---
-const stripHtml = (html = '') =>
-  html
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<\/(p|div|br|li|h[1-6])>/gi, ' ')
-    .replace(/<[^>]+>/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-// --- Smart Page Score Calculator ---
-// Calculates "fullness" based on text length + vertical space (newlines/images)
-const calculatePageScore = (html = '') => {
-  if (!html) return 0;
-
-  // 1. Count actual text characters
-  const textLength = stripHtml(html).length;
-
-  // 2. Count vertical blockers
-  // - Paragraphs/Divs/Breaks: ~60 chars of vertical space
-  // - Images: ~500 chars of vertical space
-  const blockCount = (html.match(/<\/(p|div|li)|<br/gi) || []).length;
-  const imgCount = (html.match(/<img/gi) || []).length;
-
-  const score = textLength + (blockCount * 60) + (imgCount * 500);
-  return score;
+  return false;
 };
 
-// Turn plain text into simple HTML paragraphs for preview fallback
-const textToHtml = (text = '') =>
-  String(text)
-    .split('\n')
-    .map(seg => seg.trim())
-    .filter(Boolean)
-    .map(seg => `<p>${seg.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`)
-    .join('');
-
-// Heuristic: does a string look like HTML?
-const isLikelyHtml = (s = '') => /<\w+[^>]*>/.test(s);
-
-const convertToEmulatorURL = (url) => {
-  if (!url) return url;
-
-  const useEmulator = import.meta.env.VITE_USE_EMULATOR === 'true';
-
-  if (!useEmulator) {
-    return url;
-  }
-
-  if (url.includes('127.0.0.1:9199') || url.includes('localhost:9199')) {
-    return url;
-  }
-
-  if (url.includes('storage.googleapis.com')) {
-    try {
-      const urlObj = new URL(url);
-      const pathParts = urlObj.pathname.split('/').filter(p => p);
-
-      if (pathParts.length >= 1) {
-        const bucket = pathParts[0];
-        const storagePath = pathParts.slice(1).join('/');
-
-        let emulatorBucket = bucket;
-        if (bucket.endsWith('.appspot.com')) {
-          emulatorBucket = bucket.replace('.appspot.com', '.firebasestorage.app');
-        }
-
-        const encodedPath = encodeURIComponent(storagePath);
-        const token = urlObj.searchParams.get('token') || 'emulator-token';
-        return `http://127.0.0.1:9199/v0/b/${emulatorBucket}/o/${encodedPath}?alt=media&token=${token}`;
-      }
-    } catch (error) {
-      console.error('Error converting URL to emulator format:', error, url);
-      return url;
-    }
-  }
-
-  return url;
-};
-
-// --- ReactQuill toolbar / formats ---
-const quillModules = {
-  toolbar: [
-    [{ header: [1, 2, 3, false] }],
-    ['bold', 'italic', 'underline', 'strike'],
-    [{ list: 'ordered' }, { list: 'bullet' }],
-    [{ align: [] }],
-    ['link', 'blockquote', 'code-block'],
-    [{ color: [] }, { background: [] }],
-    ['clean'],
-  ],
-};
-const quillFormats = [
-  'header',
-  'bold', 'italic', 'underline', 'strike',
-  'list', 'bullet',
-  'align',
-  'link', 'blockquote', 'code-block',
-  'color', 'background',
-];
-
-// --- REUSABLE UI COMPONENTS ---
-
-const HoverDeleteMenu = ({ onDelete, side = 'left' }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const rootRef = useRef(null);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const onDocMouseDown = (e) => {
-      if (!rootRef.current) return;
-      if (!rootRef.current.contains(e.target)) setIsOpen(false);
-    };
-    document.addEventListener('mousedown', onDocMouseDown, true);
-    return () => document.removeEventListener('mousedown', onDocMouseDown, true);
-  }, [isOpen]);
-
-  const handleDeleteClick = (e) => {
-    e.stopPropagation();
-    onDelete();
-    setIsOpen(false);
-  };
-
-  return (
-    <div ref={rootRef} className="relative opacity-0 group-hover:opacity-100 transition-opacity">
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="h-7 w-7 data-[state=open]:bg-violet-100"
-        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-        onClick={(e) => {
-          e.stopPropagation();
-          setIsOpen((v) => !v);
-        }}
-      >
-        <MoreVertical className="h-4 w-4" />
-      </Button>
-
-      {isOpen && (
-        <div className={`absolute top-full mt-1 w-28 bg-white rounded-md shadow-2xl z-[9999] border ${side === 'right' ? 'right-0' : 'left-0'}`}>
-          <Button
-            type="button"
-            variant="ghost"
-            className="w-full justify-start text-red-600 hover:bg-red-50 hover:text-red-700 text-sm px-2 py-1.5"
-            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-            onClick={handleDeleteClick}
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Delete
-          </Button>
-        </div>
-      )}
-    </div>
-  );
-};
-
-const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description }) => {
-  if (!isOpen) return null;
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-md p-6 bg-white rounded-2xl shadow-lg text-center">
-        <h2 className="text-2xl font-bold text-gray-800">{title}</h2>
-        <p className="mt-2 text-gray-600">{description}</p>
-        <div className="mt-6 flex justify-center space-x-4">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button variant="destructive" onClick={onConfirm}>Confirm</Button>
-        </div>
-      </div>
-    </div>
-  );
-};
+// PageEditor and ChatPanel are imported from separate files
 
 // ======================
-// PageEditor (UPDATED)
+// BookDetail Component (Main Orchestrator)
 // ======================
-const PageEditor = forwardRef(({ bookId, chapterId, page, onPageUpdate, onAddPage, onMoveOverflow, onNavigate, pageIndex, totalPages, pages, chapterTitle, draftNote, onDraftChange, onFocus, onReplacePageId, layoutMode = 'standard' }, ref) => {
-  const [note, setNote] = useState(draftNote ?? page.note ?? '');
-  const [isSaving, setIsSaving] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState({});
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewIndex, setPreviewIndex] = useState(0);
-  const [aiBusy, setAiBusy] = useState(false);
-
-  // AI preview dialog state
-  const [aiPreviewOpen, setAiPreviewOpen] = useState(false);
-  const [aiPreviewText, setAiPreviewText] = useState('');
-
-  const [pendingNote, setPendingNote] = useState(null);
-  const [mediaToDelete, setMediaToDelete] = useState(null);
-  const [limitStatus, setLimitStatus] = useState('ok'); // 'ok', 'warning', 'full'
-  const hasAutoAddedRef = useRef(false);
-
-  const quillRef = useRef(null);
-  const { user, appUser } = useAuth();
-  const { toast } = useToast();
-  const fileInputRef = useRef(null);
-
-  const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
-  const [mediaPickerTab, setMediaPickerTab] = useState('upload');
-  const [albums, setAlbums] = useState([]);
-  const [selectedAlbumId, setSelectedAlbumId] = useState(null);
-  const [albumMedia, setAlbumMedia] = useState([]);
-  const [loadingAlbums, setLoadingAlbums] = useState(false);
-  const [selectedAssets, setSelectedAssets] = useState([]);
-
-  const mediaList = page.media || [];
-  const previewItem = mediaList[previewIndex] || null;
-
-  useEffect(() => {
-    setNote(draftNote ?? page.note ?? '');
-    // Reset auto-add trigger when switching pages
-    hasAutoAddedRef.current = false;
-  }, [page?.id, draftNote, totalPages]);
-
-  useEffect(() => {
-    const availableAlbums = appUser?.accessibleAlbums || [];
-    setAlbums(availableAlbums);
-    if (!selectedAlbumId && availableAlbums.length > 0) {
-      setSelectedAlbumId(availableAlbums[0].id);
-    } else if (availableAlbums.length === 0) {
-      setSelectedAlbumId(null);
-    }
-  }, [appUser, selectedAlbumId]);
-
-  useEffect(() => {
-    if (!mediaPickerOpen || mediaPickerTab !== 'library' || !selectedAlbumId) {
-      return;
-    }
-
-    let isMounted = true;
-    const fetchAlbumMedia = async () => {
-      try {
-        setLoadingAlbums(true);
-        setAlbumMedia([]);
-        const albumRef = doc(firestore, 'albums', selectedAlbumId);
-        const albumSnap = await getDoc(albumRef);
-        if (!albumSnap.exists()) {
-          toast({ title: 'Album not found', description: 'Please pick another album.', variant: 'destructive' });
-          return;
-        }
-
-        const data = albumSnap.data();
-        const images = (data.images || []).map((item) => {
-          const url = typeof item === 'string' ? item : item.url;
-          const storagePath = typeof item === 'string' ? null : item.storagePath;
-          return {
-            url: convertToEmulatorURL(url),
-            storagePath,
-            type: 'image',
-            name: typeof item === 'string' ? (url?.split('/')?.pop() || 'Image') : (item.name || item.fileName || 'Image'),
-          };
-        });
-        const videos = (data.videos || []).map((item) => {
-          const url = typeof item === 'string' ? item : item.url;
-          const storagePath = typeof item === 'string' ? null : item.storagePath;
-          return {
-            url: convertToEmulatorURL(url),
-            storagePath,
-            type: 'video',
-            name: typeof item === 'string' ? (url?.split('/')?.pop() || 'Video') : (item.name || item.fileName || 'Video'),
-          };
-        });
-
-        if (isMounted) {
-          setAlbumMedia([...images, ...videos]);
-        }
-      } catch (error) {
-        console.error('Failed to load album assets', error);
-        toast({ title: 'Unable to load assets', description: error.message || 'Try again later.', variant: 'destructive' });
-      } finally {
-        if (isMounted) setLoadingAlbums(false);
-      }
-    };
-
-    fetchAlbumMedia();
-
-    return () => { isMounted = false; };
-  }, [mediaPickerOpen, mediaPickerTab, selectedAlbumId, toast]);
-
-  // Expose methods to parent via ref
-  // Expose methods to parent via ref
-  useImperativeHandle(ref, () => ({
-    save: async () => {
-      return handleSave();
-    },
-    insertAI: async (style) => {
-      // Call rewrite with the provided style
-      return callRewrite(style);
-    },
-    hasUnsavedChanges: () => {
-      return draftNote != null && draftNote !== (page.note || '');
-    },
-    focus: () => {
-      return quillRef.current?.focus?.();
-    }
-  }));
-
-  // Close style dropdown when clicking outside
-  // (Removed internal style dropdown logic)
-
-  // keyboard arrows for media modal
-  useEffect(() => {
-    if (!previewOpen) return;
-    const onKey = (e) => {
-      if (e.key === 'ArrowLeft') goPrev();
-      if (e.key === 'ArrowRight') goNext();
-      if (e.key === 'Escape') closePreview();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [previewOpen, mediaList.length]);
-
-  const handleSave = async () => {
-    setIsSaving(true);
-    const plain = stripHtml(note);
-    const shortNote = plain.substring(0, 40) + (plain.length > 40 ? '...' : '');
-
-    try {
-      if (page.id.startsWith('temp_')) {
-        // Create new page instead of updating
-        const createPageFn = httpsCallable(functions, 'createPage');
-        const result = await createPageFn({
-          bookId,
-          chapterId,
-          note,
-          media: page.media || [],
-          order: page.order // Use the order we assigned
-        });
-        const newPage = result.data.page;
-        onReplacePageId?.(page.id, newPage);
-        toast({ title: 'Page Created', description: 'Your draft page has been saved.' });
-      } else {
-        // Regular update
-        const updatePageFn = httpsCallable(functions, 'updatePage');
-        await updatePageFn({
-          bookId,
-          chapterId,
-          pageId: page.id,
-          note,
-          media: page.media || []
-        });
-        onPageUpdate({ ...page, note, shortNote });
-        toast({ title: 'Success', description: 'Page saved.' });
-      }
-
-      onDraftChange?.(page.id, null);
-    } catch (error) {
-      console.error('Save error detailed:', error);
-      toast({ title: 'Save Failed', description: error.message || 'Unknown save error', variant: 'destructive' });
-    }
-    setIsSaving(false);
-  };
-
-  const handleNoteChange = (newNote) => {
-    // Check limits using smart score
-    const score = calculatePageScore(newNote);
-
-    // Thresholds: ~4000 score is a full page
-    if (score > 4000) {
-      setLimitStatus('full');
-    } else if (score > 3000) {
-      setLimitStatus('warning');
-    } else {
-      setLimitStatus('ok');
-    }
-
-    // Forward Reflow Logic
-    if (score > 4000 && !hasAutoAddedRef.current) {
-      hasAutoAddedRef.current = true;
-
-      // Split the content
-      const { keep, move } = splitHtmlByCharLimit(newNote, 3500);
-
-      const hasNextPage = pageIndex < totalPages - 1;
-
-      if (hasNextPage && move) {
-        // Push overflow to existing next page
-        const nextPageId = pages[pageIndex + 1]?.id;
-        if (nextPageId) {
-          onMoveOverflow?.({
-            fromPageId: page.id,
-            toPageId: nextPageId,
-            keepHtml: keep,
-            moveHtml: move
-          });
-          setNote(keep);
-          onDraftChange?.(page.id, keep);
-          return; // Don't proceed to normal update
-        }
-      } else if (move) {
-        // No next page exists, create one with the overflow
-        onAddPage?.(false, move); // saveImmediately = false, with overflow content
-        setNote(keep);
-        onDraftChange?.(page.id, keep);
-        return;
-      }
-    }
-
-    setNote(newNote);
-    onDraftChange?.(page.id, newNote);
-  };
-
-  const handleFileSelect = (event) => {
-    const files = Array.from(event.target.files || []);
-    if (files.length === 0) return;
-
-    const currentMediaCount = page.media?.length || 0;
-    if (currentMediaCount + files.length > 5) {
-      toast({
-        title: 'Upload Limit Exceeded',
-        description: `You can only upload up to 5 media items per page. You have ${currentMediaCount} already.`,
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setMediaPickerOpen(false);
-
-    // Clear the input value so selecting the same file again still triggers onChange
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-
-    files.forEach(file => handleUpload(file));
-  };
-
-  const openFileDialog = () => {
-    if (fileInputRef.current) {
-      // Reset value on open to ensure re-selecting the same file works
-      fileInputRef.current.value = '';
-      fileInputRef.current.click();
-    }
-  };
-
-  const handleUpload = (file) => {
-    if (!file || !user) return;
-
-    const mediaType = file.type.startsWith('video') ? 'video' : 'image';
-    const uniqueFileName = `${Date.now()}_${file.name}`;
-    // Construct path: {userId}/{bookId}/{chapterId}/{pageId}/media/{type}/{filename}
-    const storagePath = `${user.uid}/${bookId}/${chapterId}/${page.id}/media/${mediaType}/${uniqueFileName}`;
-    const storageRef = firebaseRef(storage, storagePath);
-
-    // Add custom metadata for original name
-    const metadata = {
-      customMetadata: {
-        originalName: file.name,
-        bookId: bookId
-      }
-    };
-
-    const uploadTask = uploadBytesResumable(storageRef, file, metadata);
-
-    uploadTask.on('state_changed',
-      (snapshot) => {
-        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        setUploadProgress(prev => ({ ...prev, [file.name]: progress }));
-      },
-      (error) => {
-        toast({ title: 'Upload Error', description: error.message, variant: 'destructive' });
-        setUploadProgress(prev => {
-          const next = { ...prev };
-          delete next[file.name];
-          return next;
-        });
-      },
-      () => {
-        getDownloadURL(uploadTask.snapshot.ref).then(async (downloadURL) => {
-          const newMediaItem = {
-            url: downloadURL,
-            storagePath,
-            type: mediaType,
-            name: file.name,
-            uploadedAt: new Date().toISOString(),
-          };
-
-          // Update Page document in Firestore
-          const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', page.id);
-          await updateDoc(pageRef, { media: arrayUnion(newMediaItem) });
-
-          // Update local state
-          onPageUpdate(prev => ({
-            ...prev,
-            media: [...(prev?.media || []), newMediaItem],
-          }));
-
-          setUploadProgress(prev => {
-            const next = { ...prev };
-            delete next[file.name];
-            return next;
-          });
-          toast({ title: 'Upload Success', description: `"${file.name}" has been uploaded.` });
-        });
-      }
-    );
-  };
-
-  const handleAttachFromAlbum = async (asset) => {
-    const currentMediaCount = page.media?.length || 0;
-    if (currentMediaCount + 1 > 5) {
-      toast({
-        title: 'Upload Limit Exceeded',
-        description: 'You can only attach up to 5 media items per page.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    const alreadyAttached = (page.media || []).some((item) =>
-      item.storagePath && asset.storagePath
-        ? item.storagePath === asset.storagePath
-        : item.url === asset.url
-    );
-    if (alreadyAttached) {
-      toast({ title: 'Already attached', description: 'This asset is already on the page.' });
-      return;
-    }
-
-    try {
-      const newMediaItem = {
-        url: asset.url,
-        storagePath: asset.storagePath || asset.url,
-        type: asset.type || 'image',
-        name: asset.name || 'Asset',
-        uploadedAt: new Date().toISOString(),
-        albumId: selectedAlbumId, // Store albumId for untracking later
-      };
-
-      const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', page.id);
-      await updateDoc(pageRef, { media: arrayUnion(newMediaItem) });
-
-      // Track usage in album
-      try {
-        const trackUsage = httpsCallable(functions, 'trackMediaUsage');
-        await trackUsage({
-          albumId: selectedAlbumId,
-          storagePath: asset.storagePath,
-          bookId,
-          chapterId,
-          pageId: page.id
-        });
-      } catch (trackError) {
-        console.error('Failed to track usage:', trackError);
-        // Don't fail the whole operation if tracking fails
-      }
-
-      onPageUpdate((prev) => ({
-        ...prev,
-        media: [...(prev?.media || []), newMediaItem],
-      }));
-
-      toast({ title: 'Asset added', description: `${newMediaItem.name} attached from library.` });
-    } catch (error) {
-      console.error('Failed to attach asset', error);
-      toast({ title: 'Attach failed', description: error.message || 'Could not attach asset.', variant: 'destructive' });
-    }
-  };
-
-  const toggleAssetSelection = (asset) => {
-    setSelectedAssets(prev => {
-      const isSelected = prev.some(a => (a.storagePath || a.url) === (asset.storagePath || asset.url));
-      if (isSelected) {
-        return prev.filter(a => (a.storagePath || a.url) !== (asset.storagePath || asset.url));
-      } else {
-        return [...prev, asset];
-      }
-    });
-  };
-
-  const handleSaveSelectedAssets = async () => {
-    if (selectedAssets.length === 0) return;
-
-    const currentMediaCount = page.media?.length || 0;
-    if (currentMediaCount + selectedAssets.length > 5) {
-      toast({
-        title: 'Upload Limit Exceeded',
-        description: `You can only attach up to 5 media items per page. You have ${currentMediaCount} already.`,
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    for (const asset of selectedAssets) {
-      await handleAttachFromAlbum(asset);
-    }
-
-    setSelectedAssets([]);
-    setMediaPickerOpen(false);
-  };
-
-  const handleMediaDelete = (mediaItemToDelete) => {
-    setMediaToDelete(mediaItemToDelete);
-  };
-
-  const confirmMediaDelete = async () => {
-    if (!mediaToDelete) return;
-
-    const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', page.id);
-    try {
-      await updateDoc(pageRef, { media: arrayRemove(mediaToDelete) });
-
-      // Untrack usage if this was attached from an album
-      if (mediaToDelete.albumId && mediaToDelete.storagePath) {
-        try {
-          const untrackUsage = httpsCallable(functions, 'untrackMediaUsage');
-          await untrackUsage({
-            albumId: mediaToDelete.albumId,
-            storagePath: mediaToDelete.storagePath,
-            bookId,
-            chapterId,
-            pageId: page.id
-          });
-        } catch (untrackError) {
-          console.error('Failed to untrack usage:', untrackError);
-          // Don't fail the whole operation if untracking fails
-        }
-      }
-
-      onPageUpdate({
-        ...page,
-        media: (page.media || []).filter(m => m.storagePath !== mediaToDelete.storagePath),
-      });
-      toast({ title: 'Success', description: 'Media deleted.' });
-    } catch {
-      toast({ title: 'Deletion Error', description: 'Could not update page details.', variant: 'destructive' });
-    } finally {
-      setMediaToDelete(null);
-    }
-  };
-
-  const openPreview = (mediaOrIndex) => {
-    const idx = typeof mediaOrIndex === 'number'
-      ? mediaOrIndex
-      : mediaList.findIndex(m => m.storagePath === mediaOrIndex.storagePath);
-    if (idx >= 0) {
-      setPreviewIndex(idx);
-      setPreviewOpen(true);
-    }
-  };
-
-  const closePreview = () => setPreviewOpen(false);
-  const goPrev = () => {
-    if (mediaList.length === 0) return;
-    setPreviewIndex((i) => (i - 1 + mediaList.length) % mediaList.length);
-  };
-  const goNext = () => {
-    if (mediaList.length === 0) return;
-    setPreviewIndex((i) => (i + 1) % mediaList.length);
-  };
-
-  // --- AI: callable + preview modal ---
-  const callRewrite = async (styleToUse) => {
-    // If we're already rewriting, ignore
-    if (aiBusy) return;
-
-    // Use passed style or default
-    const style = styleToUse || 'Improve clarity';
-
-    // We need current content from editor
-    let currentContent = note;
-    if (quillRef.current && quillRef.current.getHTML) {
-      currentContent = await quillRef.current.getHTML();
-    }
-
-    const text = stripHtml(currentContent);
-    if (!text || !text.trim()) {
-      toast({ title: 'Nothing to rewrite', description: 'Please write some text first.', variant: 'warning' });
-      return;
-    }
-
-    setAiBusy(true);
-    try {
-
-      const rewriteFn = httpsCallable(functions, 'rewriteNote');
-      const response = await rewriteFn({
-        noteText: text,
-        prompt: style,
-        bookId: bookId,
-        chapterId: chapterId,
-        pageId: page.id
-      });
-
-      const data = response.data;
-      if (data.rewritten) {
-        setAiPreviewText(data.rewritten);
-        setAiPreviewOpen(true);
-      } else {
-        throw new Error(data.error || 'Unknown error');
-      }
-    } catch (error) {
-      console.error('AI Rewrite error:', error);
-      toast({ title: 'Rewrite failed', description: error.message, variant: 'destructive' });
-    } finally {
-      setAiBusy(false);
-    }
-  };
-  const applyRewrite = async (mode = 'replace') => {
-    if (!quillRef.current) return;
-
-    try {
-      if (mode === 'replace') {
-        if (quillRef.current.setHTML) {
-          await quillRef.current.setHTML(aiPreviewText);
-        } else {
-          // Fallback
-          setNote(aiPreviewText);
-          handleNoteChange(aiPreviewText);
-        }
-        toast({ title: 'Rewrite Applied', description: 'Your note has been completely updated.' });
-      } else if (mode === 'insert') {
-        if (quillRef.current.insertHTML) {
-          await quillRef.current.insertHTML(aiPreviewText);
-          toast({ title: 'Text Inserted', description: 'AI text inserted at cursor.' });
-        } else {
-          toast({ title: 'Error', description: 'Insert not supported in this editor mode.', variant: 'destructive' });
-        }
-      }
-    } catch (error) {
-      console.error('Error applying rewrite:', error);
-      toast({ title: 'Application Failed', description: 'Could not apply changes.', variant: 'destructive' });
-    } finally {
-      setAiPreviewOpen(false);
-    }
-  };
-
-
-
-
-  const layoutStyles = {
-    a4: "aspect-[210/297] max-w-[800px] mx-auto bg-white shadow-2xl p-[5%]",
-    scrapbook: "aspect-square max-w-[800px] mx-auto bg-white shadow-2xl p-[5%]",
-    standard: "flex flex-col h-full max-w-5xl mx-auto p-8"
-  };
-
-  return (
-    <div className={layoutStyles[layoutMode] || layoutStyles.standard}>
-
-      <div className="flex justify-center items-center mb-6 relative">
-        {pageIndex === 0 && chapterTitle && (
-          <div className="text-xs font-semibold text-violet-600 uppercase tracking-wider mb-1">
-            {chapterTitle}
-          </div>
-        )}
-
-        <div className="absolute right-0 top-1/2 -translate-y-1/2 group">
-          <Button
-            variant="secondary"
-            size="icon"
-            onClick={onAddPage}
-            className="h-8 w-8 rounded-full"
-            title="Add New Page"
-          >
-            <PlusCircle className="h-4 w-4" />
-          </Button>
-          <div
-            className="absolute left-1/2 -translate-x-1/2 mt-2 px-2 py-1 bg-gray-800 text-white text-xs rounded-md
-                    opacity-0 group-hover:opacity-100 translate-y-1 group-hover:translate-y-0
-                    transition-all duration-200 whitespace-nowrap"
-          >
-            Add new page
-          </div>
-        </div>
-      </div>
-
-      {/* Hidden file input for uploader */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*,video/*"
-        multiple
-        className="hidden"
-        onChange={handleFileSelect}
-      />
-
-      <Dialog open={mediaPickerOpen} onOpenChange={(open) => {
-        setMediaPickerOpen(open);
-        if (!open) setSelectedAssets([]);
-      }}>
-        <DialogContent className="max-w-4xl bg-white rounded-2xl shadow-2xl border border-gray-100 p-6">
-          <DialogHeader>
-            <DialogTitle>Add media to this page</DialogTitle>
-            <DialogDescription>
-              Upload from your computer or attach existing assets from your library.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="flex gap-2 mb-4">
-            <Button
-              variant={mediaPickerTab === 'upload' ? 'appPrimary' : 'outline'}
-              onClick={() => setMediaPickerTab('upload')}
-              className="flex-1"
-            >
-              Upload from computer
-            </Button>
-            <Button
-              variant={mediaPickerTab === 'library' ? 'appPrimary' : 'outline'}
-              onClick={() => setMediaPickerTab('library')}
-              className="flex-1"
-            >
-              Choose from asset registry
-            </Button>
-          </div>
-
-          {mediaPickerTab === 'upload' ? (
-            <div
-              className="p-6 border-2 border-dashed rounded-lg bg-gray-50 text-center text-sm text-app-gray-700"
-              onClick={openFileDialog}
-            >
-              <UploadCloud className="h-10 w-10 mx-auto mb-3 text-app-iris" />
-              <p className="font-semibold">Select files to upload</p>
-              <p className="text-xs text-app-gray-500">Up to 5 images or videos per page</p>
-              <div className="mt-4">
-                <Button variant="appPrimary" onClick={(e) => {
-                  e.stopPropagation();
-                  openFileDialog();
-                }}>
-                  Choose files
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="grid gap-4 lg:grid-cols-[220px,1fr]">
-              <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-                {albums.length === 0 ? (
-                  <div className="text-sm text-app-gray-600 bg-app-gray-50 border border-app-gray-100 rounded-md p-3">
-                    No asset albums yet. Create one from the Asset Registry page.
-                  </div>
-                ) : (
-                  albums.map((album) => (
-                    <button
-                      key={album.id}
-                      className={`w-full text-left px-3 py-2 rounded-md border transition-colors ${selectedAlbumId === album.id
-                        ? 'border-app-iris bg-app-iris/10 text-app-iris'
-                        : 'border-app-gray-100 hover:border-app-iris/40'
-                        }`}
-                      onClick={() => setSelectedAlbumId(album.id)}
-                    >
-                      <div className="font-semibold text-sm">{album.name || 'Untitled album'}</div>
-                      <div className="text-xs text-app-gray-500">{album.mediaCount || 0} assets</div>
-                    </button>
-                  ))
-                )}
-              </div>
-
-              <div className="border border-app-gray-100 rounded-lg p-4 min-h-[260px] max-h-[400px] overflow-y-auto bg-white">
-                {loadingAlbums ? (
-                  <div className="flex items-center justify-center h-full text-sm text-app-gray-600">Loading assets...</div>
-                ) : !selectedAlbumId ? (
-                  <div className="text-sm text-app-gray-600">Select an album to view its assets.</div>
-                ) : albumMedia.length === 0 ? (
-                  <div className="text-sm text-app-gray-600">No assets found in this album.</div>
-                ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                    {albumMedia.map((asset) => {
-                      const isSelected = selectedAssets.some(a => (a.storagePath || a.url) === (asset.storagePath || asset.url));
-                      return (
-                        <button
-                          key={`${asset.storagePath || asset.url}`}
-                          className={`relative rounded-lg overflow-hidden border-2 group transition-all ${isSelected
-                            ? 'border-app-iris bg-app-iris/10'
-                            : 'border-app-gray-100 hover:border-app-iris/60'
-                            }`}
-                          onClick={() => toggleAssetSelection(asset)}
-                        >
-                          {asset.type === 'image' ? (
-                            <img src={asset.url} alt={asset.name} className="h-24 w-full object-cover" />
-                          ) : (
-                            <video src={asset.url} className="h-24 w-full object-cover" />
-                          )}
-                          <div className={`absolute inset-0 transition-opacity flex items-center justify-center ${isSelected ? 'bg-app-iris/40' : 'bg-black/30 opacity-0 group-hover:opacity-100'
-                            }`}>
-                            {isSelected ? (
-                              <div className="bg-app-iris rounded-full p-1">
-                                <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                </svg>
-                              </div>
-                            ) : (
-                              <span className="text-xs font-semibold text-white">Select</span>
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Action buttons for selected assets */}
-              {selectedAssets.length > 0 && (
-                <div className="mt-4 flex justify-end gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => setSelectedAssets([])}
-                    size="sm"
-                  >
-                    Clear Selection
-                  </Button>
-                  <Button
-                    variant="appPrimary"
-                    onClick={handleSaveSelectedAssets}
-                    size="sm"
-                  >
-                    Add ({selectedAssets.length})
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* AI Rewrite Preview Dialog */}
-      <Dialog open={aiPreviewOpen} onOpenChange={setAiPreviewOpen}>
-        <DialogContent className="max-w-2xl bg-white rounded-2xl shadow-2xl border border-gray-100 p-6">
-          <DialogHeader>
-            <DialogTitle>AI Rewrite Suggestion</DialogTitle>
-            <DialogDescription>
-              Here is the suggested rewrite. You can apply it or discard it.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="bg-gray-50 p-4 rounded-md text-sm text-gray-800 max-h-[60vh] overflow-y-auto whitespace-pre-wrap">
-            {aiPreviewText}
-          </div>
-
-          <div className="flex justify-end gap-2 mt-4">
-            <Button
-              variant="outline"
-              onClick={() => setAiPreviewOpen(false)}
-            >
-              Discard
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => applyRewrite('insert')}
-            >
-              Insert at Cursor
-            </Button>
-            <Button
-              variant="appPrimary"
-              onClick={() => applyRewrite('replace')}
-            >
-              Replace All
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dropzone / uploader */}
-      <div
-        className="mb-4 p-4 border-2 border-dashed rounded-lg flex flex-col justify-center items-center bg-gray-50 text-gray-500 hover:bg-violet-50 hover:border-violet-400 transition-colors"
-        onClick={() => { setMediaPickerTab('upload'); setMediaPickerOpen(true); }}
-      >
-        {(!page.media || page.media.length === 0) && Object.keys(uploadProgress).length === 0 && (
-          <div className="text-center pointer-events-none">
-            <UploadCloud className="h-10 w-10 mx-auto mb-2" />
-            <p className="font-semibold">Add media to this page</p>
-            <p className="text-xs">Upload from your computer or choose from the asset registry</p>
-          </div>
-        )}
-
-        {/* Media grid */}
-        <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3 w-full">
-          {(page.media || []).map((media, idx) => (
-            <div
-              key={media.storagePath}
-              className="relative group aspect-square bg-gray-200 rounded-md overflow-hidden"
-              onClick={(e) => {
-                e.stopPropagation();
-                openPreview(idx);
-              }}
-            >
-              {media.type === 'image' ? (
-                <img src={media.url} alt={media.name} className="w-full h-full object-cover cursor-zoom-in" />
-              ) : (
-                <video src={media.url} className="w-full h-full object-cover cursor-pointer" />
-              )}
-
-              <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex justify-center items-center text-white text-xs font-medium">
-                <span>Click to view</span>
-              </div>
-
-              <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <Button
-                  variant="destructive"
-                  size="icon"
-                  className="h-6 w-6"
-                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleMediaDelete(media);
-                  }}
-                >
-                  <Trash2 className="h-3 w-3" />
-                </Button>
-              </div>
-            </div>
-          ))}
-
-          {/* Upload progress tiles */}
-          {Object.entries(uploadProgress).map(([name, progress]) => (
-            <div
-              key={name}
-              className="relative aspect-square bg-gray-200 rounded-md flex flex-col justify-center items-center text-xs p-1"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <p className="font-semibold truncate w-full text-center">{name}</p>
-              <div className="w-full bg-gray-300 rounded-full h-1.5 mt-1">
-                <div className="bg-violet-600 h-1.5 rounded-full" style={{ width: `${progress}%` }} />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Notes + controls */}
-      <div className="space-y-4 flex-grow flex flex-col">
-        <div className="flex-grow flex flex-col">
-          <div className="flex items-center justify-between mb-1"></div>
-
-
-          <div className="flex-grow">
-            <div className="flex-grow bg-transparent overflow-hidden relative">
-              <BlockEditor
-                key={page.id} // Remount on page change
-                ref={quillRef}
-                initialContent={note || ""}
-                onChange={handleNoteChange}
-                onSave={handleSave}
-                onFocus={() => onFocus?.(page.id)}
-              /></div>
-          </div>
-        </div>
-
-        {/* Focus Trigger */}
-        <div
-          className="absolute inset-0 -z-10"
-          onClick={() => onFocus && onFocus()}
-        />
-      </div>
-
-      {/* Media Preview Overlay */}
-      {
-        previewOpen && previewItem && (
-          <div
-            className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4 backdrop-blur-sm"
-            onClick={closePreview}
-          >
-            <button
-              className="absolute top-4 right-4 text-white/70 hover:text-white transition-colors"
-              onClick={closePreview}
-            >
-              <X className="h-8 w-8" />
-            </button>
-
-            <button
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-2 rounded-full hover:bg-white/10 transition-all"
-              onClick={(e) => { e.stopPropagation(); goPrev(); }}
-            >
-              <ChevronLeft className="h-8 w-8" />
-            </button>
-
-            <button
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-2 rounded-full hover:bg-white/10 transition-all"
-              onClick={(e) => { e.stopPropagation(); goNext(); }}
-            >
-              <ChevronRight className="h-8 w-8" />
-            </button>
-
-            <div className="relative max-w-5xl w-full max-h-[85vh] flex flex-col items-center" onClick={e => e.stopPropagation()}>
-              {previewItem.type === 'video' ? (
-                <video src={previewItem.url} controls autoPlay className="max-w-full max-h-[80vh] rounded-lg shadow-2xl" />
-              ) : (
-                <img src={previewItem.url} alt={previewItem.name} className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl" />
-              )}
-              <div className="mt-4 text-white/80 text-sm font-medium">
-                {previewIndex + 1} / {mediaList.length}
-              </div>
-            </div>
-          </div>
-        )
-      }
-
-      {/* Delete Confirmation Modal */}
-      <ConfirmationModal
-        isOpen={!!mediaToDelete}
-        onClose={() => setMediaToDelete(null)}
-        onConfirm={confirmMediaDelete}
-        title="Delete Media"
-        description="Are you sure you want to remove this media from the page? This cannot be undone."
-      />
-
-      {/* Book-like Footer */}
-      <div className="mt-8 flex flex-col items-center gap-2 text-gray-400 text-sm font-serif">
-        <span>- {pageIndex + 1} -</span>
-        {limitStatus === 'warning' && (
-          <span className="text-amber-500 text-xs font-sans">Page is getting full...</span>
-        )}
-        {limitStatus === 'full' && (
-          <span className="text-red-500 text-xs font-sans font-semibold">Page full. Please start a new page.</span>
-        )}
-      </div>
-    </div >
-  );
-});
-
-// --- MAIN COMPONENT ---
-
-const ChatPanel = () => {
-  const [messages, setMessages] = useState([
-    { role: 'assistant', content: 'Hello! I can help you plan your book, brainstorm ideas, or review your writing. What are you working on today?' }
-  ]);
-  const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
-  const [panelWidth, setPanelWidth] = useState(320); // Default 320px (w-80)
-  const [isResizing, setIsResizing] = useState(false);
-
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
-
-    const userQuery = input.trim();
-    setMessages(prev => [...prev, { role: 'user', content: userQuery }]);
-    setInput('');
-    setIsLoading(true);
-
-    try {
-      const queryBookFlowFn = httpsCallable(functions, 'queryBookFlow');
-
-      // Construct history including the new user message
-      const history = [...messages, { role: 'user', content: userQuery }];
-
-      const result = await queryBookFlowFn({ messages: history });
-
-      const { answer, sources } = result.data;
-
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: answer,
-        sources: sources
-      }]);
-    } catch (error) {
-      console.error('RAG Query Error:', error);
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: 'Sorry, I encountered an error while searching your book. Please try again.'
-      }]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Handle resize drag
-  const handleMouseDown = (e) => {
-    e.preventDefault();
-    setIsResizing(true);
-  };
-
-  useEffect(() => {
-    const handleMouseMove = (e) => {
-      if (!isResizing) return;
-      const newWidth = window.innerWidth - e.clientX;
-      // Clamp width between 280px and 600px
-      setPanelWidth(Math.max(280, Math.min(600, newWidth)));
-    };
-
-    const handleMouseUp = () => {
-      setIsResizing(false);
-    };
-
-    if (isResizing) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    }
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isResizing]);
-
-  if (isMinimized) {
-    return (
-      <div className="shrink-0 bg-card border-l border-border flex flex-col items-center w-12 transition-all duration-300">
-        <div className="h-[57px] flex items-center justify-center w-full border-b border-border bg-card/80 backdrop-blur-sm">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setIsMinimized(false)}
-            className="h-6 w-6 text-muted-foreground hover:text-foreground"
-            title="Expand AI Assistant"
-          >
-            <PanelRightOpen className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className="flex flex-col h-full bg-card border-l border-border shrink-0 relative transition-all duration-200"
-      style={{ width: `${panelWidth}px` }}
-    >
-      {/* Resize handle */}
-      <div
-        className={`absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-app-iris/40 transition-colors ${isResizing ? 'bg-app-iris/60' : 'bg-transparent'}`}
-        onMouseDown={handleMouseDown}
-        title="Drag to resize"
-      />
-
-      <div className="h-[57px] px-4 border-b border-border flex items-center justify-between bg-card/80 backdrop-blur-sm">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-app-iris" />
-          <h3 className="font-semibold text-foreground text-sm">AI Assistant</h3>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setIsMinimized(true)}
-          className="h-6 w-6 text-muted-foreground hover:text-foreground"
-          title="Minimize"
-        >
-          <PanelRightClose className="h-4 w-4" />
-        </Button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${msg.role === 'user'
-              ? 'bg-app-iris text-white rounded-br-none'
-              : 'bg-app-gray-100 text-foreground rounded-bl-none'
-              }`}>
-              <p>{msg.content}</p>
-              {msg.sources && msg.sources.length > 0 && (
-                <div className="mt-2 pt-2 border-t border-border/20 text-xs opacity-80">
-                  <p className="font-semibold mb-1">Sources:</p>
-                  <ul className="list-disc pl-4 space-y-0.5">
-                    {msg.sources.map((source, idx) => (
-                      <li key={idx}>{source.shortNote}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-        {isLoading && (
-          <div className="flex justify-start">
-            <div className="bg-app-gray-100 text-foreground rounded-2xl rounded-bl-none px-3 py-2 text-sm flex items-center gap-1">
-              <div className="w-1.5 h-1.5 bg-app-gray-300 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <div className="w-1.5 h-1.5 bg-app-gray-300 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-              <div className="w-1.5 h-1.5 bg-app-gray-300 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="p-3 border-t border-border bg-card">
-        <div className="relative">
-          <Input
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            placeholder="Ask anything..."
-            className="pr-10 text-sm"
-            onKeyDown={e => e.key === 'Enter' && !isLoading && handleSend()}
-            disabled={isLoading}
-          />
-          <Button
-            size="icon"
-            variant="ghost"
-            className="absolute right-1 top-1 h-7 w-7 text-app-iris hover:bg-app-iris/10"
-            onClick={handleSend}
-            disabled={isLoading || !input.trim()}
-          >
-            <Send className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-
-const splitHtmlByCharLimit = (html, limit = 4000) => {
-  // Simple splitter: find the last closing tag before the limit
-  // This is a naive implementation but works for block-based editors
-  if (!html || html.length <= limit) return { keep: html, move: '' };
-
-  // Find the last block-closing tag (</p>, </div>, </li>) before limit
-  const splitRegex = /<\/(p|div|li|h[1-6])>/gi;
-  let match;
-  let splitIndex = -1;
-
-  while ((match = splitRegex.exec(html)) !== null) {
-    if (match.index + match[0].length > limit) break;
-    splitIndex = match.index + match[0].length;
-  }
-
-  if (splitIndex === -1) {
-    // faster fallback: just split at limit
-    return { keep: html.substring(0, limit), move: html.substring(limit) };
-  }
-
-  return {
-    keep: html.substring(0, splitIndex),
-    move: html.substring(splitIndex)
-  };
-};
+// NOTE: The large inline PageEditor and ChatPanel components have been extracted.
+// PageEditor -> src/components/PageEditor/index.jsx
+// ChatPanel -> src/components/ChatPanel.jsx
 
 const BookDetail = () => {
   console.log('BookDetail: Component Mounting');
@@ -1368,29 +66,22 @@ const BookDetail = () => {
 
   // ---------------------------------------------------------------------------
   // ⚡ OPTIMIZATION 1: Synchronous State Initialization
-  // Initialize state directly from location.state so we don't show loading screen
   // ---------------------------------------------------------------------------
   const [book, setBook] = useState(() => location.state?.prefetchedBook || null);
   const [chapters, setChapters] = useState(() => location.state?.prefetchedChapters || []);
-
-  // Only show loading if we don't have the book data yet
   const [loading, setLoading] = useState(() => !location.state?.prefetchedBook);
-
-  // Derived state for initial selection
   const [selectedChapterId, setSelectedChapterId] = useState(() => {
     if (location.state?.prefetchedChapters?.length > 0) {
       return location.state.prefetchedChapters[0].id;
     }
     return null;
   });
-
   const [expandedChapters, setExpandedChapters] = useState(() => {
     if (location.state?.prefetchedChapters?.length > 0) {
       return new Set([location.state.prefetchedChapters[0].id]);
     }
     return new Set();
   });
-
   const [pages, setPages] = useState([]);
   const [selectedPageId, setSelectedPageId] = useState(null);
 
@@ -1424,6 +115,7 @@ const BookDetail = () => {
       document.body.style.userSelect = 'auto';
     };
   }, [isResizingLeft]);
+
   const [newChapterTitle, setNewChapterTitle] = useState('');
   const [modalState, setModalState] = useState({ isOpen: false });
   const [pageDrafts, setPageDrafts] = useState({});
@@ -1452,6 +144,111 @@ const BookDetail = () => {
   const [activePageId, setActivePageId] = useState(null);
   const [footerAiStyle, setFooterAiStyle] = useState('Improve clarity');
   const [showFooterStyleDropdown, setShowFooterStyleDropdown] = useState(false);
+  const [standardPageHeightPx, setStandardPageHeightPx] = useState(0);
+  const [scrollContainerWidthPx, setScrollContainerWidthPx] = useState(0);
+
+  // ---------------------------------------------------------------------------
+  // 🕐 User Input Tracking for Typing Cooldown
+  // ---------------------------------------------------------------------------
+  const lastUserInputAtRef = useRef({});
+  const handleUserInput = useCallback((pageId) => {
+    lastUserInputAtRef.current[pageId] = Date.now();
+  }, []);
+  const getLastUserInputAt = useCallback((pageId) => {
+    return lastUserInputAtRef.current[pageId] || 0;
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // 📄 Page API (cursor-aware for reflow)
+  // ---------------------------------------------------------------------------
+  const pageApi = useMemo(() => ({
+    getBlocks: (pageId) => pageRefs.current?.[pageId]?.getBlocks?.() || [],
+    setBlocks: (pageId, blocks, options) => {
+      const api = pageRefs.current?.[pageId];
+      if (!api?.setBlocks) return Promise.resolve();
+      return api.setBlocks(blocks, options);
+    },
+    getScrollHeight: (pageId) => pageRefs.current?.[pageId]?.getContentScrollHeight?.() || 0,
+    getClientHeight: (pageId) => pageRefs.current?.[pageId]?.getContentClientHeight?.() || 0,
+    // Cursor APIs
+    getSelection: (pageId) => pageRefs.current?.[pageId]?.getSelection?.() || null,
+    getActiveBlockId: (pageId) => pageRefs.current?.[pageId]?.getActiveBlockId?.() || null,
+    isCursorInLastBlock: (pageId) => pageRefs.current?.[pageId]?.isCursorInLastBlock?.() || false,
+    isCursorAtEndOfPage: (pageId) => pageRefs.current?.[pageId]?.isCursorAtEndOfPage?.() || false,
+    focusBlock: (pageId, blockId, pos) => pageRefs.current?.[pageId]?.focusBlock?.(blockId, pos) || false,
+    focusAtStart: (pageId) => pageRefs.current?.[pageId]?.focusAtStart?.() || false,
+    focusAtEnd: (pageId) => pageRefs.current?.[pageId]?.focusAtEnd?.() || false,
+    splitActiveBlockAtCursor: (pageId) => pageRefs.current?.[pageId]?.splitActiveBlockAtCursor?.() || null,
+  }), []);
+
+  const { requestReflow } = usePaginationReflow({
+    layoutMode: book?.layoutMode || 'standard',
+    pages,
+    setPages,
+    pageDrafts,
+    setPageDrafts,
+    chapterId: selectedChapterId,
+    getNewOrderBetween,
+    pageApi,
+    activePageId,
+    getLastUserInputAt,
+    canRemoveTempPages: true,
+    options: {
+      maxMovesPerFrame: 6,
+      underfillPull: true,
+      fillTargetRatio: 0.9,
+      minFillRatio: 0.7,
+      overflowStartPx: 0,
+      overflowStopPx: 24,
+      typingCooldownMs: 500,
+    },
+  });
+
+  const reflowDebounceRef = useRef(null);
+  const requestReflowDebounced = useCallback((pageId) => {
+    if (!pageId) return;
+    if (reflowDebounceRef.current) clearTimeout(reflowDebounceRef.current);
+    reflowDebounceRef.current = setTimeout(() => {
+      requestReflow(pageId);
+    }, 200);
+  }, [requestReflow]);
+
+  // ---------------------------------------------------------------------------
+  // 🚀 Fast-Path: Handle typing at end of full page
+  // ---------------------------------------------------------------------------
+  const handleNearOverflowAtEnd = useCallback(async (pageId) => {
+    const pageIdx = pages.findIndex(p => p.id === pageId);
+    if (pageIdx < 0) return;
+
+    // Check if next page exists
+    let nextPage = pages[pageIdx + 1];
+    if (!nextPage) {
+      // Create a temp page
+      const currentPage = pages[pageIdx];
+      const nextOrder = pages[pageIdx + 1]?.order;
+      const newOrder = getNewOrderBetween(currentPage.order, nextOrder);
+      const tempId = `temp_${Date.now()}`;
+      nextPage = {
+        id: tempId,
+        order: newOrder,
+        note: '',
+        media: [],
+        shortNote: '',
+      };
+      setPages(prev => {
+        const newPages = [...prev];
+        newPages.splice(pageIdx + 1, 0, nextPage);
+        return newPages;
+      });
+      setPageDrafts(prev => ({
+        ...prev,
+        [tempId]: { blocks: [], updatedAt: Date.now() }
+      }));
+    }
+
+    // Focus the next page at start with retry
+    await focusWithRetry(pageRefs, nextPage.id, 'start');
+  }, [pages, setPages, setPageDrafts, getNewOrderBetween]);
 
   // Update active page on scroll
   useEffect(() => {
@@ -1470,8 +267,6 @@ const BookDetail = () => {
     });
 
     const currentRefs = pageContainerRefs.current;
-
-    // Register all pages
     Object.values(currentRefs).forEach(el => {
       if (el) observer.observe(el);
     });
@@ -1479,33 +274,44 @@ const BookDetail = () => {
     return () => observer.disconnect();
   }, [pages]);
 
-  // Sync activePageId with selectedPageId when user clicks sidebar
+  // Standard layout: compute viewport-based fixed page height
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+
+    const compute = () => {
+      const h = el.clientHeight || 0;
+      const w = el.clientWidth || 0;
+      setStandardPageHeightPx(Math.max(420, h - 140));
+      setScrollContainerWidthPx(w);
+    };
+
+    compute();
+    const ro = new ResizeObserver(() => compute());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!pages?.length) return;
+    const startId = activePageId || pages[0]?.id;
+    if (startId) requestReflowDebounced(startId);
+  }, [standardPageHeightPx, scrollContainerWidthPx, pages, activePageId, requestReflowDebounced]);
+
+  useEffect(() => {
+    if (!pages?.length) return;
+    const firstId = pages[0]?.id;
+    if (firstId) requestReflowDebounced(firstId);
+  }, [pages?.length, requestReflowDebounced]);
+
   // Sync activePageId with selectedPageId when user clicks sidebar
   useEffect(() => {
     if (selectedPageId) {
-      // If user clicked sidebar, scroll to that page
       const el = pageContainerRefs.current[selectedPageId];
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         setActivePageId(selectedPageId);
-
-        // Auto-focus with retry (wait for BlockNote init)
-        const tryFocus = async (attempt = 0) => {
-          if (attempt > 20) return; // Stop after ~2 seconds
-
-          let success = false;
-          if (el.focus) {
-            // el.focus() returns true if editor was ready and focused
-            success = el.focus();
-          }
-
-          if (success) {
-            // console.log("Focused on page", selectedPageId);
-          } else {
-            setTimeout(() => tryFocus(attempt + 1), 100);
-          }
-        };
-        tryFocus();
+        focusWithRetry(pageRefs, selectedPageId, 'start');
       }
     }
   }, [selectedPageId]);
@@ -1522,9 +328,7 @@ const BookDetail = () => {
     }
   };
 
-  // Refs
   const isFetchingRef = useRef(false);
-  // Track if we've done the initial page load for the selected chapter
   const loadedChaptersRef = useRef(new Set());
 
   // ---------------------------------------------------------------------------
@@ -2188,7 +992,7 @@ const BookDetail = () => {
 
   const selectedPage = selectedPageId ? pages.find(p => p.id === selectedPageId) : null;
   const selectedDraft = selectedPageId ? pageDrafts[selectedPageId] : undefined;
-  const isSelectedPageDirty = !!(selectedPageId && selectedPage && selectedDraft != null && selectedDraft !== (selectedPage.note || ''));
+  const isSelectedPageDirty = !!(selectedPageId && selectedPage && selectedDraft != null);
 
   const onDraftChange = useCallback((pageId, nextNote) => {
     setPageDrafts(prev => {
@@ -2239,28 +1043,38 @@ const BookDetail = () => {
   }, [isSelectedPageDirty, handleAddPage]);
 
   const saveSelectedDraft = useCallback(async () => {
-    if (!selectedPageId || !selectedPage) return;
-    const noteToSave = selectedDraft ?? selectedPage.note ?? '';
-    const plain = stripHtml(noteToSave);
-    const shortNote = plain.substring(0, 40) + (plain.length > 40 ? '...' : '');
+    if (!selectedPageId) return;
 
     try {
+      // Prefer saving through the page editor (handles temp_ pages too).
+      if (pageRefs.current?.[selectedPageId]?.save) {
+        await pageRefs.current[selectedPageId].save();
+        return;
+      }
+
+      // Fallback: save HTML directly if ref is unavailable
+      const current = selectedPageId ? pages.find(p => p.id === selectedPageId) : null;
+      if (!current) return;
+      const html = await (pageRefs.current?.[selectedPageId]?.getHTML?.() ?? Promise.resolve(current.note || ''));
+      const plain = stripHtml(html);
+      const shortNote = plain.substring(0, 40) + (plain.length > 40 ? '...' : '');
+
       const updatePageFn = httpsCallable(functions, 'updatePage');
       await updatePageFn({
         bookId,
         chapterId: selectedChapterId,
         pageId: selectedPageId,
-        note: noteToSave,
-        media: selectedPage.media || [],
+        note: html,
+        media: current.media || [],
       });
-      handlePageUpdate({ ...selectedPage, note: noteToSave, shortNote });
+      handlePageUpdate({ ...current, note: html, shortNote });
       onDraftChange(selectedPageId, null);
     } catch (e) {
       console.error('Failed to save page before leaving:', e);
       toast({ title: 'Error', description: 'Failed to save page.', variant: 'destructive' });
       throw e;
     }
-  }, [bookId, selectedChapterId, selectedPageId, selectedPage, selectedDraft, onDraftChange, toast]);
+  }, [bookId, selectedChapterId, selectedPageId, pages, onDraftChange, toast]);
 
   const handlePageLeaveSave = useCallback(async () => {
     try {
@@ -2321,40 +1135,7 @@ const BookDetail = () => {
     if (selectedPageId === oldId) setSelectedPageId(newPage.id);
   };
 
-  // Handle moving overflow content to the next page (forward reflow)
-  const handleMoveOverflow = useCallback(({ fromPageId, toPageId, keepHtml, moveHtml }) => {
-    // Update the source page with the kept content
-    setPages(prev => prev.map(p => {
-      if (p.id === fromPageId) return { ...p, note: keepHtml };
-      if (p.id === toPageId) return { ...p, note: moveHtml + (p.note || '') };
-      return p;
-    }));
-
-    // Mark both pages as dirty
-    setPageDrafts(prev => ({
-      ...prev,
-      [fromPageId]: keepHtml,
-      [toPageId]: moveHtml + (pageDrafts[toPageId] || pages.find(p => p.id === toPageId)?.note || '')
-    }));
-
-    // Update chapter sidebar summaries
-    setChapters(prev => prev.map(c => ({
-      ...c,
-      pagesSummary: (c.pagesSummary || []).map(ps => {
-        if (ps.pageId === fromPageId) {
-          const plain = stripHtml(keepHtml);
-          return { ...ps, shortNote: plain.substring(0, 40) + (plain.length > 40 ? '...' : '') };
-        }
-        if (ps.pageId === toPageId) {
-          const plain = stripHtml(moveHtml);
-          return { ...ps, shortNote: plain.substring(0, 40) + (plain.length > 40 ? '...' : '') + ' (overflow)' };
-        }
-        return ps;
-      })
-    })));
-
-    toast({ title: 'Content Overflow', description: 'Excess content moved to the next page.' });
-  }, [pages, pageDrafts]);
+  // Pagination overflow/underflow is handled centrally via the reflow engine (no HTML splitting).
 
   // ---------- Chapter Title Editing ----------
   const handleStartEditChapter = (chapter) => {
@@ -2915,13 +1696,17 @@ const BookDetail = () => {
                           pageIndex={index}
                           totalPages={pages.length}
                           chapterTitle={chapterTitle}
-                          draftNote={pageDrafts[p.id]}
+                          draft={pageDrafts[p.id]}
                           onDraftChange={(pageId, val) => handleDraftChange(pageId, val)}
+                          onBlocksChange={(pageId) => requestReflowDebounced(pageId)}
+                          onRequestReflow={(pageId) => requestReflow(pageId)}
+                          onNearOverflowAtEnd={handleNearOverflowAtEnd}
+                          onUserInput={handleUserInput}
                           onFocus={handlePageFocus}
                           onReplacePageId={handleReplacePageId}
-                          onMoveOverflow={handleMoveOverflow}
                           pages={pages}
                           layoutMode={book?.layoutMode}
+                          standardPageHeightPx={standardPageHeightPx}
                         />
                       </div>
                     ))

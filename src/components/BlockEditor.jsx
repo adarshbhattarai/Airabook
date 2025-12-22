@@ -1,26 +1,235 @@
-import React, { useEffect, useState, useImperativeHandle, forwardRef } from "react";
+import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef, useCallback, useMemo } from "react";
 import "@blocknote/core/fonts/inter.css";
-import { useCreateBlockNote } from "@blocknote/react";
+import { useCreateBlockNote, SuggestionMenuController, getDefaultReactSlashMenuItems } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import "@blocknote/mantine/style.css";
+import { ImageIcon } from "lucide-react";
+
+// Marker URL to identify dropzone placeholder blocks
+const DROPZONE_MARKER = "data:dropzone/placeholder";
 
 // Helper to reliably parse HTML into blocks
-const BlockEditor = forwardRef(({ initialContent, onChange, onSave, onFocus }, ref) => {
+const BlockEditor = forwardRef(
+  (
+    {
+      initialContent,
+      initialBlocks,
+      onChange, // legacy: emits HTML
+      onBlocksChange,
+      onSave,
+      onFocus,
+      onMediaRequest, // NEW: callback when /media command is triggered
+    },
+    ref
+  ) => {
     // Create editor instance
     const editor = useCreateBlockNote({
         initialContent: undefined, // We'll handle initial content manually
     });
 
     const [isLoaded, setIsLoaded] = useState(false);
+    
+    // Store the onMediaRequest callback in a ref so we can access it
+    const onMediaRequestRef = useRef(onMediaRequest);
+    useEffect(() => {
+      onMediaRequestRef.current = onMediaRequest;
+    }, [onMediaRequest]);
+    
+    // Track pending dropzone block ID
+    const pendingDropzoneIdRef = useRef(null);
+    
+    // Track saved cursor position for external media insertion (from dropzone click)
+    const savedCursorBlockIdRef = useRef(null);
+
+    // Custom /media item - inserts a placeholder image block (acts as dropzone)
+    const customMediaItem = useMemo(() => ({
+      title: "Media",
+      onItemClick: () => {
+        // Insert a placeholder image block that acts as a dropzone
+        if (editor) {
+          const currentBlock = editor.getTextCursorPosition().block;
+          const dropzoneBlock = { 
+            type: "image", 
+            props: { 
+              url: DROPZONE_MARKER,
+              caption: "Click to add media",
+              name: JSON.stringify({ isDropzone: true })
+            } 
+          };
+          
+          let insertedBlockId = null;
+          
+          if (currentBlock) {
+            editor.insertBlocks([dropzoneBlock], currentBlock, "after");
+            // Get the ID of the newly inserted block
+            const idx = editor.document.findIndex(b => b.id === currentBlock.id);
+            if (idx >= 0 && editor.document[idx + 1]) {
+              insertedBlockId = editor.document[idx + 1].id;
+            }
+          } else {
+            const count = editor.document.length;
+            if (count > 0) {
+              const lastBlock = editor.document[count - 1];
+              editor.insertBlocks([dropzoneBlock], lastBlock, "after");
+              insertedBlockId = editor.document[editor.document.length - 1]?.id;
+            }
+          }
+          
+          // Store the block ID for later replacement
+          if (insertedBlockId) {
+            pendingDropzoneIdRef.current = insertedBlockId;
+          }
+          
+          // Open the media picker dialog
+          if (onMediaRequestRef.current) {
+            onMediaRequestRef.current();
+          }
+        }
+      },
+      aliases: ["image", "picture", "photo", "upload", "gallery", "video", "media"],
+      group: "Media",
+      icon: <ImageIcon className="h-4 w-4" />,
+      subtext: "Insert images or videos from upload or asset registry",
+    }), [editor]);
+
+    // Helper function to filter items based on query
+    const filterItems = (items, query) => {
+      if (!query || query.length === 0) return items;
+      
+      const lowerQuery = query.toLowerCase();
+      return items.filter(item => {
+        // Match against title
+        if (item.title?.toLowerCase().includes(lowerQuery)) return true;
+        // Match against aliases
+        if (item.aliases?.some(alias => alias.toLowerCase().includes(lowerQuery))) return true;
+        // Match against group
+        if (item.group?.toLowerCase().includes(lowerQuery)) return true;
+        return false;
+      });
+    };
+
+    // Get slash menu items: default BlockNote items + our custom media item
+    const getCustomSlashMenuItems = useCallback(async (query) => {
+      // Get default items from BlockNote (headings, lists, etc.)
+      const defaultItems = getDefaultReactSlashMenuItems(editor);
+      
+      // Combine custom media item with defaults (media first)
+      const allItems = [customMediaItem, ...defaultItems];
+      
+      // Filter items based on query
+      return filterItems(allItems, query);
+    }, [editor]);
+    const suppressChangeRef = useRef(false);
+    const pendingUnsuppressRef = useRef(null);
+
+    const unsuppressSoon = () => {
+      if (pendingUnsuppressRef.current) {
+        clearTimeout(pendingUnsuppressRef.current);
+      }
+      pendingUnsuppressRef.current = setTimeout(() => {
+        suppressChangeRef.current = false;
+      }, 0);
+    };
+
+    const cloneBlocks = (blocks) => {
+      // BlockNote blocks are JSON-ish; structuredClone is safest when available.
+      try {
+        return structuredClone(blocks);
+      } catch (_) {
+        return JSON.parse(JSON.stringify(blocks ?? []));
+      }
+    };
+
+    // Helper function to insert media blocks (shared by all insert methods)
+    const doInsertMediaBlocks = (media = []) => {
+      if (!editor || !media || media.length === 0) return false;
+      
+      try {
+        // Create blocks for each media item
+        const mediaBlocks = media.map((item) => {
+          const isVideo = item.type === 'video';
+          
+          // Store custom metadata as JSON string in name/caption
+          const metadata = JSON.stringify({
+            storagePath: item.storagePath || null,
+            albumId: item.albumId || null,
+            originalName: item.name || null,
+            mediaType: item.type || 'image',
+          });
+          
+          if (isVideo) {
+            // BlockNote has a 'video' block type
+            return {
+              type: "video",
+              props: {
+                url: item.url,
+                caption: item.caption || item.name || "",
+                previewWidth: 512,
+                name: metadata,
+              },
+            };
+          } else {
+            // Image block
+            return {
+              type: "image",
+              props: {
+                url: item.url,
+                caption: item.caption || item.name || "",
+                previewWidth: 512,
+                name: metadata,
+              },
+            };
+          }
+        });
+
+        // Try to use saved cursor position first (from external dropzone click)
+        let targetBlock = null;
+        
+        if (savedCursorBlockIdRef.current) {
+          // Use saved position from dropzone click
+          targetBlock = editor.document.find(b => b.id === savedCursorBlockIdRef.current);
+          savedCursorBlockIdRef.current = null; // Clear after use
+        }
+        
+        if (!targetBlock) {
+          // Fallback to current cursor position
+          targetBlock = editor.getTextCursorPosition()?.block;
+        }
+        
+        if (targetBlock) {
+          // Insert after target block
+          editor.insertBlocks(mediaBlocks, targetBlock, "after");
+        } else {
+          // Fallback: append to end
+          const count = editor.document.length;
+          if (count > 0) {
+            const lastBlock = editor.document[count - 1];
+            editor.insertBlocks(mediaBlocks, lastBlock, "after");
+          } else {
+            // Document is empty, replace with media blocks
+            editor.replaceBlocks(editor.document, mediaBlocks);
+          }
+        }
+        
+        return true;
+      } catch (error) {
+        console.error("Failed to insert media blocks:", error);
+        return false;
+      }
+    };
 
     // Expose methods to parent via ref
     useImperativeHandle(ref, () => ({
-        insertHTML: async (html) => {
+        insertHTML: async (html, options = {}) => {
             if (!editor) return;
+            const silent = !!options.silent;
 
             const blocks = await editor.tryParseHTMLToBlocks(html);
             const currentBlock = editor.getTextCursorPosition().block;
 
+            if (silent) {
+              suppressChangeRef.current = true;
+            }
             if (currentBlock) {
                 editor.insertBlocks(blocks, currentBlock, "after");
             } else {
@@ -29,15 +238,34 @@ const BlockEditor = forwardRef(({ initialContent, onChange, onSave, onFocus }, r
                 const lastBlock = editor.document[count - 1];
                 editor.insertBlocks(blocks, lastBlock, "after");
             }
+            if (silent) unsuppressSoon();
         },
-        setHTML: async (html) => {
+        setHTML: async (html, options = {}) => {
             if (!editor) return;
+            const silent = !!options.silent;
             const blocks = await editor.tryParseHTMLToBlocks(html);
+            if (silent) {
+              suppressChangeRef.current = true;
+            }
             editor.replaceBlocks(editor.document, blocks);
+            if (silent) unsuppressSoon();
         },
         getHTML: async () => {
             if (!editor) return "";
             return await editor.blocksToFullHTML(editor.document);
+        },
+        getBlocks: () => {
+          if (!editor) return [];
+          return cloneBlocks(editor.document);
+        },
+        setBlocks: (blocks, options = {}) => {
+          if (!editor) return;
+          const silent = !!options.silent;
+          if (silent) {
+            suppressChangeRef.current = true;
+          }
+          editor.replaceBlocks(editor.document, blocks || []);
+          if (silent) unsuppressSoon();
         },
         focus: () => {
             if (editor) {
@@ -45,28 +273,157 @@ const BlockEditor = forwardRef(({ initialContent, onChange, onSave, onFocus }, r
                 return true;
             }
             return false;
-        }
+        },
+        // Insert media blocks (images and/or videos) at cursor position
+        // media: array of { url, storagePath?, albumId?, name?, caption?, type: 'image' | 'video' }
+        insertMediaBlocks: doInsertMediaBlocks,
+        // Replace the pending dropzone block with actual media blocks
+        replaceDropzoneWithMedia: (media = []) => {
+          if (!editor || !media || media.length === 0) return false;
+
+          const dropzoneId = pendingDropzoneIdRef.current;
+          if (!dropzoneId) {
+            // No pending dropzone, just insert at cursor
+            return doInsertMediaBlocks(media);
+          }
+
+          try {
+            // Find the dropzone block
+            const dropzoneBlock = editor.document.find(b => b.id === dropzoneId);
+            if (!dropzoneBlock) {
+              // Dropzone not found, insert at cursor instead
+              pendingDropzoneIdRef.current = null;
+              return doInsertMediaBlocks(media);
+            }
+
+            // Create media blocks
+            const mediaBlocks = media.map((item) => {
+              const isVideo = item.type === 'video';
+              const metadata = JSON.stringify({
+                storagePath: item.storagePath || null,
+                albumId: item.albumId || null,
+                originalName: item.name || null,
+                mediaType: item.type || 'image',
+              });
+
+              return {
+                type: isVideo ? "video" : "image",
+                props: {
+                  url: item.url,
+                  caption: item.caption || item.name || "",
+                  previewWidth: 512,
+                  name: metadata,
+                },
+              };
+            });
+
+            // Replace the dropzone block with media blocks
+            editor.replaceBlocks([dropzoneBlock], mediaBlocks);
+            pendingDropzoneIdRef.current = null;
+
+            return true;
+          } catch (error) {
+            console.error("Failed to replace dropzone with media:", error);
+            pendingDropzoneIdRef.current = null;
+            return false;
+          }
+        },
+        // Check if there's a pending dropzone
+        hasPendingDropzone: () => {
+          return !!pendingDropzoneIdRef.current;
+        },
+        // Clear pending dropzone (if user cancels)
+        clearPendingDropzone: () => {
+          // Remove the placeholder dropzone block if it exists
+          if (editor && pendingDropzoneIdRef.current) {
+            const dropzoneBlock = editor.document.find(b => b.id === pendingDropzoneIdRef.current);
+            if (dropzoneBlock) {
+              editor.removeBlocks([dropzoneBlock]);
+            }
+          }
+          pendingDropzoneIdRef.current = null;
+          savedCursorBlockIdRef.current = null;
+        },
+        // Save current cursor position for later media insertion
+        saveCursorPosition: () => {
+          if (!editor) return false;
+          const currentBlock = editor.getTextCursorPosition()?.block;
+          if (currentBlock) {
+            savedCursorBlockIdRef.current = currentBlock.id;
+            return true;
+          }
+          return false;
+        },
+        // Clear saved cursor position
+        clearSavedCursorPosition: () => {
+          savedCursorBlockIdRef.current = null;
+        },
+        // Legacy: Insert image blocks only (for backward compatibility)
+        insertImageBlocks: (images = []) => {
+          if (!editor || !images || images.length === 0) return false;
+          // Map to include type: 'image' and use the shared helper
+          const media = images.map(img => ({ ...img, type: 'image' }));
+          return doInsertMediaBlocks(media);
+        },
+        // Insert video blocks only
+        insertVideoBlocks: (videos = []) => {
+          if (!editor || !videos || videos.length === 0) return false;
+          // Map to include type: 'video' and use the shared helper
+          const media = videos.map(vid => ({ ...vid, type: 'video' }));
+          return doInsertMediaBlocks(media);
+        },
+        // Helper to extract metadata from image/video block name prop
+        getMediaBlockMetadata: (block) => {
+          if (!['image', 'video'].includes(block?.type) || !block?.props?.name) return null;
+          try {
+            return JSON.parse(block.props.name);
+          } catch {
+            return null;
+          }
+        },
+        // Legacy alias
+        getImageBlockMetadata: (block) => {
+          if (block?.type !== "image" || !block?.props?.name) return null;
+          try {
+            return JSON.parse(block.props.name);
+          } catch {
+            return null;
+          }
+        },
     }));
 
     // Initialize content
     useEffect(() => {
         if (editor && !isLoaded) {
             const loadContent = async () => {
-                if (initialContent) {
-                    const blocks = await editor.tryParseHTMLToBlocks(initialContent);
-                    editor.replaceBlocks(editor.document, blocks);
+                // Prefer blocks if provided, fallback to HTML.
+                if (Array.isArray(initialBlocks)) {
+                  suppressChangeRef.current = true;
+                  editor.replaceBlocks(editor.document, initialBlocks);
+                  unsuppressSoon();
+                } else if (initialContent) {
+                  const blocks = await editor.tryParseHTMLToBlocks(initialContent);
+                  suppressChangeRef.current = true;
+                  editor.replaceBlocks(editor.document, blocks);
+                  unsuppressSoon();
                 }
                 setIsLoaded(true);
             };
             loadContent();
         }
-    }, [editor, initialContent, isLoaded]);
+    }, [editor, initialContent, initialBlocks, isLoaded]);
 
     // Handle changes
     const handleChange = async () => {
-        if (onChange && isLoaded) {
-            const html = await editor.blocksToFullHTML(editor.document);
-            onChange(html);
+        if (!editor || !isLoaded) return;
+        if (suppressChangeRef.current) return;
+
+        if (onBlocksChange) {
+          onBlocksChange(cloneBlocks(editor.document));
+        }
+        if (onChange) {
+          const html = await editor.blocksToFullHTML(editor.document);
+          onChange(html);
         }
     };
 
@@ -76,7 +433,7 @@ const BlockEditor = forwardRef(({ initialContent, onChange, onSave, onFocus }, r
 
     return (
         <div
-            className="w-full h-full min-h-[500px]"
+            className="w-full h-full min-h-0"
             onFocus={onFocus} // Trigger focus event when user clicks or types
             tabIndex={-1} // Allow div to focus if needed, but usually editor children handle it
         >
@@ -84,9 +441,17 @@ const BlockEditor = forwardRef(({ initialContent, onChange, onSave, onFocus }, r
                 editor={editor}
                 onChange={handleChange}
                 theme={"light"}
-            />
+                slashMenu={false} // Disable default, we'll use custom
+            >
+              {/* Custom Slash Menu with /media command */}
+              <SuggestionMenuController
+                triggerCharacter="/"
+                getItems={getCustomSlashMenuItems}
+              />
+            </BlockNoteView>
         </div>
     );
-});
+  }
+);
 
 export default BlockEditor;
