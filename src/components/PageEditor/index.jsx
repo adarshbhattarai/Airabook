@@ -57,7 +57,7 @@ const PageEditor = forwardRef(({
   const fileInputRef = useRef(null);
   const pageRootRef = useRef(null);
   const contentMeasureRef = useRef(null);
-  
+
   // Track last saved blocks for reconciliation (to detect deleted album images)
   const previousBlocksRef = useRef(null);
 
@@ -68,6 +68,8 @@ const PageEditor = forwardRef(({
   const [albumMedia, setAlbumMedia] = useState([]);
   const [loadingAlbums, setLoadingAlbums] = useState(false);
   const [selectedAssets, setSelectedAssets] = useState([]);
+  // Track whether we're inserting to page.media section or as inline blocks 
+  const [mediaInsertMode, setMediaInsertMode] = useState('section'); // 'section' or 'inline'
 
   const mediaList = page.media || [];
   const previewItem = mediaList[previewIndex] || null;
@@ -95,12 +97,12 @@ const PageEditor = forwardRef(({
   const findDeletedAlbumMedia = (prevBlocks, currentBlocks) => {
     const prevAlbumMedia = getAlbumMediaBlocks(prevBlocks);
     const currentAlbumMedia = getAlbumMediaBlocks(currentBlocks);
-    
+
     // Get storage paths of current media
     const currentPaths = new Set(
       currentAlbumMedia.map(item => item.metadata?.storagePath).filter(Boolean)
     );
-    
+
     // Find media in previous that are not in current
     return prevAlbumMedia.filter(
       item => item.metadata?.storagePath && !currentPaths.has(item.metadata.storagePath)
@@ -112,7 +114,7 @@ const PageEditor = forwardRef(({
     for (const item of deletedMedia) {
       const { albumId, storagePath } = item.metadata;
       if (!albumId || !storagePath) continue;
-      
+
       try {
         const untrackUsage = httpsCallable(functions, 'untrackMediaUsage');
         await untrackUsage({
@@ -466,12 +468,12 @@ const PageEditor = forwardRef(({
     // Determine media type from file
     const isVideo = file.type.startsWith('video');
     const isImage = file.type.startsWith('image');
-    
+
     if (!isVideo && !isImage) {
-      toast({ 
-        title: 'Unsupported file type', 
+      toast({
+        title: 'Unsupported file type',
         description: 'Only images and videos are supported.',
-        variant: 'destructive' 
+        variant: 'destructive'
       });
       return;
     }
@@ -506,7 +508,6 @@ const PageEditor = forwardRef(({
       },
       () => {
         getDownloadURL(uploadTask.snapshot.ref).then(async (downloadURL) => {
-          // Insert as media block (image or video)
           const mediaData = {
             url: downloadURL,
             storagePath,
@@ -514,11 +515,24 @@ const PageEditor = forwardRef(({
             type: mediaType,
           };
 
-          // Check if there's a pending dropzone to replace, otherwise insert at cursor
-          if (quillRef.current?.hasPendingDropzone?.()) {
-            quillRef.current.replaceDropzoneWithMedia([mediaData]);
-          } else if (quillRef.current?.insertMediaBlocks) {
-            quillRef.current.insertMediaBlocks([mediaData]);
+          if (mediaInsertMode === 'inline') {
+            // Insert as inline block in editor (50% width, centered)
+            const mediaBlockData = {
+              ...mediaData,
+              previewWidth: 154, // 30% width for centered inline images
+            };
+            if (quillRef.current?.hasPendingDropzone?.()) {
+              quillRef.current.replaceDropzoneWithMedia([mediaBlockData]);
+            } else if (quillRef.current?.insertMediaBlocks) {
+              quillRef.current.insertMediaBlocks([mediaBlockData]);
+            }
+            toast({ title: 'Upload Success', description: `"${file.name}" inserted inline.` });
+          } else {
+            // Add to page.media[] array (media section)
+            const updatedMedia = [...(page.media || []), mediaData];
+            onPageUpdate({ ...page, media: updatedMedia });
+            quillRef.current?.clearPendingDropzone?.();
+            toast({ title: 'Upload Success', description: `"${file.name}" has been added to media.` });
           }
 
           setUploadProgress(prev => {
@@ -526,7 +540,6 @@ const PageEditor = forwardRef(({
             delete next[file.name];
             return next;
           });
-          toast({ title: 'Upload Success', description: `"${file.name}" has been inserted.` });
         });
       }
     );
@@ -536,21 +549,30 @@ const PageEditor = forwardRef(({
     try {
       // Determine media type
       const mediaType = asset.type === 'video' ? 'video' : 'image';
-      
-      // Insert as media block (image or video)
+
       const mediaData = {
         url: asset.url,
         storagePath: asset.storagePath || asset.url,
         name: asset.name || 'Asset',
-        albumId: selectedAlbumId, // Important for tracking
+        albumId: selectedAlbumId,
         type: mediaType,
       };
 
-      // Check if there's a pending dropzone to replace, otherwise insert at cursor
-      if (quillRef.current?.hasPendingDropzone?.()) {
-        quillRef.current.replaceDropzoneWithMedia([mediaData]);
-      } else if (quillRef.current?.insertMediaBlocks) {
-        quillRef.current.insertMediaBlocks([mediaData]);
+      if (mediaInsertMode === 'inline') {
+        // Insert as inline block in editor (50% width, centered)
+        const mediaBlockData = { ...mediaData, previewWidth: 154 };
+        if (quillRef.current?.hasPendingDropzone?.()) {
+          quillRef.current.replaceDropzoneWithMedia([mediaBlockData]);
+        } else if (quillRef.current?.insertMediaBlocks) {
+          quillRef.current.insertMediaBlocks([mediaBlockData]);
+        }
+        toast({ title: 'Asset added', description: `${mediaData.name} inserted inline.` });
+      } else {
+        // Add to page.media[] array (media section)
+        const updatedMedia = [...(page.media || []), mediaData];
+        onPageUpdate({ ...page, media: updatedMedia });
+        quillRef.current?.clearPendingDropzone?.();
+        toast({ title: 'Asset added', description: `${mediaData.name} added to media.` });
       }
 
       // Track usage for album assets (so they can't be deleted while in use)
@@ -566,8 +588,6 @@ const PageEditor = forwardRef(({
       } catch (trackError) {
         console.error('Failed to track usage:', trackError);
       }
-
-      toast({ title: 'Asset added', description: `${mediaData.name} inserted from library.` });
     } catch (error) {
       console.error('Failed to attach asset', error);
       toast({ title: 'Attach failed', description: error.message || 'Could not attach asset.', variant: 'destructive' });
@@ -598,7 +618,7 @@ const PageEditor = forwardRef(({
       return;
     }
 
-    // Prepare media data for block insertion (both images and videos)
+    // Prepare media data for page.media[] array (media section)
     const mediaToInsert = selectedAssets.map(asset => ({
       url: asset.url,
       storagePath: asset.storagePath || asset.url,
@@ -607,11 +627,19 @@ const PageEditor = forwardRef(({
       type: asset.type === 'video' ? 'video' : 'image',
     }));
 
-    // Check if there's a pending dropzone to replace, otherwise insert at cursor
-    if (quillRef.current?.hasPendingDropzone?.()) {
-      quillRef.current.replaceDropzoneWithMedia(mediaToInsert);
-    } else if (quillRef.current?.insertMediaBlocks) {
-      quillRef.current.insertMediaBlocks(mediaToInsert);
+    if (mediaInsertMode === 'inline') {
+      // Insert as inline blocks in editor (50% width, centered)
+      const mediaBlocksData = mediaToInsert.map(m => ({ ...m, previewWidth: 154 }));
+      if (quillRef.current?.hasPendingDropzone?.()) {
+        quillRef.current.replaceDropzoneWithMedia(mediaBlocksData);
+      } else if (quillRef.current?.insertMediaBlocks) {
+        quillRef.current.insertMediaBlocks(mediaBlocksData);
+      }
+    } else {
+      // Add to page.media[] array (media section)
+      const updatedMedia = [...(page.media || []), ...mediaToInsert];
+      onPageUpdate({ ...page, media: updatedMedia });
+      quillRef.current?.clearPendingDropzone?.();
     }
 
     // Track usage for all album assets
@@ -630,9 +658,9 @@ const PageEditor = forwardRef(({
       }
     }
 
-    toast({ 
-      title: 'Assets added', 
-      description: `${mediaToInsert.length} media item(s) inserted from library.` 
+    toast({
+      title: 'Assets added',
+      description: `${mediaToInsert.length} media item(s) ${mediaInsertMode === 'inline' ? 'inserted inline' : 'added to media'}.`
     });
 
     setSelectedAssets([]);
@@ -698,17 +726,17 @@ const PageEditor = forwardRef(({
   };
 
   // NEW: Handle /media command from editor - opens media picker dialog
-  const handleMediaRequest = () => {
+  // mode: 'section' adds to page.media[], 'inline' inserts as editor blocks
+  const handleMediaRequest = (mode = 'section') => {
+    setMediaInsertMode(mode);
     setMediaPickerTab('upload');
     setSelectedAssets([]);
     setMediaPickerOpen(true);
   };
 
-  // Handle dropzone click - saves cursor position THEN opens media picker
+  // Handle dropzone click - opens media picker to add to section
   const handleDropzoneClick = () => {
-    // Save the current cursor position in the editor before opening dialog
-    quillRef.current?.saveCursorPosition?.();
-    handleMediaRequest();
+    handleMediaRequest('section');
   };
 
   // --- AI: callable + preview modal ---
@@ -1051,9 +1079,9 @@ const PageEditor = forwardRef(({
                 <div key={name} className="flex items-center gap-2">
                   <span className="text-xs text-violet-600 truncate max-w-[150px]">{name}</span>
                   <div className="flex-1 bg-violet-200 rounded-full h-1.5">
-                    <div 
-                      className="bg-violet-600 h-1.5 rounded-full transition-all duration-300" 
-                      style={{ width: `${progress}%` }} 
+                    <div
+                      className="bg-violet-600 h-1.5 rounded-full transition-all duration-300"
+                      style={{ width: `${progress}%` }}
                     />
                   </div>
                   <span className="text-xs text-violet-500">{Math.round(progress)}%</span>
@@ -1063,68 +1091,58 @@ const PageEditor = forwardRef(({
           </div>
         )}
 
-        {/* Media Dropzone - Clickable area to add media */}
-        <div 
-          className="mb-4 p-4 border-2 border-dashed border-violet-300 rounded-lg bg-violet-50/50 hover:bg-violet-50 hover:border-violet-400 transition-colors cursor-pointer min-h-[100px]"
-          onClick={handleDropzoneClick}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => e.key === 'Enter' && handleDropzoneClick()}
-        >
-          {mediaList.length > 0 ? (
-            // Show existing media grid - parent onClick will still fire for empty spaces
-            <div>
-              <div className="flex items-center justify-between mb-2 pointer-events-none">
-                <span className="text-xs font-medium text-violet-700">Attached Media</span>
-                <span className="text-xs text-violet-500">{mediaList.length} item(s) • Click anywhere to add more</span>
-              </div>
-              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2">
-                {mediaList.map((media, idx) => (
-                  <div
-                    key={media.storagePath || idx}
-                    className="relative group aspect-square bg-gray-200 rounded-md overflow-hidden cursor-pointer"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openPreview(idx);
-                    }}
-                  >
-                    {media.type === 'video' ? (
-                      <video src={media.url} className="w-full h-full object-cover pointer-events-none" />
-                    ) : (
-                      <img src={media.url} alt={media.name} className="w-full h-full object-cover pointer-events-none" />
-                    )}
+        {/* Media Section - Only shown when page.media has items */}
+        {mediaList.length > 0 && (
+          <div
+            className="mb-4 p-4 border-2 border-dashed border-violet-300 rounded-lg bg-violet-50/50 hover:bg-violet-50 hover:border-violet-400 transition-colors cursor-pointer"
+            onClick={handleDropzoneClick}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => e.key === 'Enter' && handleDropzoneClick()}
+          >
+            <div className="flex items-center justify-between mb-2 pointer-events-none">
+              <span className="text-xs font-medium text-violet-700">Attached Media</span>
+              <span className="text-xs text-violet-500">{mediaList.length} item(s) • Click to add more</span>
+            </div>
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2">
+              {mediaList.map((media, idx) => (
+                <div
+                  key={media.storagePath || idx}
+                  className="relative group aspect-square bg-gray-200 rounded-md overflow-hidden cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openPreview(idx);
+                  }}
+                >
+                  {media.type === 'video' ? (
+                    <video src={media.url} className="w-full h-full object-cover pointer-events-none" />
+                  ) : (
+                    <img src={media.url} alt={media.name} className="w-full h-full object-cover pointer-events-none" />
+                  )}
 
-                    <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex justify-center items-center text-white text-xs font-medium pointer-events-none">
-                      <span>Click to view</span>
-                    </div>
-
-                    <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        className="h-6 w-6"
-                        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleMediaDelete(media);
-                        }}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
+                  <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex justify-center items-center text-white text-xs font-medium pointer-events-none">
+                    <span>Click to view</span>
                   </div>
-                ))}
-              </div>
+
+                  <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      className="h-6 w-6"
+                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleMediaDelete(media);
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
             </div>
-          ) : (
-            // Show empty dropzone prompt
-            <div className="flex flex-col items-center justify-center py-4 text-violet-600 pointer-events-none">
-              <UploadCloud className="h-8 w-8 mb-2 opacity-60" />
-              <p className="text-sm font-medium">Click to add media</p>
-              <p className="text-xs text-violet-400">Upload images or videos, or choose from your asset library</p>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Notes + controls */}
         <div className="space-y-4 flex-grow flex flex-col">
