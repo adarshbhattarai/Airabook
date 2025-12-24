@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { httpsCallable } from 'firebase/functions';
 import {
-  PlusCircle, ChevronLeft, ChevronRight, UploadCloud, X, Trash2
+  PlusCircle, ChevronLeft, ChevronRight, ChevronDown, UploadCloud, X, Trash2, Sparkles
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
@@ -50,6 +50,9 @@ const PageEditor = forwardRef(({
   const [aiPreviewOpen, setAiPreviewOpen] = useState(false);
   const [aiPreviewText, setAiPreviewText] = useState('');
   const [aiStyle, setAiStyle] = useState('Improve clarity');
+  const [showAiStyleDropdown, setShowAiStyleDropdown] = useState(false);
+  const [aiModel, setAiModel] = useState('gpt-4o');
+  const [showModelDropdown, setShowModelDropdown] = useState(false);
 
   const [mediaToDelete, setMediaToDelete] = useState(null);
   const [limitStatus, setLimitStatus] = useState('ok'); // 'ok', 'warning', 'full'
@@ -887,7 +890,7 @@ const PageEditor = forwardRef(({
       >
         <div
           ref={pageRootRef}
-          className={`${layoutStyles[layoutMode] || layoutStyles.standard} overflow-hidden`}
+          className={`${layoutStyles[layoutMode] || layoutStyles.standard} overflow-hidden relative`}
           style={fixedLayout && sizeMm ? {
             width: `${sizeMm.width}mm`,
             height: `${sizeMm.height}mm`,
@@ -1252,14 +1255,68 @@ const PageEditor = forwardRef(({
         />
 
         {/* Page actions (hover to reveal) */}
-        <div className="mt-6 flex justify-end">
-          <div className="flex items-center gap-2 rounded-full border border-gray-200 bg-white/90 px-3 py-2 shadow-sm opacity-0 transition-opacity duration-200 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto">
+        <div className="absolute bottom-6 left-0 right-0 mx-auto flex items-center justify-end gap-2 rounded-full border border-gray-200 bg-white/95 px-4 py-2 shadow-sm opacity-0 translate-y-3 transition-all duration-200 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto z-20 w-[calc(100%-2rem)]">
+          <div className="relative flex items-center mr-auto ml-8 gap-2">
+            <div className="relative flex items-center">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowModelDropdown(!showModelDropdown)}
+                className="h-8 px-2 text-xs"
+              >
+                {aiModel}
+                <ChevronDown className="h-3 w-3 ml-1" />
+              </Button>
+              {showModelDropdown && (
+                <div className="absolute bottom-full left-0 mb-2 w-36 bg-white border rounded-md shadow-lg py-1 z-30">
+                  {['gpt-4o'].map(model => (
+                    <button
+                      key={model}
+                      onClick={() => {
+                        setAiModel(model);
+                        setShowModelDropdown(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
+                    >
+                      {model}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <Input
               value={aiStyle}
               onChange={(e) => setAiStyle(e.target.value)}
               placeholder="AI instruction..."
-              className="h-8 w-40 text-xs"
+              className="h-8 w-72 text-xs"
             />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAiStyleDropdown(!showAiStyleDropdown)}
+              className="ml-1 h-8 px-2"
+            >
+              <ChevronDown className="h-4 w-4" />
+            </Button>
+
+            {showAiStyleDropdown && (
+              <div className="absolute bottom-full right-0 mb-2 w-48 bg-white border rounded-md shadow-lg py-1 z-30">
+                {['Improve clarity', 'Make it concise', 'Fix grammar', 'Expand this'].map(style => (
+                  <button
+                    key={style}
+                    onClick={() => {
+                      setAiStyle(style);
+                      setShowAiStyleDropdown(false);
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
+                  >
+                    {style}
+                  </button>
+                ))}
+              </div>
+            )}
             <Button
               variant="secondary"
               size="sm"
@@ -1267,8 +1324,11 @@ const PageEditor = forwardRef(({
               onClick={() => callRewrite(aiStyle)}
               disabled={aiBusy}
             >
+              <Sparkles className="h-4 w-4 mr-1" />
               Rewrite
             </Button>
+          </div>
+          {pageIndex < totalPages - 1 ? (
             <Button
               variant="appSuccess"
               size="sm"
@@ -1277,21 +1337,24 @@ const PageEditor = forwardRef(({
             >
               Save Page
             </Button>
+          ) : (
             <Button
-              variant="outline"
+              variant="appSuccess"
               size="sm"
               className="h-8"
-              onClick={() => onAddPage?.(false)}
+              onClick={async () => {
+                await handleSave();
+                onAddPage?.(false);
+              }}
             >
-              <PlusCircle className="h-4 w-4 mr-1" />
-              Add Page
+              Save + New
             </Button>
-          </div>
+          )}
         </div>
 
         {/* Book-like Footer */}
-        <div className="mt-8 flex flex-col items-center gap-2 text-gray-400 text-sm font-serif">
-          <span>- {pageIndex + 1} -</span>
+        <div className="mt-8 flex flex-col items-center gap-2 text-gray-400 text-sm font-serif w-full">
+          <span className="w-full text-center">- {pageIndex + 1} -</span>
           {limitStatus === 'warning' && (
             <span className="text-amber-500 text-xs font-sans">Page is getting full...</span>
           )}
