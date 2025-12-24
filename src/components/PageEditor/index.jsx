@@ -4,6 +4,7 @@ import { ref as firebaseRef, uploadBytesResumable, getDownloadURL } from 'fireba
 import { firestore, storage, functions } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { httpsCallable } from 'firebase/functions';
 import {
@@ -32,6 +33,7 @@ const PageEditor = forwardRef(({
   onBlocksChange,
   onRequestReflow,
   onNearOverflowAtEnd,
+  onBackspaceAtStart,
   onUserInput,
   onFocus,
   onReplacePageId,
@@ -47,6 +49,7 @@ const PageEditor = forwardRef(({
   // AI preview dialog state
   const [aiPreviewOpen, setAiPreviewOpen] = useState(false);
   const [aiPreviewText, setAiPreviewText] = useState('');
+  const [aiStyle, setAiStyle] = useState('Improve clarity');
 
   const [mediaToDelete, setMediaToDelete] = useState(null);
   const [limitStatus, setLimitStatus] = useState('ok'); // 'ok', 'warning', 'full'
@@ -415,16 +418,30 @@ const PageEditor = forwardRef(({
     // Only intercept character keys, Enter, etc.
     if (e.key.length > 1 && e.key !== 'Enter' && e.key !== 'Backspace') return;
 
+    const atStartOfPage = quillRef.current?.isCursorAtStartOfPage?.() || false;
+    if (e.key === 'Backspace' && atStartOfPage && onBackspaceAtStart) {
+      const removed = onBackspaceAtStart(page.id);
+      if (removed) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+    }
+
     // Check if cursor is at end of page and page is near full
-    const atEndOfPage = quillRef.current?.isCursorAtEndOfPage?.();
-    if (!atEndOfPage) return;
+    const atEndOfPage = quillRef.current?.isCursorAtEndOfPage?.() || false;
+    const inLastBlock = quillRef.current?.isCursorInLastBlock?.() || false;
 
     const scrollH = contentMeasureRef.current?.scrollHeight ?? 0;
     const clientH = pageRootRef.current?.clientHeight ?? 0;
     const nearOverflow = clientH > 0 && scrollH >= clientH - 24;
 
-    if (nearOverflow && onNearOverflowAtEnd) {
+    // DIAGNOSTIC LOG
+    console.log(`⌨️ [${page.id.substring(0, 6)}] Key: "${e.key}" | EndOfPage: ${atEndOfPage} | InLastBlock: ${inLastBlock} | Overflow: ${nearOverflow} (${scrollH}/${clientH})`);
+
+    if (atEndOfPage && nearOverflow && onNearOverflowAtEnd) {
       // Trigger fast-path: create/focus next page
+      console.log('🚀 TRIGGER: Moving to next page!');
       e.preventDefault();
       e.stopPropagation();
       onNearOverflowAtEnd(page.id);
@@ -807,49 +824,77 @@ const PageEditor = forwardRef(({
   };
 
   const layoutStyles = {
-    a4: "w-full max-w-[800px] mx-auto bg-white shadow-2xl p-[5%]",
-    scrapbook: "w-full max-w-[800px] mx-auto bg-white shadow-2xl p-[5%]",
-    standard: "w-full flex flex-col max-w-5xl mx-auto p-8"
+    a4: 'bg-white shadow-2xl p-[5%] page-sheet group',
+    scrapbook: 'bg-white shadow-2xl p-[5%] page-sheet group',
+    standard: 'w-full flex flex-col max-w-5xl mx-auto p-8 group'
   };
 
-  // Fixed-height page sizing for pagination (layout-aware).
+  const PAGE_SIZES_MM = {
+    a4: { width: 210, height: 297 },
+    scrapbook: { width: 254, height: 254 }
+  };
+
+  const mmToPx = (mm) => (mm * 96) / 25.4;
+
+  const pageOuterRef = useRef(null);
   const [pageHeightPx, setPageHeightPx] = useState(null);
+  const [pageScale, setPageScale] = useState(1);
+  const [pageSizePx, setPageSizePx] = useState({ width: null, height: null });
+
   useEffect(() => {
-    const el = pageRootRef.current;
-    if (!el) return;
+    const outerEl = pageOuterRef.current;
+    const sizeMm = PAGE_SIZES_MM[layoutMode] || null;
 
     const compute = () => {
-      if (!el) return;
-      const width = el.clientWidth || 0;
-      const paddingPx = 0;
-      let h = null;
+      if (sizeMm) {
+        const widthPx = mmToPx(sizeMm.width);
+        const heightPx = mmToPx(sizeMm.height);
+        const availableWidth = outerEl?.clientWidth || widthPx;
+        const scale = Math.min(1, availableWidth / widthPx);
 
-      if (layoutMode === 'a4') {
-        h = Math.max(420, Math.floor(width * (297 / 210))) - paddingPx;
-      } else if (layoutMode === 'scrapbook') {
-        h = Math.max(420, Math.floor(width)) - paddingPx;
-      } else {
-        if (typeof standardPageHeightPx === 'number' && standardPageHeightPx > 0) {
-          h = Math.max(420, Math.floor(standardPageHeightPx));
-        }
+        setPageSizePx({ width: widthPx, height: heightPx });
+        setPageScale(scale);
+        setPageHeightPx(heightPx);
+        requestAnimationFrame(updateLimitStatusFromMeasure);
+        return;
       }
 
-      setPageHeightPx(h);
-      requestAnimationFrame(updateLimitStatusFromMeasure);
+      if (typeof standardPageHeightPx === 'number' && standardPageHeightPx > 0) {
+        setPageHeightPx(Math.max(420, Math.floor(standardPageHeightPx)));
+        requestAnimationFrame(updateLimitStatusFromMeasure);
+      }
     };
 
     compute();
     const ro = new ResizeObserver(() => compute());
-    ro.observe(el);
+    if (outerEl) ro.observe(outerEl);
     return () => ro.disconnect();
   }, [layoutMode, standardPageHeightPx]);
 
+  const fixedLayout = layoutMode === 'a4' || layoutMode === 'scrapbook';
+  const sizeMm = PAGE_SIZES_MM[layoutMode];
+  const scaledWidth = pageSizePx.width ? Math.round(pageSizePx.width * pageScale) : null;
+  const scaledHeight = pageSizePx.height ? Math.round(pageSizePx.height * pageScale) : null;
+
   return (
     <div
-      ref={pageRootRef}
-      className={`${layoutStyles[layoutMode] || layoutStyles.standard} overflow-hidden`}
-      style={pageHeightPx ? { height: `${pageHeightPx}px` } : undefined}
+      ref={pageOuterRef}
+      className={fixedLayout ? 'w-full flex justify-center' : undefined}
     >
+      <div
+        className={fixedLayout ? 'page-sheet-outer' : undefined}
+        style={fixedLayout && scaledWidth && scaledHeight ? { width: `${scaledWidth}px`, height: `${scaledHeight}px` } : undefined}
+      >
+        <div
+          ref={pageRootRef}
+          className={`${layoutStyles[layoutMode] || layoutStyles.standard} overflow-hidden`}
+          style={fixedLayout && sizeMm ? {
+            width: `${sizeMm.width}mm`,
+            height: `${sizeMm.height}mm`,
+            transform: `scale(${pageScale})`,
+            transformOrigin: 'top center'
+          } : (pageHeightPx ? { height: `${pageHeightPx}px` } : undefined)}
+        >
       <div ref={contentMeasureRef} className="h-full overflow-hidden flex flex-col">
         <div className="flex justify-center items-center mb-6 relative">
           {pageIndex === 0 && chapterTitle && (
@@ -858,24 +903,6 @@ const PageEditor = forwardRef(({
             </div>
           )}
 
-          <div className="absolute right-0 top-1/2 -translate-y-1/2 group">
-            <Button
-              variant="secondary"
-              size="icon"
-              onClick={onAddPage}
-              className="h-8 w-8 rounded-full"
-              title="Add New Page"
-            >
-              <PlusCircle className="h-4 w-4" />
-            </Button>
-            <div
-              className="absolute left-1/2 -translate-x-1/2 mt-2 px-2 py-1 bg-gray-800 text-white text-xs rounded-md
-                      opacity-0 group-hover:opacity-100 translate-y-1 group-hover:translate-y-0
-                      transition-all duration-200 whitespace-nowrap"
-            >
-              Add new page
-            </div>
-          </div>
         </div>
 
         {/* Hidden file input for uploader */}
@@ -1224,6 +1251,44 @@ const PageEditor = forwardRef(({
           description="Are you sure you want to remove this media from the page? This cannot be undone."
         />
 
+        {/* Page actions (hover to reveal) */}
+        <div className="mt-6 flex justify-end">
+          <div className="flex items-center gap-2 rounded-full border border-gray-200 bg-white/90 px-3 py-2 shadow-sm opacity-0 transition-opacity duration-200 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto">
+            <Input
+              value={aiStyle}
+              onChange={(e) => setAiStyle(e.target.value)}
+              placeholder="AI instruction..."
+              className="h-8 w-40 text-xs"
+            />
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-8"
+              onClick={() => callRewrite(aiStyle)}
+              disabled={aiBusy}
+            >
+              Rewrite
+            </Button>
+            <Button
+              variant="appSuccess"
+              size="sm"
+              className="h-8"
+              onClick={handleSave}
+            >
+              Save Page
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8"
+              onClick={() => onAddPage?.(false)}
+            >
+              <PlusCircle className="h-4 w-4 mr-1" />
+              Add Page
+            </Button>
+          </div>
+        </div>
+
         {/* Book-like Footer */}
         <div className="mt-8 flex flex-col items-center gap-2 text-gray-400 text-sm font-serif">
           <span>- {pageIndex + 1} -</span>
@@ -1236,6 +1301,8 @@ const PageEditor = forwardRef(({
         </div>
       </div>
     </div>
+  </div>
+  </div>
   );
 });
 

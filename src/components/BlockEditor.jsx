@@ -300,6 +300,48 @@ const BlockEditor = forwardRef(
         }
         return false;
       },
+      focusBlock: (blockId, pos = "start") => {
+        if (!editor) return false;
+        const block = editor.document.find((b) => b.id === blockId);
+        if (block) {
+          editor.setTextCursorPosition(block, pos);
+          editor.focus();
+          return true;
+        }
+        return false;
+      },
+      getSelection: () => {
+        return editor?.getSelection();
+      },
+      getActiveBlockId: () => {
+        return editor?.getTextCursorPosition()?.block?.id;
+      },
+      isCursorInLastBlock: () => {
+        if (!editor) return false;
+        const currentBlock = editor.getTextCursorPosition()?.block;
+        if (!currentBlock) return false;
+        const lastBlock = editor.document[editor.document.length - 1];
+        return currentBlock.id === lastBlock?.id;
+      },
+      isCursorAtEndOfPage: () => {
+        if (!editor) return false;
+        const pos = editor.getTextCursorPosition();
+        if (!pos?.block) return false;
+        // In the last block and no next block?
+        const lastBlock = editor.document[editor.document.length - 1];
+        return pos.block.id === lastBlock?.id && !pos.nextBlock;
+      },
+      isCursorAtStartOfPage: () => {
+        if (!editor) return false;
+        const pos = editor.getTextCursorPosition();
+        if (!pos?.block) return false;
+        const firstBlock = editor.document[0];
+        const offset = typeof pos.textOffset === 'number'
+          ? pos.textOffset
+          : (typeof pos.offset === 'number' ? pos.offset : null);
+        if (offset !== null && offset !== 0) return false;
+        return pos.block.id === firstBlock?.id && !pos.prevBlock;
+      },
       // Insert media blocks (images and/or videos) at cursor position
       // media: array of { url, storagePath?, albumId?, name?, caption?, type: 'image' | 'video' }
       insertMediaBlocks: doInsertMediaBlocks,

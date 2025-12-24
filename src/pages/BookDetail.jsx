@@ -35,16 +35,22 @@ import {
 
 // --- focusWithRetry: helper for reliable cursor placement on newly created pages ---
 const focusWithRetry = async (pageRefs, pageId, position = 'start', maxAttempts = 20) => {
+  console.log(`🎯 focusWithRetry called: pageId=${pageId}, position=${position}`);
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const api = pageRefs.current?.[pageId];
     if (api) {
       const focusFn = position === 'end' ? api.focusAtEnd : api.focusAtStart;
+      console.log(`  Attempt ${attempt + 1}: api found, calling focusFn (${position})...`);
       if (focusFn?.()) {
+        console.log(`  ✅ Focus successful on page ${pageId} at ${position}`);
         return true;
       }
+    } else {
+      console.log(`  Attempt ${attempt + 1}: api not ready yet...`);
     }
     await new Promise(resolve => setTimeout(resolve, 100));
   }
+  console.log(`  ❌ Focus failed after ${maxAttempts} attempts for page ${pageId}`);
   return false;
 };
 
@@ -58,7 +64,6 @@ const focusWithRetry = async (pageRefs, pageId, position = 'start', maxAttempts 
 // ChatPanel -> src/components/ChatPanel.jsx
 
 const BookDetail = () => {
-  console.log('BookDetail: Component Mounting');
   const { bookId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -142,8 +147,7 @@ const BookDetail = () => {
   const pageContainerRefs = useRef({});
   const scrollContainerRef = useRef(null);
   const [activePageId, setActivePageId] = useState(null);
-  const [footerAiStyle, setFooterAiStyle] = useState('Improve clarity');
-  const [showFooterStyleDropdown, setShowFooterStyleDropdown] = useState(false);
+  const [isSavingChapter, setIsSavingChapter] = useState(false);
   const [standardPageHeightPx, setStandardPageHeightPx] = useState(0);
   const [scrollContainerWidthPx, setScrollContainerWidthPx] = useState(0);
 
@@ -213,6 +217,20 @@ const BookDetail = () => {
     }, 200);
   }, [requestReflow]);
 
+  const isBlocksEmpty = useCallback((blocks = []) => {
+    if (!Array.isArray(blocks) || blocks.length === 0) return true;
+    return blocks.every((block) => {
+      if (!block) return true;
+      if (block.type === 'image' || block.type === 'video') return false;
+      if (Array.isArray(block.content)) {
+        const text = block.content.map(part => part?.text || '').join('').trim();
+        return text.length === 0;
+      }
+      if (typeof block.text === 'string') return block.text.trim().length === 0;
+      return true;
+    });
+  }, []);
+
   // ---------------------------------------------------------------------------
   // 🚀 Fast-Path: Handle typing at end of full page
   // ---------------------------------------------------------------------------
@@ -246,9 +264,54 @@ const BookDetail = () => {
       }));
     }
 
+    const currentPage = pages[pageIdx];
+    if (currentPage?.id && !currentPage.id.startsWith('temp_')) {
+      await pageRefs.current?.[currentPage.id]?.save?.();
+    }
+
     // Focus the next page at start with retry
+    console.log(`📄 handleNearOverflowAtEnd: Moving cursor to next page ${nextPage.id}`);
     await focusWithRetry(pageRefs, nextPage.id, 'start');
   }, [pages, setPages, setPageDrafts, getNewOrderBetween]);
+
+  const handleBackspaceAtStart = useCallback((pageId) => {
+    const pageIdx = pages.findIndex(p => p.id === pageId);
+    if (pageIdx <= 0) return false;
+
+    const page = pages[pageIdx];
+    if (!page?.id?.startsWith('temp_')) return false;
+
+    const blocks = pageRefs.current?.[pageId]?.getBlocks?.() || pageDrafts[pageId]?.blocks || [];
+    if (!isBlocksEmpty(blocks)) return false;
+
+    const prevPage = pages[pageIdx - 1];
+    setPages(prev => prev.filter(p => p.id !== pageId));
+    setPageDrafts(prev => {
+      const next = { ...prev };
+      delete next[pageId];
+      return next;
+    });
+    setChapters(prev => prev.map(c => c.id === selectedChapterId ? {
+      ...c,
+      pagesSummary: (c.pagesSummary || []).filter(ps => ps.pageId !== pageId)
+    } : c));
+
+    if (selectedPageId === pageId && prevPage) {
+      setSelectedPageId(prevPage.id);
+    }
+
+    setTimeout(() => {
+      if (prevPage) {
+        const el = pageContainerRefs.current[prevPage.id];
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        focusWithRetry(pageRefs, prevPage.id, 'end');
+      }
+    }, 0);
+
+    return true;
+  }, [pages, pageDrafts, selectedChapterId, selectedPageId, isBlocksEmpty]);
 
   // Update active page on scroll
   useEffect(() => {
@@ -316,15 +379,19 @@ const BookDetail = () => {
     }
   }, [selectedPageId]);
 
-  const handleFooterSave = async () => {
-    if (activePageId && pageRefs.current[activePageId]) {
-      await pageRefs.current[activePageId].save();
-    }
-  };
-
-  const handleFooterRewrite = async () => {
-    if (activePageId && pageRefs.current[activePageId]) {
-      await pageRefs.current[activePageId].insertAI(footerAiStyle);
+  const handleSaveChapter = async () => {
+    if (!selectedChapterId || isSavingChapter) return;
+    setIsSavingChapter(true);
+    try {
+      for (const page of pages) {
+        await pageRefs.current?.[page.id]?.save?.();
+      }
+      toast({ title: 'Chapter saved', description: 'All pages have been saved.' });
+    } catch (error) {
+      console.error('Save chapter failed:', error);
+      toast({ title: 'Save Failed', description: error.message || 'Could not save chapter.', variant: 'destructive' });
+    } finally {
+      setIsSavingChapter(false);
     }
   };
 
@@ -456,12 +523,8 @@ const BookDetail = () => {
   const chapterTitle = chapters.find(c => c.id === selectedChapterId)?.title;
 
 
-  console.log('👤 Auth Check:', {
-    userId: user?.uid,
-    bookOwnerId: book?.ownerId,
-    isOwner,
-    members: book?.members
-  });
+  // Permissions end
+
 
   // User search function
   const searchUsers = useCallback(async (searchTerm) => {
@@ -867,7 +930,7 @@ const BookDetail = () => {
     }
   }, [activePageId]);
 
-  const handlePageNavigate = useCallback((pageId, direction) => {
+  const handlePageNavigate = useCallback(async (pageId, direction) => {
     const currentIndex = pages.findIndex(p => p.id === pageId);
     if (currentIndex === -1) return;
 
@@ -883,19 +946,15 @@ const BookDetail = () => {
       const el = pageContainerRefs.current[targetPageId];
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        // Auto-focus logic:
-        // We need a slight timeout to ensure inner editor is mounted/ready
-        setTimeout(() => {
-          if (el.focus) {
-            el.focus();
-            console.log("Called focus on page", selectedPageId);
-          }
-        }, 100);
       }
+      // Focus using PageEditor ref with proper cursor positioning
+      const focusPosition = direction === 'next' ? 'start' : 'end';
+      console.log(`📄 handlePageNavigate: Moving cursor to ${direction} page ${targetPageId} at ${focusPosition}`);
+      await focusWithRetry(pageRefs, targetPageId, focusPosition);
     }
-  }, [selectedPageId, pages]);
+  }, [pages]);
 
-  const handleAddPage = async (saveImmediately = true, overflowContent = '') => {
+  const handleAddPage = async (saveImmediately = false, overflowContent = '') => {
     if (!canEdit) {
       toast({
         title: 'Permission Denied',
@@ -922,6 +981,10 @@ const BookDetail = () => {
         // Update local state immediately
         setPages([...pages, newPage].sort((a, b) => a.order.localeCompare(b.order)));
         setSelectedPageId(tempId);
+        setPageDrafts(prev => ({
+          ...prev,
+          [tempId]: { blocks: [], updatedAt: Date.now() }
+        }));
 
         // Update sidebar
         const plain = stripHtml(overflowContent);
@@ -949,36 +1012,7 @@ const BookDetail = () => {
         return;
       }
 
-      // Call Cloud Function to create NEW page with embeddings
-      const createPageFn = httpsCallable(functions, 'createPage');
-      const result = await createPageFn({
-        bookId,
-        chapterId: selectedChapterId,
-        note: '',
-        media: [],
-        order: newOrder,
-      });
-
-      const newPage = result.data.page;
-
-      // Update local state
-      setPages([...pages, newPage].sort((a, b) => a.order.localeCompare(b.order)));
-      setSelectedPageId(newPage.id);
-
-      // Update chapters with new page summary
-      const plain = stripHtml(newPage.note || '');
-      const newPageSummary = {
-        pageId: newPage.id,
-        shortNote: plain ? plain.substring(0, 40) + (plain.length > 40 ? '...' : '') : 'New Page',
-        order: newOrder
-      };
-
-      setChapters(chapters.map(c => c.id === selectedChapterId ? {
-        ...c,
-        pagesSummary: [...(c.pagesSummary || []), newPageSummary].sort((a, b) => a.order.localeCompare(b.order))
-      } : c));
-
-      toast({ title: 'New Page Added' });
+      // saveImmediately path kept for future use
 
     } catch (error) {
       console.error('Error creating page:', error);
@@ -1701,6 +1735,7 @@ const BookDetail = () => {
                           onBlocksChange={(pageId) => requestReflowDebounced(pageId)}
                           onRequestReflow={(pageId) => requestReflow(pageId)}
                           onNearOverflowAtEnd={handleNearOverflowAtEnd}
+                          onBackspaceAtStart={handleBackspaceAtStart}
                           onUserInput={handleUserInput}
                           onFocus={handlePageFocus}
                           onReplacePageId={handleReplacePageId}
@@ -1752,61 +1787,14 @@ const BookDetail = () => {
 
                     {/* Controls */}
                     <div className="flex items-center gap-2">
-                      {/* AI Style */}
-                      <div className="relative flex items-center style-dropdown-container">
-                        <Input
-                          type="text"
-                          value={footerAiStyle}
-                          onChange={(e) => setFooterAiStyle(e.target.value)}
-                          className="h-9 w-48 text-sm"
-                          placeholder="AI Instruction..."
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setShowFooterStyleDropdown(!showFooterStyleDropdown)}
-                          className="ml-1 h-9 px-2"
-                        >
-                          <ChevronDown className="h-4 w-4" />
-                        </Button>
-
-                        {showFooterStyleDropdown && (
-                          <div className="absolute bottom-full right-0 mb-2 w-48 bg-white border rounded-md shadow-lg py-1 z-50">
-                            {['Improve clarity', 'Make it concise', 'Fix grammar', 'Expand this'].map(style => (
-                              <button
-                                key={style}
-                                onClick={() => {
-                                  setFooterAiStyle(style);
-                                  setShowFooterStyleDropdown(false);
-                                }}
-                                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
-                              >
-                                {style}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
                       <Button
-                        onClick={handleFooterRewrite}
-                        variant="secondary"
-                        size="sm"
-                        disabled={!activePageId}
-                      >
-                        <Sparkles className="h-4 w-4 mr-2" />
-                        Rewrite
-                      </Button>
-
-                      <Button
-                        onClick={handleFooterSave}
+                        onClick={handleSaveChapter}
                         variant="appSuccess"
                         size="sm"
-                        className="min-w-[100px]"
-                        disabled={!activePageId}
+                        className="min-w-[130px]"
+                        disabled={!selectedChapterId || isSavingChapter}
                       >
-                        Save Page {activePageId ? pages.findIndex(p => p.id === activePageId) + 1 : ''}
+                        Save Chapter
                       </Button>
                     </div>
                   </div>
