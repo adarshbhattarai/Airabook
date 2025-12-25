@@ -313,6 +313,27 @@ const BookDetail = () => {
     return true;
   }, [pages, pageDrafts, selectedChapterId, selectedPageId, isBlocksEmpty]);
 
+  const removeTempPage = useCallback((pageId) => {
+    const pageIdx = pages.findIndex(p => p.id === pageId);
+    if (pageIdx < 0) return;
+    const prevPage = pages[pageIdx - 1] || pages[pageIdx + 1] || null;
+
+    setPages(prev => prev.filter(p => p.id !== pageId));
+    setPageDrafts(prev => {
+      const next = { ...prev };
+      delete next[pageId];
+      return next;
+    });
+    setChapters(prev => prev.map(c => c.id === selectedChapterId ? {
+      ...c,
+      pagesSummary: (c.pagesSummary || []).filter(ps => ps.pageId !== pageId)
+    } : c));
+
+    if (selectedPageId === pageId && prevPage) {
+      setSelectedPageId(prevPage.id);
+    }
+  }, [pages, selectedChapterId, selectedPageId]);
+
   // Update active page on scroll
   useEffect(() => {
     const observer = new IntersectionObserver((entries) => {
@@ -772,7 +793,13 @@ const BookDetail = () => {
   const handleConfirmDelete = async () => {
     const { type, data } = modalState;
     if (type === 'chapter') await handleDeleteChapter(data.id);
-    else if (type === 'page') await handleDeletePage(data.chapterId, data.pageId, data.pageIndex);
+    else if (type === 'page') {
+      if (data.pageId?.startsWith('temp_')) {
+        removeTempPage(data.pageId);
+      } else {
+        await handleDeletePage(data.chapterId, data.pageId, data.pageIndex);
+      }
+    }
     closeModal();
   };
 
@@ -1739,6 +1766,7 @@ const BookDetail = () => {
                           onUserInput={handleUserInput}
                           onFocus={handlePageFocus}
                           onReplacePageId={handleReplacePageId}
+                          onRequestPageDelete={(page, pageIndex) => openDeleteModal('page', { ...page, chapterId: selectedChapterId, pageId: page.id, pageIndex })}
                           pages={pages}
                           layoutMode={book?.layoutMode}
                           standardPageHeightPx={standardPageHeightPx}

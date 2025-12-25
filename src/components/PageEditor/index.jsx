@@ -37,6 +37,7 @@ const PageEditor = forwardRef(({
   onUserInput,
   onFocus,
   onReplacePageId,
+  onRequestPageDelete,
   layoutMode = 'standard',
   standardPageHeightPx
 }, ref) => {
@@ -1257,6 +1258,14 @@ const PageEditor = forwardRef(({
         {/* Page actions (hover to reveal) */}
         <div className="absolute bottom-6 left-0 right-0 mx-auto flex items-center justify-end gap-2 rounded-full border border-gray-200 bg-white/95 px-4 py-2 shadow-sm opacity-0 translate-y-3 transition-all duration-200 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto z-20 w-[calc(100%-2rem)]">
           <div className="relative flex items-center mr-auto ml-8 gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-50"
+              onClick={() => onRequestPageDelete?.(page, pageIndex)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
             <div className="relative flex items-center">
               <Button
                 type="button"
