@@ -6,7 +6,7 @@ import { PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/lib/firebase';
 
-const ChatPanel = () => {
+const ChatPanel = ({ onMinimizeChange }) => {
   const [messages, setMessages] = useState([
     { role: 'assistant', content: 'Hello! I can help you plan your book, brainstorm ideas, or review your writing. What are you working on today?' }
   ]);
@@ -55,6 +55,10 @@ const ChatPanel = () => {
     e.preventDefault();
     setIsResizing(true);
   };
+
+  useEffect(() => {
+    onMinimizeChange?.(isMinimized);
+  }, [isMinimized, onMinimizeChange]);
 
   useEffect(() => {
     const handleMouseMove = (e) => {

@@ -4,11 +4,10 @@ import { ref as firebaseRef, uploadBytesResumable, getDownloadURL } from 'fireba
 import { firestore, storage, functions } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { httpsCallable } from 'firebase/functions';
 import {
-  PlusCircle, ChevronLeft, ChevronRight, ChevronDown, UploadCloud, X, Trash2, Sparkles
+  PlusCircle, ChevronLeft, ChevronRight, UploadCloud, X, Trash2
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
@@ -33,11 +32,9 @@ const PageEditor = forwardRef(({
   onBlocksChange,
   onRequestReflow,
   onNearOverflowAtEnd,
-  onBackspaceAtStart,
   onUserInput,
   onFocus,
   onReplacePageId,
-  onRequestPageDelete,
   layoutMode = 'standard',
   standardPageHeightPx
 }, ref) => {
@@ -50,10 +47,6 @@ const PageEditor = forwardRef(({
   // AI preview dialog state
   const [aiPreviewOpen, setAiPreviewOpen] = useState(false);
   const [aiPreviewText, setAiPreviewText] = useState('');
-  const [aiStyle, setAiStyle] = useState('Improve clarity');
-  const [showAiStyleDropdown, setShowAiStyleDropdown] = useState(false);
-  const [aiModel, setAiModel] = useState('gpt-4o');
-  const [showModelDropdown, setShowModelDropdown] = useState(false);
 
   const [mediaToDelete, setMediaToDelete] = useState(null);
   const [limitStatus, setLimitStatus] = useState('ok'); // 'ok', 'warning', 'full'
@@ -64,7 +57,7 @@ const PageEditor = forwardRef(({
   const fileInputRef = useRef(null);
   const pageRootRef = useRef(null);
   const contentMeasureRef = useRef(null);
-
+  
   // Track last saved blocks for reconciliation (to detect deleted album images)
   const previousBlocksRef = useRef(null);
 
@@ -75,8 +68,6 @@ const PageEditor = forwardRef(({
   const [albumMedia, setAlbumMedia] = useState([]);
   const [loadingAlbums, setLoadingAlbums] = useState(false);
   const [selectedAssets, setSelectedAssets] = useState([]);
-  // Track whether we're inserting to page.media section or as inline blocks 
-  const [mediaInsertMode, setMediaInsertMode] = useState('section'); // 'section' or 'inline'
 
   const mediaList = page.media || [];
   const previewItem = mediaList[previewIndex] || null;
@@ -104,12 +95,12 @@ const PageEditor = forwardRef(({
   const findDeletedAlbumMedia = (prevBlocks, currentBlocks) => {
     const prevAlbumMedia = getAlbumMediaBlocks(prevBlocks);
     const currentAlbumMedia = getAlbumMediaBlocks(currentBlocks);
-
+    
     // Get storage paths of current media
     const currentPaths = new Set(
       currentAlbumMedia.map(item => item.metadata?.storagePath).filter(Boolean)
     );
-
+    
     // Find media in previous that are not in current
     return prevAlbumMedia.filter(
       item => item.metadata?.storagePath && !currentPaths.has(item.metadata.storagePath)
@@ -121,7 +112,7 @@ const PageEditor = forwardRef(({
     for (const item of deletedMedia) {
       const { albumId, storagePath } = item.metadata;
       if (!albumId || !storagePath) continue;
-
+      
       try {
         const untrackUsage = httpsCallable(functions, 'untrackMediaUsage');
         await untrackUsage({
@@ -316,16 +307,6 @@ const PageEditor = forwardRef(({
     // NEW: Open media picker dialog
     openMediaPicker: () => {
       handleMediaRequest();
-    },
-    // Dropzone-related methods
-    replaceDropzoneWithMedia: (media) => {
-      return quillRef.current?.replaceDropzoneWithMedia?.(media) || false;
-    },
-    hasPendingDropzone: () => {
-      return quillRef.current?.hasPendingDropzone?.() || false;
-    },
-    clearPendingDropzone: () => {
-      quillRef.current?.clearPendingDropzone?.();
     }
   }));
 
@@ -422,30 +403,16 @@ const PageEditor = forwardRef(({
     // Only intercept character keys, Enter, etc.
     if (e.key.length > 1 && e.key !== 'Enter' && e.key !== 'Backspace') return;
 
-    const atStartOfPage = quillRef.current?.isCursorAtStartOfPage?.() || false;
-    if (e.key === 'Backspace' && atStartOfPage && onBackspaceAtStart) {
-      const removed = onBackspaceAtStart(page.id);
-      if (removed) {
-        e.preventDefault();
-        e.stopPropagation();
-        return;
-      }
-    }
-
     // Check if cursor is at end of page and page is near full
-    const atEndOfPage = quillRef.current?.isCursorAtEndOfPage?.() || false;
-    const inLastBlock = quillRef.current?.isCursorInLastBlock?.() || false;
+    const atEndOfPage = quillRef.current?.isCursorAtEndOfPage?.();
+    if (!atEndOfPage) return;
 
     const scrollH = contentMeasureRef.current?.scrollHeight ?? 0;
     const clientH = pageRootRef.current?.clientHeight ?? 0;
     const nearOverflow = clientH > 0 && scrollH >= clientH - 24;
 
-    // DIAGNOSTIC LOG
-    console.log(`⌨️ [${page.id.substring(0, 6)}] Key: "${e.key}" | EndOfPage: ${atEndOfPage} | InLastBlock: ${inLastBlock} | Overflow: ${nearOverflow} (${scrollH}/${clientH})`);
-
-    if (atEndOfPage && nearOverflow && onNearOverflowAtEnd) {
+    if (nearOverflow && onNearOverflowAtEnd) {
       // Trigger fast-path: create/focus next page
-      console.log('🚀 TRIGGER: Moving to next page!');
       e.preventDefault();
       e.stopPropagation();
       onNearOverflowAtEnd(page.id);
@@ -489,12 +456,12 @@ const PageEditor = forwardRef(({
     // Determine media type from file
     const isVideo = file.type.startsWith('video');
     const isImage = file.type.startsWith('image');
-
+    
     if (!isVideo && !isImage) {
-      toast({
-        title: 'Unsupported file type',
+      toast({ 
+        title: 'Unsupported file type', 
         description: 'Only images and videos are supported.',
-        variant: 'destructive'
+        variant: 'destructive' 
       });
       return;
     }
@@ -529,6 +496,7 @@ const PageEditor = forwardRef(({
       },
       () => {
         getDownloadURL(uploadTask.snapshot.ref).then(async (downloadURL) => {
+          // Insert as media block (image or video)
           const mediaData = {
             url: downloadURL,
             storagePath,
@@ -536,24 +504,9 @@ const PageEditor = forwardRef(({
             type: mediaType,
           };
 
-          if (mediaInsertMode === 'inline') {
-            // Insert as inline block in editor (50% width, centered)
-            const mediaBlockData = {
-              ...mediaData,
-              previewWidth: 154, // 30% width for centered inline images
-            };
-            if (quillRef.current?.hasPendingDropzone?.()) {
-              quillRef.current.replaceDropzoneWithMedia([mediaBlockData]);
-            } else if (quillRef.current?.insertMediaBlocks) {
-              quillRef.current.insertMediaBlocks([mediaBlockData]);
-            }
-            toast({ title: 'Upload Success', description: `"${file.name}" inserted inline.` });
-          } else {
-            // Add to page.media[] array (media section)
-            const updatedMedia = [...(page.media || []), mediaData];
-            onPageUpdate({ ...page, media: updatedMedia });
-            quillRef.current?.clearPendingDropzone?.();
-            toast({ title: 'Upload Success', description: `"${file.name}" has been added to media.` });
+          // Insert as BlockNote media block
+          if (quillRef.current?.insertMediaBlocks) {
+            quillRef.current.insertMediaBlocks([mediaData]);
           }
 
           setUploadProgress(prev => {
@@ -561,6 +514,7 @@ const PageEditor = forwardRef(({
             delete next[file.name];
             return next;
           });
+          toast({ title: 'Upload Success', description: `"${file.name}" has been inserted.` });
         });
       }
     );
@@ -570,30 +524,19 @@ const PageEditor = forwardRef(({
     try {
       // Determine media type
       const mediaType = asset.type === 'video' ? 'video' : 'image';
-
+      
+      // Insert as media block (image or video)
       const mediaData = {
         url: asset.url,
         storagePath: asset.storagePath || asset.url,
         name: asset.name || 'Asset',
-        albumId: selectedAlbumId,
+        albumId: selectedAlbumId, // Important for tracking
         type: mediaType,
       };
 
-      if (mediaInsertMode === 'inline') {
-        // Insert as inline block in editor (50% width, centered)
-        const mediaBlockData = { ...mediaData, previewWidth: 154 };
-        if (quillRef.current?.hasPendingDropzone?.()) {
-          quillRef.current.replaceDropzoneWithMedia([mediaBlockData]);
-        } else if (quillRef.current?.insertMediaBlocks) {
-          quillRef.current.insertMediaBlocks([mediaBlockData]);
-        }
-        toast({ title: 'Asset added', description: `${mediaData.name} inserted inline.` });
-      } else {
-        // Add to page.media[] array (media section)
-        const updatedMedia = [...(page.media || []), mediaData];
-        onPageUpdate({ ...page, media: updatedMedia });
-        quillRef.current?.clearPendingDropzone?.();
-        toast({ title: 'Asset added', description: `${mediaData.name} added to media.` });
+      // Insert as BlockNote media block
+      if (quillRef.current?.insertMediaBlocks) {
+        quillRef.current.insertMediaBlocks([mediaData]);
       }
 
       // Track usage for album assets (so they can't be deleted while in use)
@@ -609,6 +552,8 @@ const PageEditor = forwardRef(({
       } catch (trackError) {
         console.error('Failed to track usage:', trackError);
       }
+
+      toast({ title: 'Asset added', description: `${imageData.name} inserted from library.` });
     } catch (error) {
       console.error('Failed to attach asset', error);
       toast({ title: 'Attach failed', description: error.message || 'Could not attach asset.', variant: 'destructive' });
@@ -639,7 +584,7 @@ const PageEditor = forwardRef(({
       return;
     }
 
-    // Prepare media data for page.media[] array (media section)
+    // Prepare media data for block insertion (both images and videos)
     const mediaToInsert = selectedAssets.map(asset => ({
       url: asset.url,
       storagePath: asset.storagePath || asset.url,
@@ -648,19 +593,9 @@ const PageEditor = forwardRef(({
       type: asset.type === 'video' ? 'video' : 'image',
     }));
 
-    if (mediaInsertMode === 'inline') {
-      // Insert as inline blocks in editor (50% width, centered)
-      const mediaBlocksData = mediaToInsert.map(m => ({ ...m, previewWidth: 154 }));
-      if (quillRef.current?.hasPendingDropzone?.()) {
-        quillRef.current.replaceDropzoneWithMedia(mediaBlocksData);
-      } else if (quillRef.current?.insertMediaBlocks) {
-        quillRef.current.insertMediaBlocks(mediaBlocksData);
-      }
-    } else {
-      // Add to page.media[] array (media section)
-      const updatedMedia = [...(page.media || []), ...mediaToInsert];
-      onPageUpdate({ ...page, media: updatedMedia });
-      quillRef.current?.clearPendingDropzone?.();
+    // Insert all media as blocks at once
+    if (quillRef.current?.insertMediaBlocks) {
+      quillRef.current.insertMediaBlocks(mediaToInsert);
     }
 
     // Track usage for all album assets
@@ -679,9 +614,9 @@ const PageEditor = forwardRef(({
       }
     }
 
-    toast({
-      title: 'Assets added',
-      description: `${mediaToInsert.length} media item(s) ${mediaInsertMode === 'inline' ? 'inserted inline' : 'added to media'}.`
+    toast({ 
+      title: 'Assets added', 
+      description: `${mediaToInsert.length} media item(s) inserted from library.` 
     });
 
     setSelectedAssets([]);
@@ -747,17 +682,10 @@ const PageEditor = forwardRef(({
   };
 
   // NEW: Handle /media command from editor - opens media picker dialog
-  // mode: 'section' adds to page.media[], 'inline' inserts as editor blocks
-  const handleMediaRequest = (mode = 'section') => {
-    setMediaInsertMode(mode);
+  const handleMediaRequest = () => {
     setMediaPickerTab('upload');
     setSelectedAssets([]);
     setMediaPickerOpen(true);
-  };
-
-  // Handle dropzone click - opens media picker to add to section
-  const handleDropzoneClick = () => {
-    handleMediaRequest('section');
   };
 
   // --- AI: callable + preview modal ---
@@ -828,77 +756,49 @@ const PageEditor = forwardRef(({
   };
 
   const layoutStyles = {
-    a4: 'bg-white shadow-2xl p-[5%] page-sheet group',
-    scrapbook: 'bg-white shadow-2xl p-[5%] page-sheet group',
-    standard: 'w-full flex flex-col max-w-5xl mx-auto p-8 group'
+    a4: "w-full max-w-[800px] mx-auto bg-white shadow-2xl p-[5%]",
+    scrapbook: "w-full max-w-[800px] mx-auto bg-white shadow-2xl p-[5%]",
+    standard: "w-full flex flex-col max-w-5xl mx-auto p-8"
   };
 
-  const PAGE_SIZES_MM = {
-    a4: { width: 210, height: 297 },
-    scrapbook: { width: 254, height: 254 }
-  };
-
-  const mmToPx = (mm) => (mm * 96) / 25.4;
-
-  const pageOuterRef = useRef(null);
+  // Fixed-height page sizing for pagination (layout-aware).
   const [pageHeightPx, setPageHeightPx] = useState(null);
-  const [pageScale, setPageScale] = useState(1);
-  const [pageSizePx, setPageSizePx] = useState({ width: null, height: null });
-
   useEffect(() => {
-    const outerEl = pageOuterRef.current;
-    const sizeMm = PAGE_SIZES_MM[layoutMode] || null;
+    const el = pageRootRef.current;
+    if (!el) return;
 
     const compute = () => {
-      if (sizeMm) {
-        const widthPx = mmToPx(sizeMm.width);
-        const heightPx = mmToPx(sizeMm.height);
-        const availableWidth = outerEl?.clientWidth || widthPx;
-        const scale = Math.min(1, availableWidth / widthPx);
+      if (!el) return;
+      const width = el.clientWidth || 0;
+      const paddingPx = 0;
+      let h = null;
 
-        setPageSizePx({ width: widthPx, height: heightPx });
-        setPageScale(scale);
-        setPageHeightPx(heightPx);
-        requestAnimationFrame(updateLimitStatusFromMeasure);
-        return;
+      if (layoutMode === 'a4') {
+        h = Math.max(420, Math.floor(width * (297 / 210))) - paddingPx;
+      } else if (layoutMode === 'scrapbook') {
+        h = Math.max(420, Math.floor(width)) - paddingPx;
+      } else {
+        if (typeof standardPageHeightPx === 'number' && standardPageHeightPx > 0) {
+          h = Math.max(420, Math.floor(standardPageHeightPx));
+        }
       }
 
-      if (typeof standardPageHeightPx === 'number' && standardPageHeightPx > 0) {
-        setPageHeightPx(Math.max(420, Math.floor(standardPageHeightPx)));
-        requestAnimationFrame(updateLimitStatusFromMeasure);
-      }
+      setPageHeightPx(h);
+      requestAnimationFrame(updateLimitStatusFromMeasure);
     };
 
     compute();
     const ro = new ResizeObserver(() => compute());
-    if (outerEl) ro.observe(outerEl);
+    ro.observe(el);
     return () => ro.disconnect();
   }, [layoutMode, standardPageHeightPx]);
 
-  const fixedLayout = layoutMode === 'a4' || layoutMode === 'scrapbook';
-  const sizeMm = PAGE_SIZES_MM[layoutMode];
-  const scaledWidth = pageSizePx.width ? Math.round(pageSizePx.width * pageScale) : null;
-  const scaledHeight = pageSizePx.height ? Math.round(pageSizePx.height * pageScale) : null;
-
   return (
     <div
-      ref={pageOuterRef}
-      className={fixedLayout ? 'w-full flex justify-center' : undefined}
+      ref={pageRootRef}
+      className={`${layoutStyles[layoutMode] || layoutStyles.standard} overflow-hidden`}
+      style={pageHeightPx ? { height: `${pageHeightPx}px` } : undefined}
     >
-      <div
-        className={fixedLayout ? 'page-sheet-outer' : undefined}
-        style={fixedLayout && scaledWidth && scaledHeight ? { width: `${scaledWidth}px`, height: `${scaledHeight}px` } : undefined}
-      >
-        <div
-          ref={pageRootRef}
-          className={`${layoutStyles[layoutMode] || layoutStyles.standard} overflow-hidden relative`}
-          style={fixedLayout && sizeMm ? {
-            width: `${sizeMm.width}mm`,
-            height: `${sizeMm.height}mm`,
-            transform: `scale(${pageScale})`,
-            transformOrigin: 'top center'
-          } : (pageHeightPx ? { height: `${pageHeightPx}px` } : undefined)}
-        >
       <div ref={contentMeasureRef} className="h-full overflow-hidden flex flex-col">
         <div className="flex justify-center items-center mb-6 relative">
           {pageIndex === 0 && chapterTitle && (
@@ -907,6 +807,24 @@ const PageEditor = forwardRef(({
             </div>
           )}
 
+          <div className="absolute right-0 top-1/2 -translate-y-1/2 group">
+            <Button
+              variant="secondary"
+              size="icon"
+              onClick={onAddPage}
+              className="h-8 w-8 rounded-full"
+              title="Add New Page"
+            >
+              <PlusCircle className="h-4 w-4" />
+            </Button>
+            <div
+              className="absolute left-1/2 -translate-x-1/2 mt-2 px-2 py-1 bg-gray-800 text-white text-xs rounded-md
+                      opacity-0 group-hover:opacity-100 translate-y-1 group-hover:translate-y-0
+                      transition-all duration-200 whitespace-nowrap"
+            >
+              Add new page
+            </div>
+          </div>
         </div>
 
         {/* Hidden file input for uploader */}
@@ -922,11 +840,7 @@ const PageEditor = forwardRef(({
         {/* Media Picker Dialog */}
         <Dialog open={mediaPickerOpen} onOpenChange={(open) => {
           setMediaPickerOpen(open);
-          if (!open) {
-            setSelectedAssets([]);
-            // Clear pending dropzone if user closes without selecting
-            quillRef.current?.clearPendingDropzone?.();
-          }
+          if (!open) setSelectedAssets([]);
         }}>
           <DialogContent className="max-w-4xl bg-white rounded-2xl shadow-2xl border border-gray-100 p-6">
             <DialogHeader>
@@ -1110,9 +1024,9 @@ const PageEditor = forwardRef(({
                 <div key={name} className="flex items-center gap-2">
                   <span className="text-xs text-violet-600 truncate max-w-[150px]">{name}</span>
                   <div className="flex-1 bg-violet-200 rounded-full h-1.5">
-                    <div
-                      className="bg-violet-600 h-1.5 rounded-full transition-all duration-300"
-                      style={{ width: `${progress}%` }}
+                    <div 
+                      className="bg-violet-600 h-1.5 rounded-full transition-all duration-300" 
+                      style={{ width: `${progress}%` }} 
                     />
                   </div>
                   <span className="text-xs text-violet-500">{Math.round(progress)}%</span>
@@ -1122,36 +1036,27 @@ const PageEditor = forwardRef(({
           </div>
         )}
 
-        {/* Media Section - Only shown when page.media has items */}
+        {/* Legacy Media Grid - Shows media from page.media[] (old format) */}
         {mediaList.length > 0 && (
-          <div
-            className="mb-4 p-4 border-2 border-dashed border-violet-300 rounded-lg bg-violet-50/50 hover:bg-violet-50 hover:border-violet-400 transition-colors cursor-pointer"
-            onClick={handleDropzoneClick}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => e.key === 'Enter' && handleDropzoneClick()}
-          >
-            <div className="flex items-center justify-between mb-2 pointer-events-none">
-              <span className="text-xs font-medium text-violet-700">Attached Media</span>
-              <span className="text-xs text-violet-500">{mediaList.length} item(s) • Click to add more</span>
+          <div className="mb-4 p-3 border border-gray-200 rounded-lg bg-gray-50">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-gray-600">Attached Media</span>
+              <span className="text-xs text-gray-400">{mediaList.length} item(s)</span>
             </div>
             <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2">
               {mediaList.map((media, idx) => (
                 <div
                   key={media.storagePath || idx}
                   className="relative group aspect-square bg-gray-200 rounded-md overflow-hidden cursor-pointer"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openPreview(idx);
-                  }}
+                  onClick={() => openPreview(idx)}
                 >
                   {media.type === 'video' ? (
-                    <video src={media.url} className="w-full h-full object-cover pointer-events-none" />
+                    <video src={media.url} className="w-full h-full object-cover" />
                   ) : (
-                    <img src={media.url} alt={media.name} className="w-full h-full object-cover pointer-events-none" />
+                    <img src={media.url} alt={media.name} className="w-full h-full object-cover" />
                   )}
 
-                  <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex justify-center items-center text-white text-xs font-medium pointer-events-none">
+                  <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex justify-center items-center text-white text-xs font-medium">
                     <span>Click to view</span>
                   </div>
 
@@ -1255,115 +1160,9 @@ const PageEditor = forwardRef(({
           description="Are you sure you want to remove this media from the page? This cannot be undone."
         />
 
-        {/* Page actions (hover to reveal) */}
-        <div className="absolute bottom-6 left-0 right-0 mx-auto flex items-center justify-end gap-2 rounded-full border border-gray-200 bg-white/95 px-4 py-2 shadow-sm opacity-0 translate-y-3 transition-all duration-200 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto z-20 w-[calc(100%-2rem)]">
-          <div className="relative flex items-center mr-auto ml-8 gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-50"
-              onClick={() => onRequestPageDelete?.(page, pageIndex)}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-            <div className="relative flex items-center">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setShowModelDropdown(!showModelDropdown)}
-                className="h-8 px-2 text-xs"
-              >
-                {aiModel}
-                <ChevronDown className="h-3 w-3 ml-1" />
-              </Button>
-              {showModelDropdown && (
-                <div className="absolute bottom-full left-0 mb-2 w-36 bg-white border rounded-md shadow-lg py-1 z-30">
-                  {['gpt-4o'].map(model => (
-                    <button
-                      key={model}
-                      onClick={() => {
-                        setAiModel(model);
-                        setShowModelDropdown(false);
-                      }}
-                      className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
-                    >
-                      {model}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <Input
-              value={aiStyle}
-              onChange={(e) => setAiStyle(e.target.value)}
-              placeholder="AI instruction..."
-              className="h-8 w-72 text-xs"
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setShowAiStyleDropdown(!showAiStyleDropdown)}
-              className="ml-1 h-8 px-2"
-            >
-              <ChevronDown className="h-4 w-4" />
-            </Button>
-
-            {showAiStyleDropdown && (
-              <div className="absolute bottom-full right-0 mb-2 w-48 bg-white border rounded-md shadow-lg py-1 z-30">
-                {['Improve clarity', 'Make it concise', 'Fix grammar', 'Expand this'].map(style => (
-                  <button
-                    key={style}
-                    onClick={() => {
-                      setAiStyle(style);
-                      setShowAiStyleDropdown(false);
-                    }}
-                    className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
-                  >
-                    {style}
-                  </button>
-                ))}
-              </div>
-            )}
-            <Button
-              variant="secondary"
-              size="sm"
-              className="h-8"
-              onClick={() => callRewrite(aiStyle)}
-              disabled={aiBusy}
-            >
-              <Sparkles className="h-4 w-4 mr-1" />
-              Rewrite
-            </Button>
-          </div>
-          {pageIndex < totalPages - 1 ? (
-            <Button
-              variant="appSuccess"
-              size="sm"
-              className="h-8"
-              onClick={handleSave}
-            >
-              Save Page
-            </Button>
-          ) : (
-            <Button
-              variant="appSuccess"
-              size="sm"
-              className="h-8"
-              onClick={async () => {
-                await handleSave();
-                onAddPage?.(false);
-              }}
-            >
-              Save + New
-            </Button>
-          )}
-        </div>
-
         {/* Book-like Footer */}
-        <div className="mt-8 flex flex-col items-center gap-2 text-gray-400 text-sm font-serif w-full">
-          <span className="w-full text-center">- {pageIndex + 1} -</span>
+        <div className="mt-8 flex flex-col items-center gap-2 text-gray-400 text-sm font-serif">
+          <span>- {pageIndex + 1} -</span>
           {limitStatus === 'warning' && (
             <span className="text-amber-500 text-xs font-sans">Page is getting full...</span>
           )}
@@ -1373,8 +1172,6 @@ const PageEditor = forwardRef(({
         </div>
       </div>
     </div>
-  </div>
-  </div>
   );
 });
 

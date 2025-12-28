@@ -22,6 +22,7 @@ import ChatPanel from '@/components/ChatPanel';
 import HoverDeleteMenu from '@/components/ui/HoverDeleteMenu';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import { usePaginationReflow } from '@/hooks/usePaginationReflow';
+import { useBookDetailState } from '@/hooks/useBookDetailState';
 import { PanelLeftClose, PanelLeftOpen, Type } from 'lucide-react';
 import {
   getMidpointString,
@@ -121,35 +122,59 @@ const BookDetail = () => {
     };
   }, [isResizingLeft]);
 
-  const [newChapterTitle, setNewChapterTitle] = useState('');
-  const [modalState, setModalState] = useState({ isOpen: false });
-  const [pageDrafts, setPageDrafts] = useState({});
-  const [pageSaveConfirmOpen, setPageSaveConfirmOpen] = useState(false);
-  const [pendingPageAction, setPendingPageAction] = useState(null);
-  const [editingChapterId, setEditingChapterId] = useState(null);
-  const [editingChapterTitle, setEditingChapterTitle] = useState('');
-  const [saveConfirmOpen, setSaveConfirmOpen] = useState(false);
-  const [pendingChapterEdit, setPendingChapterEdit] = useState(null);
-  const [publishModalOpen, setPublishModalOpen] = useState(false);
-  const [editBookModalOpen, setEditBookModalOpen] = useState(false);
-  const [coAuthorModalOpen, setCoAuthorModalOpen] = useState(false);
-  const [userSearchQuery, setUserSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [coAuthorUsers, setCoAuthorUsers] = useState([]);
-  const searchTimeoutRef = useRef(null);
+  const {
+    newChapterTitle,
+    setNewChapterTitle,
+    modalState,
+    setModalState,
+    pageDrafts,
+    setPageDrafts,
+    pageSaveConfirmOpen,
+    setPageSaveConfirmOpen,
+    pendingPageAction,
+    setPendingPageAction,
+    editingChapterId,
+    setEditingChapterId,
+    editingChapterTitle,
+    setEditingChapterTitle,
+    saveConfirmOpen,
+    setSaveConfirmOpen,
+    pendingChapterEdit,
+    setPendingChapterEdit,
+    publishModalOpen,
+    setPublishModalOpen,
+    editBookModalOpen,
+    setEditBookModalOpen,
+    coAuthorModalOpen,
+    setCoAuthorModalOpen,
+    userSearchQuery,
+    setUserSearchQuery,
+    searchResults,
+    setSearchResults,
+    isSearching,
+    setIsSearching,
+    coAuthorUsers,
+    setCoAuthorUsers,
+    searchTimeoutRef,
+    pageRefs,
+    pageContainerRefs,
+    scrollContainerRef,
+    activePageId,
+    setActivePageId,
+    isSavingChapter,
+    setIsSavingChapter,
+    isChatMinimized,
+    setIsChatMinimized,
+    standardPageHeightPx,
+    setStandardPageHeightPx,
+    scrollContainerWidthPx,
+    setScrollContainerWidthPx
+  } = useBookDetailState();
   const { toast } = useToast();
 
   // ---------------------------------------------------------------------------
   // 📜 Continuous Scroll & Footer Logic
   // ---------------------------------------------------------------------------
-  const pageRefs = useRef({});
-  const pageContainerRefs = useRef({});
-  const scrollContainerRef = useRef(null);
-  const [activePageId, setActivePageId] = useState(null);
-  const [isSavingChapter, setIsSavingChapter] = useState(false);
-  const [standardPageHeightPx, setStandardPageHeightPx] = useState(0);
-  const [scrollContainerWidthPx, setScrollContainerWidthPx] = useState(0);
 
   // ---------------------------------------------------------------------------
   // 🕐 User Input Tracking for Typing Cooldown
@@ -234,6 +259,8 @@ const BookDetail = () => {
   // ---------------------------------------------------------------------------
   // 🚀 Fast-Path: Handle typing at end of full page
   // ---------------------------------------------------------------------------
+  const pageAlign = !leftSidebarOpen && isChatMinimized ? 'center' : 'start';
+
   const handleNearOverflowAtEnd = useCallback(async (pageId) => {
     const pageIdx = pages.findIndex(p => p.id === pageId);
     if (pageIdx < 0) return;
@@ -279,25 +306,25 @@ const BookDetail = () => {
     if (pageIdx <= 0) return false;
 
     const page = pages[pageIdx];
-    if (!page?.id?.startsWith('temp_')) return false;
-
     const blocks = pageRefs.current?.[pageId]?.getBlocks?.() || pageDrafts[pageId]?.blocks || [];
     if (!isBlocksEmpty(blocks)) return false;
 
     const prevPage = pages[pageIdx - 1];
-    setPages(prev => prev.filter(p => p.id !== pageId));
-    setPageDrafts(prev => {
-      const next = { ...prev };
-      delete next[pageId];
-      return next;
-    });
-    setChapters(prev => prev.map(c => c.id === selectedChapterId ? {
-      ...c,
-      pagesSummary: (c.pagesSummary || []).filter(ps => ps.pageId !== pageId)
-    } : c));
+    if (page?.id?.startsWith('temp_')) {
+      setPages(prev => prev.filter(p => p.id !== pageId));
+      setPageDrafts(prev => {
+        const next = { ...prev };
+        delete next[pageId];
+        return next;
+      });
+      setChapters(prev => prev.map(c => c.id === selectedChapterId ? {
+        ...c,
+        pagesSummary: (c.pagesSummary || []).filter(ps => ps.pageId !== pageId)
+      } : c));
 
-    if (selectedPageId === pageId && prevPage) {
-      setSelectedPageId(prevPage.id);
+      if (selectedPageId === pageId && prevPage) {
+        setSelectedPageId(prevPage.id);
+      }
     }
 
     setTimeout(() => {
@@ -366,7 +393,8 @@ const BookDetail = () => {
     const compute = () => {
       const h = el.clientHeight || 0;
       const w = el.clientWidth || 0;
-      setStandardPageHeightPx(Math.max(420, h - 140));
+      const clampedHeight = Math.max(900, Math.min(15000, h - 140));
+      setStandardPageHeightPx(clampedHeight);
       setScrollContainerWidthPx(w);
     };
 
@@ -1732,15 +1760,11 @@ const BookDetail = () => {
                         key={p.id}
                         ref={el => pageContainerRefs.current[p.id] = el}
                         data-page-id={p.id}
-                        className="max-w-5xl mx-auto px-8"
+                        className={book?.layoutMode === 'standard' ? 'w-full max-w-5xl mx-auto px-6' : 'w-full pl-4 pr-6'}
                       >
                         {/* Page Divider (except for first page) */}
-                        {index > 0 && (
-                          <div className="w-full h-px bg-gray-100 my-10 flex items-center justify-center">
-                            <span className="bg-white px-3 text-xs font-medium text-gray-400 uppercase tracking-widest">
-                              Page {index + 1}
-                            </span>
-                          </div>
+                        {index > 0 && book?.layoutMode !== 'standard' && (
+                          <div className="w-full h-px bg-gray-100 my-10" />
                         )}
 
                         {/* Page Header (First page only or all?) User said "page 1, 2" */}
@@ -1769,6 +1793,7 @@ const BookDetail = () => {
                           onRequestPageDelete={(page, pageIndex) => openDeleteModal('page', { ...page, chapterId: selectedChapterId, pageId: page.id, pageIndex })}
                           pages={pages}
                           layoutMode={book?.layoutMode}
+                          pageAlign={pageAlign}
                           standardPageHeightPx={standardPageHeightPx}
                         />
                       </div>
@@ -1831,7 +1856,7 @@ const BookDetail = () => {
             </div>
 
             {/* Right Sidebar: Chat */}
-            <ChatPanel />
+            <ChatPanel onMinimizeChange={setIsChatMinimized} />
           </div>
         </div>
       </DragDropContext>
