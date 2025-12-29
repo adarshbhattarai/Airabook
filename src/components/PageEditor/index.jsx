@@ -4,10 +4,11 @@ import { ref as firebaseRef, uploadBytesResumable, getDownloadURL } from 'fireba
 import { firestore, storage, functions } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { httpsCallable } from 'firebase/functions';
 import {
-  PlusCircle, ChevronLeft, ChevronRight, UploadCloud, X, Trash2
+  ChevronDown, ChevronLeft, ChevronRight, Sparkles, UploadCloud, X, Trash2
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
@@ -35,6 +36,7 @@ const PageEditor = forwardRef(({
   onUserInput,
   onFocus,
   onReplacePageId,
+  onRequestPageDelete,
   layoutMode = 'standard',
   standardPageHeightPx
 }, ref) => {
@@ -47,6 +49,10 @@ const PageEditor = forwardRef(({
   // AI preview dialog state
   const [aiPreviewOpen, setAiPreviewOpen] = useState(false);
   const [aiPreviewText, setAiPreviewText] = useState('');
+  const [aiStyle, setAiStyle] = useState('Improve clarity');
+  const [showAiStyleDropdown, setShowAiStyleDropdown] = useState(false);
+  const [aiModel, setAiModel] = useState('gpt-4o');
+  const [showModelDropdown, setShowModelDropdown] = useState(false);
 
   const [mediaToDelete, setMediaToDelete] = useState(null);
   const [limitStatus, setLimitStatus] = useState('ok'); // 'ok', 'warning', 'full'
@@ -756,76 +762,85 @@ const PageEditor = forwardRef(({
   };
 
   const layoutStyles = {
-    a4: "w-full max-w-[800px] mx-auto bg-white shadow-2xl p-[5%]",
-    scrapbook: "w-full max-w-[800px] mx-auto bg-white shadow-2xl p-[5%]",
-    standard: "w-full flex flex-col max-w-5xl mx-auto p-8"
+    a4: 'bg-white shadow-2xl p-[5%] page-sheet group',
+    scrapbook: 'bg-white shadow-2xl p-[5%] page-sheet group',
+    standard: 'w-full flex flex-col max-w-5xl mx-auto p-8 group'
   };
 
-  // Fixed-height page sizing for pagination (layout-aware).
+  const PAGE_SIZES_MM = {
+    a4: { width: 210, height: 297 },
+    scrapbook: { width: 254, height: 254 }
+  };
+
+  const mmToPx = (mm) => (mm * 96) / 25.4;
+
+  const pageOuterRef = useRef(null);
   const [pageHeightPx, setPageHeightPx] = useState(null);
+  const [pageScale, setPageScale] = useState(1);
+  const [pageSizePx, setPageSizePx] = useState({ width: null, height: null });
+
   useEffect(() => {
-    const el = pageRootRef.current;
-    if (!el) return;
+    const outerEl = pageOuterRef.current;
+    const sizeMm = PAGE_SIZES_MM[layoutMode] || null;
 
     const compute = () => {
-      if (!el) return;
-      const width = el.clientWidth || 0;
-      const paddingPx = 0;
-      let h = null;
+      if (sizeMm) {
+        const widthPx = mmToPx(sizeMm.width);
+        const heightPx = mmToPx(sizeMm.height);
+        const availableWidth = outerEl?.clientWidth || widthPx;
+        const scale = Math.min(1, availableWidth / widthPx);
 
-      if (layoutMode === 'a4') {
-        h = Math.max(420, Math.floor(width * (297 / 210))) - paddingPx;
-      } else if (layoutMode === 'scrapbook') {
-        h = Math.max(420, Math.floor(width)) - paddingPx;
-      } else {
-        if (typeof standardPageHeightPx === 'number' && standardPageHeightPx > 0) {
-          h = Math.max(420, Math.floor(standardPageHeightPx));
-        }
+        setPageSizePx({ width: widthPx, height: heightPx });
+        setPageScale(scale);
+        setPageHeightPx(heightPx);
+        requestAnimationFrame(updateLimitStatusFromMeasure);
+        return;
       }
 
-      setPageHeightPx(h);
-      requestAnimationFrame(updateLimitStatusFromMeasure);
+      if (typeof standardPageHeightPx === 'number' && standardPageHeightPx > 0) {
+        setPageHeightPx(Math.max(420, Math.floor(standardPageHeightPx)));
+        requestAnimationFrame(updateLimitStatusFromMeasure);
+      }
     };
 
     compute();
     const ro = new ResizeObserver(() => compute());
-    ro.observe(el);
+    if (outerEl) ro.observe(outerEl);
     return () => ro.disconnect();
   }, [layoutMode, standardPageHeightPx]);
 
+  const fixedLayout = layoutMode === 'a4' || layoutMode === 'scrapbook';
+  const sizeMm = PAGE_SIZES_MM[layoutMode];
+  const scaledWidth = pageSizePx.width ? Math.round(pageSizePx.width * pageScale) : null;
+  const scaledHeight = pageSizePx.height ? Math.round(pageSizePx.height * pageScale) : null;
+
   return (
     <div
-      ref={pageRootRef}
-      className={`${layoutStyles[layoutMode] || layoutStyles.standard} overflow-hidden`}
-      style={pageHeightPx ? { height: `${pageHeightPx}px` } : undefined}
+      ref={pageOuterRef}
+      className={fixedLayout ? 'w-full flex justify-start' : undefined}
     >
-      <div ref={contentMeasureRef} className="h-full overflow-hidden flex flex-col">
-        <div className="flex justify-center items-center mb-6 relative">
-          {pageIndex === 0 && chapterTitle && (
-            <div className="text-xs font-semibold text-violet-600 uppercase tracking-wider mb-1">
-              {chapterTitle}
+      <div
+        className={fixedLayout ? 'page-sheet-outer' : undefined}
+        style={fixedLayout && scaledWidth && scaledHeight ? { width: `${scaledWidth}px`, height: `${scaledHeight}px` } : undefined}
+      >
+        <div
+          ref={pageRootRef}
+          className={`${layoutStyles[layoutMode] || layoutStyles.standard} overflow-visible relative`}
+          style={fixedLayout && sizeMm ? {
+            width: `${sizeMm.width}mm`,
+            height: `${sizeMm.height}mm`,
+            transform: `scale(${pageScale})`,
+            transformOrigin: 'top left'
+          } : (pageHeightPx ? { height: `${pageHeightPx}px` } : undefined)}
+        >
+          <div ref={contentMeasureRef} className="h-full overflow-hidden flex flex-col">
+            <div className="flex justify-center items-center mb-6 relative">
+              {pageIndex === 0 && chapterTitle && (
+                <div className="text-xs font-semibold text-violet-600 uppercase tracking-wider mb-1">
+                  {chapterTitle}
+                </div>
+              )}
             </div>
-          )}
-
-          <div className="absolute right-0 top-1/2 -translate-y-1/2 group">
-            <Button
-              variant="secondary"
-              size="icon"
-              onClick={onAddPage}
-              className="h-8 w-8 rounded-full"
-              title="Add New Page"
-            >
-              <PlusCircle className="h-4 w-4" />
-            </Button>
-            <div
-              className="absolute left-1/2 -translate-x-1/2 mt-2 px-2 py-1 bg-gray-800 text-white text-xs rounded-md
-                      opacity-0 group-hover:opacity-100 translate-y-1 group-hover:translate-y-0
-                      transition-all duration-200 whitespace-nowrap"
-            >
-              Add new page
-            </div>
-          </div>
-        </div>
 
         {/* Hidden file input for uploader */}
         <input
@@ -1160,18 +1175,117 @@ const PageEditor = forwardRef(({
           description="Are you sure you want to remove this media from the page? This cannot be undone."
         />
 
-        {/* Book-like Footer */}
-        <div className="mt-8 flex flex-col items-center gap-2 text-gray-400 text-sm font-serif">
-          <span>- {pageIndex + 1} -</span>
-          {limitStatus === 'warning' && (
-            <span className="text-amber-500 text-xs font-sans">Page is getting full...</span>
-          )}
-          {limitStatus === 'full' && (
-            <span className="text-red-500 text-xs font-sans font-semibold">Page full. Please start a new page.</span>
-          )}
+        {/* Page actions (hover to reveal) */}
+        <div className="absolute bottom-0 left-0 right-0 mx-auto rounded-full border border-gray-200 bg-white/95 px-4 py-2 shadow-sm opacity-0 translate-y-3 transition-all duration-200 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto z-20 w-[calc(100%-2rem)] mb-2">
+          <div className="flex items-center gap-2 w-full">
+            <div className="relative flex items-center gap-2 min-w-0 flex-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-50"
+                onClick={() => onRequestPageDelete?.(page, pageIndex)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+              <div className="relative flex items-center">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowModelDropdown(!showModelDropdown)}
+                  className="h-8 px-2 text-xs"
+                >
+                  {aiModel}
+                  <ChevronDown className="h-3 w-3 ml-1" />
+                </Button>
+                {showModelDropdown && (
+                  <div className="absolute bottom-full left-0 mb-2 w-36 bg-white border rounded-md shadow-lg py-1 z-30">
+                    {['gpt-4o'].map(model => (
+                      <button
+                        key={model}
+                        onClick={() => {
+                          setAiModel(model);
+                          setShowModelDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
+                      >
+                        {model}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <Input
+                value={aiStyle}
+                onChange={(e) => setAiStyle(e.target.value)}
+                placeholder="AI instruction..."
+                className="h-8 w-28 sm:w-40 md:w-56 text-xs"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowAiStyleDropdown(!showAiStyleDropdown)}
+                className="ml-1 h-8 px-2"
+              >
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+
+              {showAiStyleDropdown && (
+                <div className="absolute bottom-full right-0 mb-2 w-48 bg-white border rounded-md shadow-lg py-1 z-30">
+                  {['Improve clarity', 'Make it concise', 'Fix grammar', 'Expand this'].map(style => (
+                    <button
+                      key={style}
+                      onClick={() => {
+                        setAiStyle(style);
+                        setShowAiStyleDropdown(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
+                    >
+                      {style}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-8 whitespace-nowrap"
+                onClick={() => callRewrite(aiStyle)}
+                disabled={aiBusy}
+              >
+                <Sparkles className="h-4 w-4 mr-1" />
+                Rewrite
+              </Button>
+            </div>
+            {pageIndex < totalPages - 1 ? (
+              <Button
+                variant="appSuccess"
+                size="sm"
+                className="h-8 whitespace-nowrap min-w-[110px]"
+                onClick={handleSave}
+              >
+                Save Page
+              </Button>
+            ) : (
+              <Button
+                variant="appSuccess"
+                size="sm"
+                className="h-8 whitespace-nowrap min-w-[110px]"
+                onClick={async () => {
+                  await handleSave();
+                  onAddPage?.(false);
+                }}
+              >
+                Save + New
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </div>
+  </div>
+  </div>
   );
 });
 
