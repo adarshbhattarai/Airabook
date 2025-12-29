@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { httpsCallable } from 'firebase/functions';
 import {
-  ChevronDown, ChevronLeft, ChevronRight, Sparkles, UploadCloud, X, Trash2
+  ChevronDown, ChevronLeft, ChevronRight, Sparkles, UploadCloud, X, Trash2, Save
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
@@ -53,6 +53,7 @@ const PageEditor = forwardRef(({
   const [showAiStyleDropdown, setShowAiStyleDropdown] = useState(false);
   const [aiModel, setAiModel] = useState('gpt-4o');
   const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const [toolbarOpen, setToolbarOpen] = useState(false);
 
   const [mediaToDelete, setMediaToDelete] = useState(null);
   const [limitStatus, setLimitStatus] = useState('ok'); // 'ok', 'warning', 'full'
@@ -63,6 +64,7 @@ const PageEditor = forwardRef(({
   const fileInputRef = useRef(null);
   const pageRootRef = useRef(null);
   const contentMeasureRef = useRef(null);
+  const toolbarRef = useRef(null);
   
   // Track last saved blocks for reconciliation (to detect deleted album images)
   const previousBlocksRef = useRef(null);
@@ -77,6 +79,33 @@ const PageEditor = forwardRef(({
 
   const mediaList = page.media || [];
   const previewItem = mediaList[previewIndex] || null;
+  const isResponsiveLayout = layoutMode === 'standard';
+
+  useEffect(() => {
+    if (!toolbarOpen) return undefined;
+    const handleClick = (event) => {
+      if (!toolbarRef.current?.contains(event.target)) {
+        setToolbarOpen(false);
+      }
+    };
+    const handleKey = (event) => {
+      if (event.key === 'Escape') {
+        setToolbarOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [toolbarOpen]);
+
+  useEffect(() => {
+    if (!isResponsiveLayout) {
+      setToolbarOpen(false);
+    }
+  }, [isResponsiveLayout]);
 
   // Helper: Extract metadata from a media block's name prop (image or video)
   const getMediaMetadata = (block) => {
@@ -1175,113 +1204,239 @@ const PageEditor = forwardRef(({
           description="Are you sure you want to remove this media from the page? This cannot be undone."
         />
 
-        {/* Page actions (hover to reveal) */}
-        <div className="absolute bottom-0 left-0 right-0 mx-auto rounded-full border border-gray-200 bg-white/95 px-4 py-2 shadow-sm opacity-0 translate-y-3 transition-all duration-200 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto z-20 w-[calc(100%-2rem)] mb-2">
-          <div className="flex items-center gap-2 w-full">
-            <div className="relative flex items-center gap-2 min-w-0 flex-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-50"
-                onClick={() => onRequestPageDelete?.(page, pageIndex)}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-              <div className="relative flex items-center">
+        {/* Page actions */}
+        {isResponsiveLayout ? (
+          <div ref={toolbarRef} className="absolute bottom-0 left-0 right-0 z-20 mb-2">
+            <div
+              className={`mx-auto rounded-full border border-gray-200 bg-white/95 px-4 py-2 shadow-sm transition-all duration-200 w-[calc(100%-2rem)] ${
+                toolbarOpen ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-2 pointer-events-none'
+              }`}
+            >
+              <div className="flex items-center gap-2 w-full">
+                <div className="relative flex items-center gap-2 min-w-0 flex-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-50"
+                    onClick={() => onRequestPageDelete?.(page, pageIndex)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                  <div className="relative flex items-center">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowModelDropdown(!showModelDropdown)}
+                      className="h-8 px-2 text-xs"
+                    >
+                      {aiModel}
+                      <ChevronDown className="h-3 w-3 ml-1" />
+                    </Button>
+                    {showModelDropdown && (
+                      <div className="absolute bottom-full left-0 mb-2 w-36 bg-white border rounded-md shadow-lg py-1 z-30">
+                        {['gpt-4o'].map(model => (
+                          <button
+                            key={model}
+                            onClick={() => {
+                              setAiModel(model);
+                              setShowModelDropdown(false);
+                            }}
+                            className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
+                          >
+                            {model}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <Input
+                    value={aiStyle}
+                    onChange={(e) => setAiStyle(e.target.value)}
+                    placeholder="AI instruction..."
+                    className="h-8 w-28 sm:w-40 md:w-56 text-xs"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAiStyleDropdown(!showAiStyleDropdown)}
+                    className="ml-1 h-8 px-2"
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+
+                  {showAiStyleDropdown && (
+                    <div className="absolute bottom-full right-0 mb-2 w-48 bg-white border rounded-md shadow-lg py-1 z-30">
+                      {['Improve clarity', 'Make it concise', 'Fix grammar', 'Expand this'].map(style => (
+                        <button
+                          key={style}
+                          onClick={() => {
+                            setAiStyle(style);
+                            setShowAiStyleDropdown(false);
+                          }}
+                          className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
+                        >
+                          {style}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="h-8 whitespace-nowrap"
+                    onClick={() => callRewrite(aiStyle)}
+                    disabled={aiBusy}
+                  >
+                    <Sparkles className="h-4 w-4 mr-1" />
+                    Rewrite
+                  </Button>
+                </div>
+                {pageIndex < totalPages - 1 ? (
+                  <Button
+                    variant="appSuccess"
+                    size="sm"
+                    className="h-8 whitespace-nowrap min-w-[110px]"
+                    onClick={handleSave}
+                  >
+                    Save Page
+                  </Button>
+                ) : (
+                  <Button
+                    variant="appSuccess"
+                    size="sm"
+                    className="h-8 whitespace-nowrap min-w-[110px]"
+                    onClick={async () => {
+                      await handleSave();
+                      onAddPage?.(false);
+                    }}
+                  >
+                    Save + New
+                  </Button>
+                )}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setToolbarOpen(true)}
+              className={`absolute bottom-0 right-0 mr-2 mb-2 flex items-center gap-2 rounded-full border border-gray-200 bg-white/95 px-3 py-2 shadow-sm transition-all duration-200 ${
+                toolbarOpen ? 'opacity-0 pointer-events-none translate-y-1' : 'opacity-100'
+              }`}
+              aria-label="Open page tools"
+            >
+              <Sparkles className="h-4 w-4 text-violet-600" />
+              <Save className="h-4 w-4 text-emerald-600" />
+            </button>
+          </div>
+        ) : (
+          <div className="absolute bottom-0 left-0 right-0 mx-auto rounded-full border border-gray-200 bg-white/95 px-4 py-2 shadow-sm opacity-0 translate-y-3 transition-all duration-200 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto z-20 w-[calc(100%-2rem)] mb-2">
+            <div className="flex items-center gap-2 w-full">
+              <div className="relative flex items-center gap-2 min-w-0 flex-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-50"
+                  onClick={() => onRequestPageDelete?.(page, pageIndex)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+                <div className="relative flex items-center">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowModelDropdown(!showModelDropdown)}
+                    className="h-8 px-2 text-xs"
+                  >
+                    {aiModel}
+                    <ChevronDown className="h-3 w-3 ml-1" />
+                  </Button>
+                  {showModelDropdown && (
+                    <div className="absolute bottom-full left-0 mb-2 w-36 bg-white border rounded-md shadow-lg py-1 z-30">
+                      {['gpt-4o'].map(model => (
+                        <button
+                          key={model}
+                          onClick={() => {
+                            setAiModel(model);
+                            setShowModelDropdown(false);
+                          }}
+                          className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
+                        >
+                          {model}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <Input
+                  value={aiStyle}
+                  onChange={(e) => setAiStyle(e.target.value)}
+                  placeholder="AI instruction..."
+                  className="h-8 w-28 sm:w-40 md:w-56 text-xs"
+                />
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setShowModelDropdown(!showModelDropdown)}
-                  className="h-8 px-2 text-xs"
+                  onClick={() => setShowAiStyleDropdown(!showAiStyleDropdown)}
+                  className="ml-1 h-8 px-2"
                 >
-                  {aiModel}
-                  <ChevronDown className="h-3 w-3 ml-1" />
+                  <ChevronDown className="h-4 w-4" />
                 </Button>
-                {showModelDropdown && (
-                  <div className="absolute bottom-full left-0 mb-2 w-36 bg-white border rounded-md shadow-lg py-1 z-30">
-                    {['gpt-4o'].map(model => (
+
+                {showAiStyleDropdown && (
+                  <div className="absolute bottom-full right-0 mb-2 w-48 bg-white border rounded-md shadow-lg py-1 z-30">
+                    {['Improve clarity', 'Make it concise', 'Fix grammar', 'Expand this'].map(style => (
                       <button
-                        key={model}
+                        key={style}
                         onClick={() => {
-                          setAiModel(model);
-                          setShowModelDropdown(false);
+                          setAiStyle(style);
+                          setShowAiStyleDropdown(false);
                         }}
                         className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
                       >
-                        {model}
+                        {style}
                       </button>
                     ))}
                   </div>
                 )}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-8 whitespace-nowrap"
+                  onClick={() => callRewrite(aiStyle)}
+                  disabled={aiBusy}
+                >
+                  <Sparkles className="h-4 w-4 mr-1" />
+                  Rewrite
+                </Button>
               </div>
-              <Input
-                value={aiStyle}
-                onChange={(e) => setAiStyle(e.target.value)}
-                placeholder="AI instruction..."
-                className="h-8 w-28 sm:w-40 md:w-56 text-xs"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setShowAiStyleDropdown(!showAiStyleDropdown)}
-                className="ml-1 h-8 px-2"
-              >
-                <ChevronDown className="h-4 w-4" />
-              </Button>
-
-              {showAiStyleDropdown && (
-                <div className="absolute bottom-full right-0 mb-2 w-48 bg-white border rounded-md shadow-lg py-1 z-30">
-                  {['Improve clarity', 'Make it concise', 'Fix grammar', 'Expand this'].map(style => (
-                    <button
-                      key={style}
-                      onClick={() => {
-                        setAiStyle(style);
-                        setShowAiStyleDropdown(false);
-                      }}
-                      className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
-                    >
-                      {style}
-                    </button>
-                  ))}
-                </div>
+              {pageIndex < totalPages - 1 ? (
+                <Button
+                  variant="appSuccess"
+                  size="sm"
+                  className="h-8 whitespace-nowrap min-w-[110px]"
+                  onClick={handleSave}
+                >
+                  Save Page
+                </Button>
+              ) : (
+                <Button
+                  variant="appSuccess"
+                  size="sm"
+                  className="h-8 whitespace-nowrap min-w-[110px]"
+                  onClick={async () => {
+                    await handleSave();
+                    onAddPage?.(false);
+                  }}
+                >
+                  Save + New
+                </Button>
               )}
-              <Button
-                variant="secondary"
-                size="sm"
-                className="h-8 whitespace-nowrap"
-                onClick={() => callRewrite(aiStyle)}
-                disabled={aiBusy}
-              >
-                <Sparkles className="h-4 w-4 mr-1" />
-                Rewrite
-              </Button>
             </div>
-            {pageIndex < totalPages - 1 ? (
-              <Button
-                variant="appSuccess"
-                size="sm"
-                className="h-8 whitespace-nowrap min-w-[110px]"
-                onClick={handleSave}
-              >
-                Save Page
-              </Button>
-            ) : (
-              <Button
-                variant="appSuccess"
-                size="sm"
-                className="h-8 whitespace-nowrap min-w-[110px]"
-                onClick={async () => {
-                  await handleSave();
-                  onAddPage?.(false);
-                }}
-              >
-                Save + New
-              </Button>
-            )}
           </div>
-        </div>
+        )}
       </div>
     </div>
   </div>
