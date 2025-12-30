@@ -435,11 +435,13 @@ const PageEditor = forwardRef(({
     // Track user input timestamp
     onUserInput?.(page.id);
 
-    // Only intercept character keys, Enter, etc.
-    if (e.key.length > 1 && e.key !== 'Enter' && e.key !== 'Backspace') return;
+    // Only intercept character keys and Enter (skip Backspace).
+    if (e.key === 'Backspace') return;
+    if (e.key.length > 1) return;
 
     // Check if cursor is at end of page and page is near full
     const atEndOfPage = quillRef.current?.isCursorAtEndOfPage?.();
+    console.log('atEndOfPage ' + 'Key', atEndOfPage, e.key );
     if (!atEndOfPage) return;
 
     const scrollH = contentMeasureRef.current?.scrollHeight ?? 0;

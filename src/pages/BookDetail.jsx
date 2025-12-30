@@ -223,7 +223,8 @@ const BookDetail = () => {
     getLastUserInputAt,
     canRemoveTempPages: true,
     options: {
-      maxMovesPerFrame: 6,
+      maxMovesPerFrame: 1,
+      maxOverflowMoves: 1,
       underfillPull: true,
       fillTargetRatio: 0.9,
       minFillRatio: 0.7,

@@ -32,6 +32,7 @@ export function usePaginationReflow({
   const opts = React.useMemo(
     () => ({
       maxMovesPerFrame: options?.maxMovesPerFrame ?? 6,
+      maxOverflowMoves: options?.maxOverflowMoves ?? Infinity,
       underfillPull: options?.underfillPull ?? true,
       fillTargetRatio: options?.fillTargetRatio ?? 0.9,
       minFillRatio: options?.minFillRatio ?? 0.7,
@@ -130,24 +131,26 @@ export function usePaginationReflow({
 
       if (!Array.isArray(fromBlocks) || fromBlocks.length === 0) return;
 
-      // Move blocks in small batches, yielding to the browser between batches for smoothness.
-      while (isOverflowing(fromId) && fromBlocks.length > 0) {
-        const moves = Math.min(opts.maxMovesPerFrame, fromBlocks.length);
-        const moved = fromBlocks.splice(fromBlocks.length - moves, moves);
-        toBlocks = [...moved, ...toBlocks];
+      if (!isOverflowing(fromId)) return 0;
 
-        await pageApi.setBlocks(fromId, fromBlocks, { silent: true });
-        await pageApi.setBlocks(toId, toBlocks, { silent: true });
+      const moves = Math.min(opts.maxMovesPerFrame, fromBlocks.length);
+      if (moves <= 0) return 0;
 
-        const now = Date.now();
-        setPageDrafts((prev) => ({
-          ...prev,
-          [fromId]: { blocks: cloneBlocks(fromBlocks), updatedAt: now },
-          [toId]: { blocks: cloneBlocks(toBlocks), updatedAt: now },
-        }));
+      const moved = fromBlocks.splice(fromBlocks.length - moves, moves);
+      toBlocks = [...moved, ...toBlocks];
 
-        await nextAnimationFrame();
-      }
+      await pageApi.setBlocks(fromId, fromBlocks, { silent: true });
+      await pageApi.setBlocks(toId, toBlocks, { silent: true });
+
+      const now = Date.now();
+      setPageDrafts((prev) => ({
+        ...prev,
+        [fromId]: { blocks: cloneBlocks(fromBlocks), updatedAt: now },
+        [toId]: { blocks: cloneBlocks(toBlocks), updatedAt: now },
+      }));
+
+      await nextAnimationFrame();
+      return moved.length;
     },
     [isOverflowing, opts.maxMovesPerFrame, pageApi, setPageDrafts]
   );
@@ -234,7 +237,9 @@ export function usePaginationReflow({
           if (!currId) continue;
           await waitForPageReady(currId);
 
+          let overflowMoves = 0;
           while (isOverflowing(currId)) {
+            if (opts.maxOverflowMoves <= 0) break;
             // Ensure next page exists
             let nextId = workingPages[i + 1]?.id;
             if (!nextId) {
@@ -243,7 +248,9 @@ export function usePaginationReflow({
               await waitForPageReady(nextId);
             }
 
-            await moveOverflowOnePage(currId, nextId);
+            const moved = await moveOverflowOnePage(currId, nextId);
+            overflowMoves += moved;
+            if (overflowMoves >= opts.maxOverflowMoves) break;
 
             // If we couldn't fix overflow even after moving all blocks, break to avoid infinite loops.
             const remaining = pageApi.getBlocks(currId) || [];
