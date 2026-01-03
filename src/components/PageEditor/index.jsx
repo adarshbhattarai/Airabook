@@ -65,7 +65,7 @@ const PageEditor = forwardRef(({
   const pageRootRef = useRef(null);
   const contentMeasureRef = useRef(null);
   const toolbarRef = useRef(null);
-  
+
   // Track last saved blocks for reconciliation (to detect deleted album images)
   const previousBlocksRef = useRef(null);
 
@@ -130,12 +130,12 @@ const PageEditor = forwardRef(({
   const findDeletedAlbumMedia = (prevBlocks, currentBlocks) => {
     const prevAlbumMedia = getAlbumMediaBlocks(prevBlocks);
     const currentAlbumMedia = getAlbumMediaBlocks(currentBlocks);
-    
+
     // Get storage paths of current media
     const currentPaths = new Set(
       currentAlbumMedia.map(item => item.metadata?.storagePath).filter(Boolean)
     );
-    
+
     // Find media in previous that are not in current
     return prevAlbumMedia.filter(
       item => item.metadata?.storagePath && !currentPaths.has(item.metadata.storagePath)
@@ -147,7 +147,7 @@ const PageEditor = forwardRef(({
     for (const item of deletedMedia) {
       const { albumId, storagePath } = item.metadata;
       if (!albumId || !storagePath) continue;
-      
+
       try {
         const untrackUsage = httpsCallable(functions, 'untrackMediaUsage');
         await untrackUsage({
@@ -441,7 +441,7 @@ const PageEditor = forwardRef(({
 
     // Check if cursor is at end of page and page is near full
     const atEndOfPage = quillRef.current?.isCursorAtEndOfPage?.();
-    console.log('atEndOfPage ' + 'Key', atEndOfPage, e.key );
+    console.log('atEndOfPage ' + 'Key', atEndOfPage, e.key);
     if (!atEndOfPage) return;
 
     const scrollH = contentMeasureRef.current?.scrollHeight ?? 0;
@@ -450,8 +450,10 @@ const PageEditor = forwardRef(({
 
     if (nearOverflow && onNearOverflowAtEnd) {
       // Trigger fast-path: create/focus next page
-      e.preventDefault();
-      e.stopPropagation();
+      // DO NOT preventDefault - let the character appear on this page first.
+      // e.preventDefault();
+      // e.stopPropagation();
+      console.log('Triggering overflow jump (allowing char insert first)');
       onNearOverflowAtEnd(page.id);
     }
   };
@@ -493,12 +495,12 @@ const PageEditor = forwardRef(({
     // Determine media type from file
     const isVideo = file.type.startsWith('video');
     const isImage = file.type.startsWith('image');
-    
+
     if (!isVideo && !isImage) {
-      toast({ 
-        title: 'Unsupported file type', 
+      toast({
+        title: 'Unsupported file type',
         description: 'Only images and videos are supported.',
-        variant: 'destructive' 
+        variant: 'destructive'
       });
       return;
     }
@@ -561,7 +563,7 @@ const PageEditor = forwardRef(({
     try {
       // Determine media type
       const mediaType = asset.type === 'video' ? 'video' : 'image';
-      
+
       // Insert as media block (image or video)
       const mediaData = {
         url: asset.url,
@@ -651,9 +653,9 @@ const PageEditor = forwardRef(({
       }
     }
 
-    toast({ 
-      title: 'Assets added', 
-      description: `${mediaToInsert.length} media item(s) inserted from library.` 
+    toast({
+      title: 'Assets added',
+      description: `${mediaToInsert.length} media item(s) inserted from library.`
     });
 
     setSelectedAssets([]);
@@ -873,576 +875,592 @@ const PageEditor = forwardRef(({
               )}
             </div>
 
-        {/* Hidden file input for uploader */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*,video/*"
-          multiple
-          className="hidden"
-          onChange={handleFileSelect}
-        />
+            {/* Hidden file input for uploader */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,video/*"
+              multiple
+              className="hidden"
+              onChange={handleFileSelect}
+            />
 
-        {/* Media Picker Dialog */}
-        <Dialog open={mediaPickerOpen} onOpenChange={(open) => {
-          setMediaPickerOpen(open);
-          if (!open) setSelectedAssets([]);
-        }}>
-          <DialogContent className="max-w-4xl bg-white rounded-2xl shadow-2xl border border-gray-100 p-6">
-            <DialogHeader>
-              <DialogTitle>Insert Media</DialogTitle>
-              <DialogDescription>
-                Upload from your computer or select from your asset library. Select up to 5 media items at a time.
-              </DialogDescription>
-            </DialogHeader>
+            {/* Media Picker Dialog */}
+            <Dialog open={mediaPickerOpen} onOpenChange={(open) => {
+              setMediaPickerOpen(open);
+              if (!open) setSelectedAssets([]);
+            }}>
+              <DialogContent className="max-w-4xl bg-white rounded-2xl shadow-2xl border border-gray-100 p-6">
+                <DialogHeader>
+                  <DialogTitle>Insert Media</DialogTitle>
+                  <DialogDescription>
+                    Upload from your computer or select from your asset library. Select up to 5 media items at a time.
+                  </DialogDescription>
+                </DialogHeader>
 
-            <div className="flex gap-2 mb-4">
-              <Button
-                variant={mediaPickerTab === 'upload' ? 'appPrimary' : 'outline'}
-                onClick={() => setMediaPickerTab('upload')}
-                className="flex-1"
-              >
-                Upload from computer
-              </Button>
-              <Button
-                variant={mediaPickerTab === 'library' ? 'appPrimary' : 'outline'}
-                onClick={() => setMediaPickerTab('library')}
-                className="flex-1"
-              >
-                Choose from asset registry
-              </Button>
-            </div>
-
-            {mediaPickerTab === 'upload' ? (
-              <div
-                className="p-6 border-2 border-dashed rounded-lg bg-gray-50 text-center text-sm text-app-gray-700"
-                onClick={openFileDialog}
-              >
-                <UploadCloud className="h-10 w-10 mx-auto mb-3 text-app-iris" />
-                <p className="font-semibold">Select files to upload</p>
-                <p className="text-xs text-app-gray-500">Select up to 5 images or videos at a time</p>
-                <div className="mt-4">
-                  <Button variant="appPrimary" onClick={(e) => {
-                    e.stopPropagation();
-                    openFileDialog();
-                  }}>
-                    Choose files
+                <div className="flex gap-2 mb-4">
+                  <Button
+                    variant={mediaPickerTab === 'upload' ? 'appPrimary' : 'outline'}
+                    onClick={() => setMediaPickerTab('upload')}
+                    className="flex-1"
+                  >
+                    Upload from computer
+                  </Button>
+                  <Button
+                    variant={mediaPickerTab === 'library' ? 'appPrimary' : 'outline'}
+                    onClick={() => setMediaPickerTab('library')}
+                    className="flex-1"
+                  >
+                    Choose from asset registry
                   </Button>
                 </div>
-              </div>
-            ) : (
-              <div className="grid gap-4 lg:grid-cols-[220px,1fr]">
-                <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-                  {albums.length === 0 ? (
-                    <div className="text-sm text-app-gray-600 bg-app-gray-50 border border-app-gray-100 rounded-md p-3">
-                      No asset albums yet. Create one from the Asset Registry page.
-                    </div>
-                  ) : (
-                    albums.map((album) => (
-                      <button
-                        key={album.id}
-                        className={`w-full text-left px-3 py-2 rounded-md border transition-colors ${selectedAlbumId === album.id
-                          ? 'border-app-iris bg-app-iris/10 text-app-iris'
-                          : 'border-app-gray-100 hover:border-app-iris/40'
-                          }`}
-                        onClick={() => setSelectedAlbumId(album.id)}
-                      >
-                        <div className="font-semibold text-sm">{album.name || 'Untitled album'}</div>
-                        <div className="text-xs text-app-gray-500">{album.mediaCount || 0} assets</div>
-                      </button>
-                    ))
-                  )}
-                </div>
 
-                <div className="border border-app-gray-100 rounded-lg p-4 min-h-[260px] max-h-[400px] overflow-y-auto bg-white">
-                  {loadingAlbums ? (
-                    <div className="flex items-center justify-center h-full text-sm text-app-gray-600">Loading assets...</div>
-                  ) : !selectedAlbumId ? (
-                    <div className="text-sm text-app-gray-600">Select an album to view its assets.</div>
-                  ) : albumMedia.length === 0 ? (
-                    <div className="text-sm text-app-gray-600">No assets found in this album.</div>
-                  ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                      {albumMedia.map((asset) => {
-                        const isSelected = selectedAssets.some(a => (a.storagePath || a.url) === (asset.storagePath || asset.url));
-                        return (
+                {mediaPickerTab === 'upload' ? (
+                  <div
+                    className="p-6 border-2 border-dashed rounded-lg bg-gray-50 text-center text-sm text-app-gray-700"
+                    onClick={openFileDialog}
+                  >
+                    <UploadCloud className="h-10 w-10 mx-auto mb-3 text-app-iris" />
+                    <p className="font-semibold">Select files to upload</p>
+                    <p className="text-xs text-app-gray-500">Select up to 5 images or videos at a time</p>
+                    <div className="mt-4">
+                      <Button variant="appPrimary" onClick={(e) => {
+                        e.stopPropagation();
+                        openFileDialog();
+                      }}>
+                        Choose files
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid gap-4 lg:grid-cols-[220px,1fr]">
+                    <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                      {albums.length === 0 ? (
+                        <div className="text-sm text-app-gray-600 bg-app-gray-50 border border-app-gray-100 rounded-md p-3">
+                          No asset albums yet. Create one from the Asset Registry page.
+                        </div>
+                      ) : (
+                        albums.map((album) => (
                           <button
-                            key={`${asset.storagePath || asset.url}`}
-                            className={`relative rounded-lg overflow-hidden border-2 group transition-all ${isSelected
-                              ? 'border-app-iris bg-app-iris/10'
-                              : 'border-app-gray-100 hover:border-app-iris/60'
+                            key={album.id}
+                            className={`w-full text-left px-3 py-2 rounded-md border transition-colors ${selectedAlbumId === album.id
+                              ? 'border-app-iris bg-app-iris/10 text-app-iris'
+                              : 'border-app-gray-100 hover:border-app-iris/40'
                               }`}
-                            onClick={() => toggleAssetSelection(asset)}
+                            onClick={() => setSelectedAlbumId(album.id)}
                           >
-                            {asset.type === 'image' ? (
-                              <img src={asset.url} alt={asset.name} className="h-24 w-full object-cover" />
-                            ) : (
-                              <video src={asset.url} className="h-24 w-full object-cover" />
-                            )}
-                            <div className={`absolute inset-0 transition-opacity flex items-center justify-center ${isSelected ? 'bg-app-iris/40' : 'bg-black/30 opacity-0 group-hover:opacity-100'
-                              }`}>
-                              {isSelected ? (
-                                <div className="bg-app-iris rounded-full p-1">
-                                  <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                  </svg>
-                                </div>
-                              ) : (
-                                <span className="text-xs font-semibold text-white">Select</span>
-                              )}
-                            </div>
+                            <div className="font-semibold text-sm">{album.name || 'Untitled album'}</div>
+                            <div className="text-xs text-app-gray-500">{album.mediaCount || 0} assets</div>
                           </button>
-                        );
-                      })}
+                        ))
+                      )}
                     </div>
-                  )}
-                </div>
 
-                {selectedAssets.length > 0 && (
-                  <div className="mt-4 flex justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => setSelectedAssets([])}
-                      size="sm"
-                    >
-                      Clear Selection
-                    </Button>
-                    <Button
-                      variant="appPrimary"
-                      onClick={handleSaveSelectedAssets}
-                      size="sm"
-                    >
-                      Add ({selectedAssets.length})
-                    </Button>
+                    <div className="border border-app-gray-100 rounded-lg p-4 min-h-[260px] max-h-[400px] overflow-y-auto bg-white">
+                      {loadingAlbums ? (
+                        <div className="flex items-center justify-center h-full text-sm text-app-gray-600">Loading assets...</div>
+                      ) : !selectedAlbumId ? (
+                        <div className="text-sm text-app-gray-600">Select an album to view its assets.</div>
+                      ) : albumMedia.length === 0 ? (
+                        <div className="text-sm text-app-gray-600">No assets found in this album.</div>
+                      ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                          {albumMedia.map((asset) => {
+                            const isSelected = selectedAssets.some(a => (a.storagePath || a.url) === (asset.storagePath || asset.url));
+                            return (
+                              <button
+                                key={`${asset.storagePath || asset.url}`}
+                                className={`relative rounded-lg overflow-hidden border-2 group transition-all ${isSelected
+                                  ? 'border-app-iris bg-app-iris/10'
+                                  : 'border-app-gray-100 hover:border-app-iris/60'
+                                  }`}
+                                onClick={() => toggleAssetSelection(asset)}
+                              >
+                                {asset.type === 'image' ? (
+                                  <img src={asset.url} alt={asset.name} className="h-24 w-full object-cover" />
+                                ) : (
+                                  <video src={asset.url} className="h-24 w-full object-cover" />
+                                )}
+                                <div className={`absolute inset-0 transition-opacity flex items-center justify-center ${isSelected ? 'bg-app-iris/40' : 'bg-black/30 opacity-0 group-hover:opacity-100'
+                                  }`}>
+                                  {isSelected ? (
+                                    <div className="bg-app-iris rounded-full p-1">
+                                      <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                      </svg>
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs font-semibold text-white">Select</span>
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {selectedAssets.length > 0 && (
+                      <div className="mt-4 flex justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => setSelectedAssets([])}
+                          size="sm"
+                        >
+                          Clear Selection
+                        </Button>
+                        <Button
+                          variant="appPrimary"
+                          onClick={handleSaveSelectedAssets}
+                          size="sm"
+                        >
+                          Add ({selectedAssets.length})
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )}
+              </DialogContent>
+            </Dialog>
+
+            {/* AI Rewrite Preview Dialog */}
+            <Dialog open={aiPreviewOpen} onOpenChange={setAiPreviewOpen}>
+              <DialogContent className="max-w-2xl bg-white rounded-2xl shadow-2xl border border-gray-100 p-6">
+                <DialogHeader>
+                  <DialogTitle>AI Rewrite Suggestion</DialogTitle>
+                  <DialogDescription>
+                    Here is the suggested rewrite. You can apply it or discard it.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="bg-gray-50 p-4 rounded-md text-sm text-gray-800 max-h-[60vh] overflow-y-auto whitespace-pre-wrap">
+                  {aiPreviewText}
+                </div>
+
+                <div className="flex justify-end gap-2 mt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => setAiPreviewOpen(false)}
+                  >
+                    Discard
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => applyRewrite('insert')}
+                  >
+                    Insert at Cursor
+                  </Button>
+                  <Button
+                    variant="appPrimary"
+                    onClick={() => applyRewrite('replace')}
+                  >
+                    Replace All
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* Upload Progress Indicator (shown only when uploading) */}
+            {Object.keys(uploadProgress).length > 0 && (
+              <div className="mb-4 p-3 bg-violet-50 border border-violet-200 rounded-lg">
+                <div className="flex items-center gap-2 text-sm text-violet-700 mb-2">
+                  <UploadCloud className="h-4 w-4 animate-pulse" />
+                  <span className="font-medium">Uploading...</span>
+                </div>
+                <div className="space-y-2">
+                  {Object.entries(uploadProgress).map(([name, progress]) => (
+                    <div key={name} className="flex items-center gap-2">
+                      <span className="text-xs text-violet-600 truncate max-w-[150px]">{name}</span>
+                      <div className="flex-1 bg-violet-200 rounded-full h-1.5">
+                        <div
+                          className="bg-violet-600 h-1.5 rounded-full transition-all duration-300"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                      <span className="text-xs text-violet-500">{Math.round(progress)}%</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
-          </DialogContent>
-        </Dialog>
 
-        {/* AI Rewrite Preview Dialog */}
-        <Dialog open={aiPreviewOpen} onOpenChange={setAiPreviewOpen}>
-          <DialogContent className="max-w-2xl bg-white rounded-2xl shadow-2xl border border-gray-100 p-6">
-            <DialogHeader>
-              <DialogTitle>AI Rewrite Suggestion</DialogTitle>
-              <DialogDescription>
-                Here is the suggested rewrite. You can apply it or discard it.
-              </DialogDescription>
-            </DialogHeader>
+            {/* Legacy Media Grid - Shows media from page.media[] (old format) */}
+            {mediaList.length > 0 && (
+              <div className="mb-4 p-3 border border-gray-200 rounded-lg bg-gray-50">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-gray-600">Attached Media</span>
+                  <span className="text-xs text-gray-400">{mediaList.length} item(s)</span>
+                </div>
+                <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2">
+                  {mediaList.map((media, idx) => (
+                    <div
+                      key={media.storagePath || idx}
+                      className="relative group aspect-square bg-gray-200 rounded-md overflow-hidden cursor-pointer"
+                      onClick={() => openPreview(idx)}
+                    >
+                      {media.type === 'video' ? (
+                        <video src={media.url} className="w-full h-full object-cover" />
+                      ) : (
+                        <img src={media.url} alt={media.name} className="w-full h-full object-cover" />
+                      )}
 
-            <div className="bg-gray-50 p-4 rounded-md text-sm text-gray-800 max-h-[60vh] overflow-y-auto whitespace-pre-wrap">
-              {aiPreviewText}
-            </div>
+                      <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex justify-center items-center text-white text-xs font-medium">
+                        <span>Click to view</span>
+                      </div>
 
-            <div className="flex justify-end gap-2 mt-4">
-              <Button
-                variant="outline"
-                onClick={() => setAiPreviewOpen(false)}
-              >
-                Discard
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => applyRewrite('insert')}
-              >
-                Insert at Cursor
-              </Button>
-              <Button
-                variant="appPrimary"
-                onClick={() => applyRewrite('replace')}
-              >
-                Replace All
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+                      <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                          variant="destructive"
+                          size="icon"
+                          className="h-6 w-6"
+                          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMediaDelete(media);
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
-        {/* Upload Progress Indicator (shown only when uploading) */}
-        {Object.keys(uploadProgress).length > 0 && (
-          <div className="mb-4 p-3 bg-violet-50 border border-violet-200 rounded-lg">
-            <div className="flex items-center gap-2 text-sm text-violet-700 mb-2">
-              <UploadCloud className="h-4 w-4 animate-pulse" />
-              <span className="font-medium">Uploading...</span>
-            </div>
-            <div className="space-y-2">
-              {Object.entries(uploadProgress).map(([name, progress]) => (
-                <div key={name} className="flex items-center gap-2">
-                  <span className="text-xs text-violet-600 truncate max-w-[150px]">{name}</span>
-                  <div className="flex-1 bg-violet-200 rounded-full h-1.5">
-                    <div 
-                      className="bg-violet-600 h-1.5 rounded-full transition-all duration-300" 
-                      style={{ width: `${progress}%` }} 
+            {/* Notes + controls */}
+            <div className="space-y-4 flex-grow flex flex-col">
+              <div className="flex-grow flex flex-col">
+                <div className="flex items-center justify-between mb-1"></div>
+
+                <div className="flex-grow">
+                  <div
+                    className="flex-grow bg-transparent overflow-hidden relative"
+                    onKeyDownCapture={handleKeyDownCapture}
+                  >
+                    <BlockEditor
+                      key={page.id}
+                      ref={quillRef}
+                      initialBlocks={draft?.blocks}
+                      initialContent={page.note || ""}
+                      onBlocksChange={handleBlocksChange}
+                      onSave={handleSave}
+                      onFocus={() => onFocus?.(page.id)}
+                      onMediaRequest={handleMediaRequest}
                     />
                   </div>
-                  <span className="text-xs text-violet-500">{Math.round(progress)}%</span>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
+              </div>
 
-        {/* Legacy Media Grid - Shows media from page.media[] (old format) */}
-        {mediaList.length > 0 && (
-          <div className="mb-4 p-3 border border-gray-200 rounded-lg bg-gray-50">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-gray-600">Attached Media</span>
-              <span className="text-xs text-gray-400">{mediaList.length} item(s)</span>
-            </div>
-            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2">
-              {mediaList.map((media, idx) => (
-                <div
-                  key={media.storagePath || idx}
-                  className="relative group aspect-square bg-gray-200 rounded-md overflow-hidden cursor-pointer"
-                  onClick={() => openPreview(idx)}
-                >
-                  {media.type === 'video' ? (
-                    <video src={media.url} className="w-full h-full object-cover" />
-                  ) : (
-                    <img src={media.url} alt={media.name} className="w-full h-full object-cover" />
-                  )}
-
-                  <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex justify-center items-center text-white text-xs font-medium">
-                    <span>Click to view</span>
-                  </div>
-
-                  <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button
-                      variant="destructive"
-                      size="icon"
-                      className="h-6 w-6"
-                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleMediaDelete(media);
-                      }}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Notes + controls */}
-        <div className="space-y-4 flex-grow flex flex-col">
-          <div className="flex-grow flex flex-col">
-            <div className="flex items-center justify-between mb-1"></div>
-
-            <div className="flex-grow">
+              {/* Focus Trigger */}
               <div
-                className="flex-grow bg-transparent overflow-hidden relative"
-                onKeyDownCapture={handleKeyDownCapture}
+                className="absolute inset-0 -z-10"
+                onClick={() => onFocus && onFocus()}
+              />
+            </div>
+
+            {/* Media Preview Overlay */}
+            {previewOpen && previewItem && (
+              <div
+                className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4 backdrop-blur-sm"
+                onClick={closePreview}
               >
-                <BlockEditor
-                  key={page.id}
-                  ref={quillRef}
-                  initialBlocks={draft?.blocks}
-                  initialContent={page.note || ""}
-                  onBlocksChange={handleBlocksChange}
-                  onSave={handleSave}
-                  onFocus={() => onFocus?.(page.id)}
-                  onMediaRequest={handleMediaRequest}
-                />
+                <button
+                  className="absolute top-4 right-4 text-white/70 hover:text-white transition-colors"
+                  onClick={closePreview}
+                >
+                  <X className="h-8 w-8" />
+                </button>
+
+                <button
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-2 rounded-full hover:bg-white/10 transition-all"
+                  onClick={(e) => { e.stopPropagation(); goPrev(); }}
+                >
+                  <ChevronLeft className="h-8 w-8" />
+                </button>
+
+                <button
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-2 rounded-full hover:bg-white/10 transition-all"
+                  onClick={(e) => { e.stopPropagation(); goNext(); }}
+                >
+                  <ChevronRight className="h-8 w-8" />
+                </button>
+
+                <div className="relative max-w-5xl w-full max-h-[85vh] flex flex-col items-center" onClick={e => e.stopPropagation()}>
+                  {previewItem.type === 'video' ? (
+                    <video src={previewItem.url} controls autoPlay className="max-w-full max-h-[80vh] rounded-lg shadow-2xl" />
+                  ) : (
+                    <img src={previewItem.url} alt={previewItem.name} className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl" />
+                  )}
+                  <div className="mt-4 text-white/80 text-sm font-medium">
+                    {previewIndex + 1} / {mediaList.length}
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            )}
 
-          {/* Focus Trigger */}
-          <div
-            className="absolute inset-0 -z-10"
-            onClick={() => onFocus && onFocus()}
-          />
-        </div>
+            {/* Delete Confirmation Modal */}
+            <ConfirmationModal
+              isOpen={!!mediaToDelete}
+              onClose={() => setMediaToDelete(null)}
+              onConfirm={confirmMediaDelete}
+              title="Delete Media"
+              description="Are you sure you want to remove this media from the page? This cannot be undone."
+            />
 
-        {/* Media Preview Overlay */}
-        {previewOpen && previewItem && (
-          <div
-            className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4 backdrop-blur-sm"
-            onClick={closePreview}
-          >
-            <button
-              className="absolute top-4 right-4 text-white/70 hover:text-white transition-colors"
-              onClick={closePreview}
-            >
-              <X className="h-8 w-8" />
-            </button>
+            {/* Page actions */}
+            {isResponsiveLayout ? (
+              <div ref={toolbarRef} className="absolute bottom-0 left-0 right-0 z-20 mb-2">
+                <div
+                  className={`mx-auto rounded-full border border-gray-200 bg-white/95 px-4 py-2 shadow-sm transition-all duration-200 w-[calc(100%-2rem)] ${toolbarOpen ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-2 pointer-events-none'
+                    }`}
+                >
+                  <div className="flex items-center gap-2 w-full">
+                    <div className="relative flex items-center gap-2 min-w-0 flex-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-50"
+                        onClick={() => onRequestPageDelete?.(page, pageIndex)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                      <div className="relative flex items-center">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowModelDropdown(!showModelDropdown)}
+                          className="h-8 px-2 text-xs"
+                        >
+                          {aiModel}
+                          <ChevronDown className="h-3 w-3 ml-1" />
+                        </Button>
+                        {showModelDropdown && (
+                          <div className="absolute bottom-full left-0 mb-2 w-36 bg-white border rounded-md shadow-lg py-1 z-30">
+                            {['gpt-4o'].map(model => (
+                              <button
+                                key={model}
+                                onClick={() => {
+                                  setAiModel(model);
+                                  setShowModelDropdown(false);
+                                }}
+                                className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
+                              >
+                                {model}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <Input
+                        value={aiStyle}
+                        onChange={(e) => setAiStyle(e.target.value)}
+                        placeholder="AI instruction..."
+                        className="h-8 w-28 sm:w-40 md:w-56 text-xs"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowAiStyleDropdown(!showAiStyleDropdown)}
+                        className="ml-1 h-8 px-2"
+                      >
+                        <ChevronDown className="h-4 w-4" />
+                      </Button>
 
-            <button
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-2 rounded-full hover:bg-white/10 transition-all"
-              onClick={(e) => { e.stopPropagation(); goPrev(); }}
-            >
-              <ChevronLeft className="h-8 w-8" />
-            </button>
-
-            <button
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-2 rounded-full hover:bg-white/10 transition-all"
-              onClick={(e) => { e.stopPropagation(); goNext(); }}
-            >
-              <ChevronRight className="h-8 w-8" />
-            </button>
-
-            <div className="relative max-w-5xl w-full max-h-[85vh] flex flex-col items-center" onClick={e => e.stopPropagation()}>
-              {previewItem.type === 'video' ? (
-                <video src={previewItem.url} controls autoPlay className="max-w-full max-h-[80vh] rounded-lg shadow-2xl" />
-              ) : (
-                <img src={previewItem.url} alt={previewItem.name} className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl" />
-              )}
-              <div className="mt-4 text-white/80 text-sm font-medium">
-                {previewIndex + 1} / {mediaList.length}
+                      {showAiStyleDropdown && (
+                        <div className="absolute bottom-full right-0 mb-2 w-48 bg-white border rounded-md shadow-lg py-1 z-30">
+                          {['Improve clarity', 'Make it concise', 'Fix grammar', 'Expand this'].map(style => (
+                            <button
+                              key={style}
+                              onClick={() => {
+                                setAiStyle(style);
+                                setShowAiStyleDropdown(false);
+                              }}
+                              className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
+                            >
+                              {style}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="h-8 whitespace-nowrap"
+                        onClick={() => callRewrite(aiStyle)}
+                        disabled={aiBusy}
+                      >
+                        <Sparkles className="h-4 w-4 mr-1" />
+                        Rewrite
+                      </Button>
+                    </div>
+                    {pageIndex < totalPages - 1 ? (
+                      <Button
+                        variant="appSuccess"
+                        size="sm"
+                        className="h-8 whitespace-nowrap min-w-[110px]"
+                        onClick={handleSave}
+                      >
+                        Save Page
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="appSuccess"
+                        size="sm"
+                        className="h-8 whitespace-nowrap min-w-[110px]"
+                        onClick={async () => {
+                          await handleSave();
+                          onAddPage?.(false);
+                        }}
+                      >
+                        Save + New
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setToolbarOpen(true)}
+                  className={`absolute bottom-0 right-0 mr-2 mb-2 flex items-center gap-2 rounded-full border border-gray-200 bg-white/95 px-3 py-2 shadow-sm transition-all duration-200 ${toolbarOpen ? 'opacity-0 pointer-events-none translate-y-1' : 'opacity-100'
+                    }`}
+                  aria-label="Open page tools"
+                >
+                  <Sparkles className="h-4 w-4 text-violet-600" />
+                  <Save className="h-4 w-4 text-emerald-600" />
+                </button>
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* Delete Confirmation Modal */}
-        <ConfirmationModal
-          isOpen={!!mediaToDelete}
-          onClose={() => setMediaToDelete(null)}
-          onConfirm={confirmMediaDelete}
-          title="Delete Media"
-          description="Are you sure you want to remove this media from the page? This cannot be undone."
-        />
-
-        {/* Page actions */}
-        {isResponsiveLayout ? (
-          <div ref={toolbarRef} className="absolute bottom-0 left-0 right-0 z-20 mb-2">
-            <div
-              className={`mx-auto rounded-full border border-gray-200 bg-white/95 px-4 py-2 shadow-sm transition-all duration-200 w-[calc(100%-2rem)] ${
-                toolbarOpen ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-2 pointer-events-none'
-              }`}
-            >
-              <div className="flex items-center gap-2 w-full">
-                <div className="relative flex items-center gap-2 min-w-0 flex-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-50"
-                    onClick={() => onRequestPageDelete?.(page, pageIndex)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                  <div className="relative flex items-center">
+            ) : (
+              <div className="absolute bottom-0 left-0 right-0 mx-auto rounded-full border border-gray-200 bg-white/95 px-4 py-2 shadow-sm opacity-0 translate-y-3 transition-all duration-200 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto z-20 w-[calc(100%-2rem)] mb-2">
+                <div className="flex items-center gap-2 w-full">
+                  <div className="relative flex items-center gap-2 min-w-0 flex-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-50"
+                      onClick={() => onRequestPageDelete?.(page, pageIndex)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                    <div className="relative flex items-center">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowModelDropdown(!showModelDropdown)}
+                        className="h-8 px-2 text-xs"
+                      >
+                        {aiModel}
+                        <ChevronDown className="h-3 w-3 ml-1" />
+                      </Button>
+                      {showModelDropdown && (
+                        <div className="absolute bottom-full left-0 mb-2 w-36 bg-white border rounded-md shadow-lg py-1 z-30">
+                          {['gpt-4o'].map(model => (
+                            <button
+                              key={model}
+                              onClick={() => {
+                                setAiModel(model);
+                                setShowModelDropdown(false);
+                              }}
+                              className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
+                            >
+                              {model}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <Input
+                      value={aiStyle}
+                      onChange={(e) => setAiStyle(e.target.value)}
+                      placeholder="AI instruction..."
+                      className="h-8 w-28 sm:w-40 md:w-56 text-xs"
+                    />
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => setShowModelDropdown(!showModelDropdown)}
-                      className="h-8 px-2 text-xs"
+                      onClick={() => setShowAiStyleDropdown(!showAiStyleDropdown)}
+                      className="ml-1 h-8 px-2"
                     >
-                      {aiModel}
-                      <ChevronDown className="h-3 w-3 ml-1" />
+                      <ChevronDown className="h-4 w-4" />
                     </Button>
-                    {showModelDropdown && (
-                      <div className="absolute bottom-full left-0 mb-2 w-36 bg-white border rounded-md shadow-lg py-1 z-30">
-                        {['gpt-4o'].map(model => (
+
+                    {showAiStyleDropdown && (
+                      <div className="absolute bottom-full right-0 mb-2 w-48 bg-white border rounded-md shadow-lg py-1 z-30">
+                        {['Improve clarity', 'Make it concise', 'Fix grammar', 'Expand this'].map(style => (
                           <button
-                            key={model}
+                            key={style}
                             onClick={() => {
-                              setAiModel(model);
-                              setShowModelDropdown(false);
+                              setAiStyle(style);
+                              setShowAiStyleDropdown(false);
                             }}
                             className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
                           >
-                            {model}
+                            {style}
                           </button>
                         ))}
                       </div>
                     )}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="h-8 whitespace-nowrap"
+                      onClick={() => callRewrite(aiStyle)}
+                      disabled={aiBusy}
+                    >
+                      <Sparkles className="h-4 w-4 mr-1" />
+                      Rewrite
+                    </Button>
                   </div>
-                  <Input
-                    value={aiStyle}
-                    onChange={(e) => setAiStyle(e.target.value)}
-                    placeholder="AI instruction..."
-                    className="h-8 w-28 sm:w-40 md:w-56 text-xs"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowAiStyleDropdown(!showAiStyleDropdown)}
-                    className="ml-1 h-8 px-2"
-                  >
-                    <ChevronDown className="h-4 w-4" />
-                  </Button>
-
-                  {showAiStyleDropdown && (
-                    <div className="absolute bottom-full right-0 mb-2 w-48 bg-white border rounded-md shadow-lg py-1 z-30">
-                      {['Improve clarity', 'Make it concise', 'Fix grammar', 'Expand this'].map(style => (
-                        <button
-                          key={style}
-                          onClick={() => {
-                            setAiStyle(style);
-                            setShowAiStyleDropdown(false);
-                          }}
-                          className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
-                        >
-                          {style}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="h-8 whitespace-nowrap"
-                    onClick={() => callRewrite(aiStyle)}
-                    disabled={aiBusy}
-                  >
-                    <Sparkles className="h-4 w-4 mr-1" />
-                    Rewrite
-                  </Button>
-                </div>
-                {pageIndex < totalPages - 1 ? (
-                  <Button
-                    variant="appSuccess"
-                    size="sm"
-                    className="h-8 whitespace-nowrap min-w-[110px]"
-                    onClick={handleSave}
-                  >
-                    Save Page
-                  </Button>
-                ) : (
-                  <Button
-                    variant="appSuccess"
-                    size="sm"
-                    className="h-8 whitespace-nowrap min-w-[110px]"
-                    onClick={async () => {
-                      await handleSave();
-                      onAddPage?.(false);
-                    }}
-                  >
-                    Save + New
-                  </Button>
-                )}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setToolbarOpen(true)}
-              className={`absolute bottom-0 right-0 mr-2 mb-2 flex items-center gap-2 rounded-full border border-gray-200 bg-white/95 px-3 py-2 shadow-sm transition-all duration-200 ${
-                toolbarOpen ? 'opacity-0 pointer-events-none translate-y-1' : 'opacity-100'
-              }`}
-              aria-label="Open page tools"
-            >
-              <Sparkles className="h-4 w-4 text-violet-600" />
-              <Save className="h-4 w-4 text-emerald-600" />
-            </button>
-          </div>
-        ) : (
-          <div className="absolute bottom-0 left-0 right-0 mx-auto rounded-full border border-gray-200 bg-white/95 px-4 py-2 shadow-sm opacity-0 translate-y-3 transition-all duration-200 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto z-20 w-[calc(100%-2rem)] mb-2">
-            <div className="flex items-center gap-2 w-full">
-              <div className="relative flex items-center gap-2 min-w-0 flex-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-50"
-                  onClick={() => onRequestPageDelete?.(page, pageIndex)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-                <div className="relative flex items-center">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowModelDropdown(!showModelDropdown)}
-                    className="h-8 px-2 text-xs"
-                  >
-                    {aiModel}
-                    <ChevronDown className="h-3 w-3 ml-1" />
-                  </Button>
-                  {showModelDropdown && (
-                    <div className="absolute bottom-full left-0 mb-2 w-36 bg-white border rounded-md shadow-lg py-1 z-30">
-                      {['gpt-4o'].map(model => (
-                        <button
-                          key={model}
-                          onClick={() => {
-                            setAiModel(model);
-                            setShowModelDropdown(false);
-                          }}
-                          className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
-                        >
-                          {model}
-                        </button>
-                      ))}
-                    </div>
+                  {/* CSS Override to prevent Editor from scrolling internally. 
+                      We want the page to be a FIXED viewport where content overflows 
+                      (and is caught by our reflow logic), rather than a scrollable window. 
+                  */}
+                  <style>{`
+                    .bn-editor {
+                      overflow: visible !important; 
+                      height: 100% !important;
+                    }
+                    .bn-block-outer {
+                      /* Ensure blocks don't trap scroll either */
+                    }
+                    /* Hide scrollbars just in case */
+                    ::-webkit-scrollbar {
+                      width: 0px;
+                      background: transparent;
+                    }
+                  `}</style>
+                  {pageIndex < totalPages - 1 ? (
+                    <Button
+                      variant="appSuccess"
+                      size="sm"
+                      className="h-8 whitespace-nowrap min-w-[110px]"
+                      onClick={handleSave}
+                    >
+                      Save Page
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="appSuccess"
+                      size="sm"
+                      className="h-8 whitespace-nowrap min-w-[110px]"
+                      onClick={async () => {
+                        await handleSave();
+                        onAddPage?.(false);
+                      }}
+                    >
+                      Save + New
+                    </Button>
                   )}
                 </div>
-                <Input
-                  value={aiStyle}
-                  onChange={(e) => setAiStyle(e.target.value)}
-                  placeholder="AI instruction..."
-                  className="h-8 w-28 sm:w-40 md:w-56 text-xs"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowAiStyleDropdown(!showAiStyleDropdown)}
-                  className="ml-1 h-8 px-2"
-                >
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-
-                {showAiStyleDropdown && (
-                  <div className="absolute bottom-full right-0 mb-2 w-48 bg-white border rounded-md shadow-lg py-1 z-30">
-                    {['Improve clarity', 'Make it concise', 'Fix grammar', 'Expand this'].map(style => (
-                      <button
-                        key={style}
-                        onClick={() => {
-                          setAiStyle(style);
-                          setShowAiStyleDropdown(false);
-                        }}
-                        className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
-                      >
-                        {style}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="h-8 whitespace-nowrap"
-                  onClick={() => callRewrite(aiStyle)}
-                  disabled={aiBusy}
-                >
-                  <Sparkles className="h-4 w-4 mr-1" />
-                  Rewrite
-                </Button>
               </div>
-              {pageIndex < totalPages - 1 ? (
-                <Button
-                  variant="appSuccess"
-                  size="sm"
-                  className="h-8 whitespace-nowrap min-w-[110px]"
-                  onClick={handleSave}
-                >
-                  Save Page
-                </Button>
-              ) : (
-                <Button
-                  variant="appSuccess"
-                  size="sm"
-                  className="h-8 whitespace-nowrap min-w-[110px]"
-                  onClick={async () => {
-                    await handleSave();
-                    onAddPage?.(false);
-                  }}
-                >
-                  Save + New
-                </Button>
-              )}
-            </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
-  </div>
-  </div>
   );
 });
 

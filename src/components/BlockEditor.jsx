@@ -327,9 +327,20 @@ const BlockEditor = forwardRef(
         if (!editor) return false;
         const pos = editor.getTextCursorPosition();
         if (!pos?.block) return false;
-        // In the last block and no next block?
+
         const lastBlock = editor.document[editor.document.length - 1];
-        return pos.block.id === lastBlock?.id && !pos.nextBlock;
+
+        // Debug logs
+        console.log('[BlockEditor] isCursorAtEndOfPage check:', {
+          posBlockId: pos.block.id,
+          lastBlockId: lastBlock?.id,
+          hasNextBlock: !!pos.nextBlock
+        });
+
+        if (pos.block.id !== lastBlock?.id) return false;
+        // if (pos.nextBlock) return false; // Relaxed check: if in last block, assume okay for now.
+
+        return true;
       },
       isCursorAtStartOfPage: () => {
         if (!editor) return false;

@@ -27,6 +27,7 @@ export function usePaginationReflow({
   getNewOrderBetween,
   pageApi,
   canRemoveTempPages = true,
+  getLastUserInputAt,
   options,
 }) {
   const opts = React.useMemo(
@@ -38,6 +39,7 @@ export function usePaginationReflow({
       minFillRatio: options?.minFillRatio ?? 0.7,
       overflowPxTolerance: options?.overflowPxTolerance ?? 2,
       maxWaitFrames: options?.maxWaitFrames ?? 40,
+      typingCooldownMs: options?.typingCooldownMs ?? 500,
     }),
     [options]
   );
@@ -71,7 +73,11 @@ export function usePaginationReflow({
       const clientH = pageApi.getClientHeight(pageId);
       const scrollH = pageApi.getScrollHeight(pageId);
       if (!clientH || clientH <= 0) return false;
-      return scrollH > clientH + opts.overflowPxTolerance;
+      const overflowing = scrollH > clientH + opts.overflowPxTolerance;
+      if (overflowing) {
+        console.log(`[Reflow] Overflow detected on ${pageId}: scroll ${scrollH} > client ${clientH}`);
+      }
+      return overflowing;
     },
     [pageApi, opts.overflowPxTolerance]
   );
@@ -137,20 +143,50 @@ export function usePaginationReflow({
       if (moves <= 0) return 0;
 
       const moved = fromBlocks.splice(fromBlocks.length - moves, moves);
-      toBlocks = [...moved, ...toBlocks];
 
+      // Filter out empty blocks if we are moving to a page that already has content.
+      // This prevents "pile up" of empty lines on the next page while typing.
+      let finalMoved = moved;
+      if (toBlocks.length > 0) {
+        finalMoved = moved.filter(b => {
+          // Keep content blocks (text, images, etc.)
+          if (b.type === 'image' || b.type === 'video') return true;
+          if (Array.isArray(b.content) && b.content.length > 0) return true;
+          // Check text content if explicitly set
+          if (typeof b.text === 'string' && b.text.trim().length > 0) return true;
+
+          // Ensure 'content' array check is robust (sometimes it has empty objects?)
+          // BlockNote structure: content is array of InlineContent.
+          // If content is empty array, it's an empty line.
+          return false;
+        });
+      }
+
+      // If we filtered everything out (i.e. we only moved empty blocks), 
+      // AND we decided not to keep them (because dest has content),
+      // we effectively just deleted them from 'fromId'.
+
+      // However, if 'finalMoved' is empty but 'moved' was not, we still need to update 'fromId' 
+      // (to cure the overflow). We just don't append to 'toId'.
+
+      if (finalMoved.length > 0) {
+        toBlocks = [...finalMoved, ...toBlocks];
+        await pageApi.setBlocks(toId, toBlocks, { silent: true });
+      }
+
+      // Always update 'fromId' because we spliced it.
       await pageApi.setBlocks(fromId, fromBlocks, { silent: true });
-      await pageApi.setBlocks(toId, toBlocks, { silent: true });
 
       const now = Date.now();
       setPageDrafts((prev) => ({
         ...prev,
         [fromId]: { blocks: cloneBlocks(fromBlocks), updatedAt: now },
-        [toId]: { blocks: cloneBlocks(toBlocks), updatedAt: now },
+        // Only update toId draft if we actually added something
+        ...(finalMoved.length > 0 ? { [toId]: { blocks: cloneBlocks(toBlocks), updatedAt: now } } : {}),
       }));
 
       await nextAnimationFrame();
-      return moved.length;
+      return moved.length; // Return original count so loop continues if needed
     },
     [isOverflowing, opts.maxMovesPerFrame, pageApi, setPageDrafts]
   );
@@ -269,6 +305,15 @@ export function usePaginationReflow({
             await waitForPageReady(currId);
             await waitForPageReady(nextId);
 
+            // Check typing cooldowns for backward pull to avoid "jumping"
+            const now = Date.now();
+            const lastTypedCurr = getLastUserInputAt?.(currId) || 0;
+            const lastTypedNext = getLastUserInputAt?.(nextId) || 0;
+
+            if (now - lastTypedCurr < opts.typingCooldownMs || now - lastTypedNext < opts.typingCooldownMs) {
+              continue;
+            }
+
             const ratio = fillRatio(currId);
             if (ratio >= opts.minFillRatio) continue;
 
@@ -298,6 +343,8 @@ export function usePaginationReflow({
       pageApi,
       pullUnderflowOnePage,
       waitForPageReady,
+      getLastUserInputAt,
+      opts.typingCooldownMs,
     ]
   );
 

@@ -179,10 +179,51 @@ const BookDetail = () => {
   // ---------------------------------------------------------------------------
   // 🕐 User Input Tracking for Typing Cooldown
   // ---------------------------------------------------------------------------
+
+  // Pre-emptive creation: Create next page if current is >90% full
+  const checkPreemptiveCreation = useCallback((pageId) => {
+    const pageIdx = pages.findIndex(p => p.id === pageId);
+    if (pageIdx < 0) return;
+
+    // Only if it's the last page (or followed by temps we want to manage?)
+    // Actually, just if next page DOES NOT exist.
+    if (pages[pageIdx + 1]) return;
+
+    const api = pageRefs.current[pageId];
+    if (!api) return;
+
+    const clientH = api.getContentClientHeight();
+    const scrollH = api.getContentScrollHeight();
+
+    if (clientH > 0 && scrollH > clientH * 0.9) {
+      console.log(`[BookDetail] Pre-emptive creation for ${pageId} (Fill: ${(scrollH / clientH).toFixed(2)})`);
+
+      const currentPage = pages[pageIdx];
+      const nextOrder = getNewOrderBetween(currentPage.order, null);
+      const tempId = `temp_${Date.now()}_pre`;
+
+      const newPage = {
+        id: tempId,
+        order: nextOrder,
+        note: '',
+        media: [],
+        shortNote: '',
+      };
+
+      setPages(prev => [...prev, newPage]);
+      setPageDrafts(prev => ({
+        ...prev,
+        [tempId]: { blocks: [], updatedAt: Date.now() }
+      }));
+    }
+  }, [pages, setPages, setPageDrafts, getNewOrderBetween]);
+
   const lastUserInputAtRef = useRef({});
   const handleUserInput = useCallback((pageId) => {
     lastUserInputAtRef.current[pageId] = Date.now();
-  }, []);
+    // Trigger pre-emptive check
+    requestAnimationFrame(() => checkPreemptiveCreation(pageId));
+  }, [checkPreemptiveCreation]);
   const getLastUserInputAt = useCallback((pageId) => {
     return lastUserInputAtRef.current[pageId] || 0;
   }, []);
@@ -262,7 +303,10 @@ const BookDetail = () => {
   // ---------------------------------------------------------------------------
   const pageAlign = !leftSidebarOpen && isChatMinimized ? 'center' : 'start';
 
+  // (Moved checkPreemptiveCreation up to fix ReferenceError)
+
   const handleNearOverflowAtEnd = useCallback(async (pageId) => {
+    console.log(`[BookDetail] handleNearOverflowAtEnd detected for page ${pageId}`);
     const pageIdx = pages.findIndex(p => p.id === pageId);
     if (pageIdx < 0) return;
 
@@ -274,6 +318,7 @@ const BookDetail = () => {
       const nextOrder = pages[pageIdx + 1]?.order;
       const newOrder = getNewOrderBetween(currentPage.order, nextOrder);
       const tempId = `temp_${Date.now()}`;
+      console.log(`[BookDetail] Creating new temp page: ${tempId} after ${currentPage?.id}`);
       nextPage = {
         id: tempId,
         order: newOrder,
@@ -294,7 +339,8 @@ const BookDetail = () => {
 
     const currentPage = pages[pageIdx];
     if (currentPage?.id && !currentPage.id.startsWith('temp_')) {
-      await pageRefs.current?.[currentPage.id]?.save?.();
+      // ⚡ OPTIMIZATION: Fire and forget save to avoid blocking UI
+      pageRefs.current?.[currentPage.id]?.save?.().catch(e => console.error('Background save failed:', e));
     }
 
     // Focus the next page at start with retry
