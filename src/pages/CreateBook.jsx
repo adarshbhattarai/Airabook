@@ -21,6 +21,7 @@ const CreateBook = () => {
   const [creationType, setCreationType] = useState(0); // 0 = auto-generate, 1 = start blank
   const [promptMode, setPromptMode] = useState(false); // false = baby journal, true = custom prompt
   const [prompt, setPrompt] = useState('');
+  const [layoutMode, setLayoutMode] = useState('standard'); // 'standard', 'a4', 'scrapbook'
   const [coverImageFile, setCoverImageFile] = useState(null);
   const [coverImagePreview, setCoverImagePreview] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -120,6 +121,7 @@ const CreateBook = () => {
         promptMode: creationType === 0 ? promptMode : false,
         prompt: (creationType === 0 && promptMode && prompt.trim()) ? prompt : undefined,
         coverImageUrl: coverImageUrl,
+        layoutMode
       };
       console.log("📦 CreateBook: Payload:", payload);
 
@@ -151,7 +153,8 @@ const CreateBook = () => {
           coverImageUrl: coverImageUrl,
           createdAt: new Date().toISOString(),
           ownerId: user.uid, // Ensure isOwner check passes in BookDetail
-          members: { [user.uid]: 'Owner' } // Important for permission checks
+          members: { [user.uid]: 'Owner' }, // Important for permission checks
+          layoutMode
         },
         prefetchedChapters: (result.data.chapters || []).map(ch => ({
           id: ch.id,
@@ -330,6 +333,47 @@ const CreateBook = () => {
                       >
                         Start Blank
                       </Button>
+                    </div>
+                  </div>
+
+                  {/* Layout Selection */}
+                  <div>
+                    <label
+                      htmlFor="layout-mode"
+                      className="text-xs font-semibold text-app-gray-600 uppercase tracking-wide"
+                    >
+                      Book Layout
+                    </label>
+                    <div className="mt-3 grid grid-cols-3 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setLayoutMode('standard')}
+                        className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${layoutMode === 'standard' ? 'border-app-iris bg-app-iris/5' : 'border-app-gray-200 hover:border-app-gray-300'}`}
+                      >
+                        <div className="w-full aspect-[4/3] bg-app-gray-200 rounded mb-2 border border-app-gray-300 shadow-sm" />
+                        <span className="text-xs font-medium text-app-gray-900">Standard</span>
+                        <span className="text-[10px] text-app-gray-500">Responsive</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setLayoutMode('a4')}
+                        className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${layoutMode === 'a4' ? 'border-app-iris bg-app-iris/5' : 'border-app-gray-200 hover:border-app-gray-300'}`}
+                      >
+                        <div className="h-10 w-[min(100%,30px)] aspect-[210/297] bg-white rounded-sm mb-2 border border-app-gray-300 shadow-sm" />
+                        <span className="text-xs font-medium text-app-gray-900">A4 Print</span>
+                        <span className="text-[10px] text-app-gray-500">Fixed Page</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setLayoutMode('scrapbook')}
+                        className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${layoutMode === 'scrapbook' ? 'border-app-iris bg-app-iris/5' : 'border-app-gray-200 hover:border-app-gray-300'}`}
+                      >
+                        <div className="w-10 h-10 bg-white rounded-sm mb-2 border border-app-gray-300 shadow-sm" />
+                        <span className="text-xs font-medium text-app-gray-900">Scrapbook</span>
+                        <span className="text-[10px] text-app-gray-500">Square 1:1</span>
+                      </button>
                     </div>
                   </div>
 

@@ -202,7 +202,7 @@ exports.createBook = onCall(
 
     logger.log("✅ User authenticated:", auth.uid);
 
-    const { title, subtitle, creationType, promptMode, prompt, coverImageUrl } = data;
+    const { title, subtitle, creationType, promptMode, prompt, coverImageUrl, layoutMode } = data;
     const userId = auth.uid;
 
     let reservedBookSlot = false;
@@ -323,6 +323,7 @@ exports.createBook = onCall(
           creationType === 0
             ? ["auto-generated", "starter"]
             : ["blank", "custom"],
+        layoutMode: layoutMode || "standard",
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       };

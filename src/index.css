@@ -347,6 +347,14 @@ a:focus-visible {
   .no-print {
     display: none !important;
   }
+
+  .page-sheet {
+    box-shadow: none !important;
+  }
+
+  .page-sheet-outer {
+    page-break-after: always;
+  }
 }
 
 @layer base {

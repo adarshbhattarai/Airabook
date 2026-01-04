@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Image as ImageIcon, Video, Loader2, Trash2, UploadCloud, PlusCircle, Pencil, X } from 'lucide-react';
+import { ArrowLeft, Image as ImageIcon, Video, Loader2, Trash2, UploadCloud, PlusCircle, Pencil, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Helmet } from 'react-helmet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -729,58 +729,45 @@ const AlbumDetail = () => {
       </div>
 
       {/* Preview Modal */}
-      <Dialog open={previewOpen} onOpenChange={(open) => !open && closePreview()}>
-        <DialogContent className="max-w-4xl p-0 overflow-hidden bg-transparent border-0 shadow-none">
-          {previewItem && (
-            <div className="relative">
-              <button
-                onClick={closePreview}
-                className="absolute top-4 right-4 z-10 bg-black/50 text-white rounded-full p-2 hover:bg-black/70 transition-colors"
-              >
-                ✕
-              </button>
+      {/* Media Preview Overlay */}
+      {previewOpen && previewItem && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4 backdrop-blur-sm"
+          onClick={closePreview}
+        >
+          <button
+            className="absolute top-4 right-4 text-white/70 hover:text-white transition-colors"
+            onClick={closePreview}
+          >
+            <X className="h-8 w-8" />
+          </button>
 
-              {previewItem.type === 'image' ? (
-                <img
-                  src={previewItem.url}
-                  alt="Preview"
-                  className="w-full h-auto max-h-[80vh] object-contain"
-                />
-              ) : (
-                <video
-                  src={previewItem.url}
-                  controls
-                  className="w-full h-auto max-h-[80vh]"
-                  autoPlay
-                />
-              )}
+          <button
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-2 rounded-full hover:bg-white/10 transition-all"
+            onClick={(e) => { e.stopPropagation(); goPrev(); }}
+          >
+            <ChevronLeft className="h-8 w-8" />
+          </button>
 
-              {/* Navigation */}
-              {allMedia.length > 1 && (
-                <>
-                  <button
-                    onClick={goPrev}
-                    className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full p-3 hover:bg-black/70 transition-colors"
-                  >
-                    <ArrowLeft className="h-6 w-6" />
-                  </button>
-                  <button
-                    onClick={goNext}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full p-3 hover:bg-black/70 transition-colors"
-                  >
-                    <ArrowLeft className="h-6 w-6 rotate-180" />
-                  </button>
-                </>
-              )}
+          <button
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-white/70 hover:text-white p-2 rounded-full hover:bg-white/10 transition-all"
+            onClick={(e) => { e.stopPropagation(); goNext(); }}
+          >
+            <ChevronRight className="h-8 w-8" />
+          </button>
 
-              {/* Counter */}
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 text-white px-4 py-2 rounded-full text-sm">
-                {previewIndex + 1} / {allMedia.length}
-              </div>
+          <div className="relative max-w-5xl w-full max-h-[85vh] flex flex-col items-center" onClick={e => e.stopPropagation()}>
+            {previewItem.type === 'video' ? (
+              <video src={previewItem.url} controls autoPlay className="max-w-full max-h-[80vh] rounded-lg shadow-2xl" />
+            ) : (
+              <img src={previewItem.url} alt={previewItem.name} className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl" />
+            )}
+            <div className="mt-4 text-white/80 text-sm font-medium">
+              {previewIndex + 1} / {allMedia.length}
             </div>
-          )}
-        </DialogContent>
-      </Dialog>
+          </div>
+        </div>
+      )}
 
       {/* Confirm Delete */}
       <Dialog open={confirmingDelete} onOpenChange={(open) => !open && cancelDelete()}>

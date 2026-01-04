@@ -1,1477 +1,68 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
-  doc, getDoc, collection, getDocs, addDoc, deleteDoc, updateDoc, writeBatch, query, orderBy, arrayUnion, arrayRemove, where, limit
+  doc, getDoc, collection, getDocs, addDoc, deleteDoc, updateDoc, writeBatch, query, orderBy, where, limit
 } from 'firebase/firestore';
-import { firestore, storage, functions } from '@/lib/firebase';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { firestore, functions } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
-import ReactQuill from 'react-quill';
-import 'react-quill/dist/quill.snow.css';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import {
-  Trash2, PlusCircle, ChevronRight, ChevronDown, ArrowLeft, ArrowRight, UploadCloud, GripVertical, MoreVertical, ChevronLeft, Sparkles, Globe, Users, UserPlus, X, Send, Edit
+  Trash2, PlusCircle, ChevronRight, ChevronDown, ArrowLeft, GripVertical, Sparkles, Globe, Users, UserPlus, X, Edit
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
 } from '@/components/ui/dialog';
 import { httpsCallable } from 'firebase/functions';
 import EditBookModal from '@/components/EditBookModal';
+import PageEditor from '@/components/PageEditor';
+import ChatPanel from '@/components/ChatPanel';
+import HoverDeleteMenu from '@/components/ui/HoverDeleteMenu';
+import ConfirmationModal from '@/components/ui/ConfirmationModal';
+import { usePaginationReflow } from '@/hooks/usePaginationReflow';
+import { useBookDetailState } from '@/hooks/useBookDetailState';
+import { PanelLeftClose, PanelLeftOpen, Type } from 'lucide-react';
+import {
+  getMidpointString,
+  getNewOrderBetween,
+  stripHtml,
+  calculatePageScore,
+  textToHtml,
+  isLikelyHtml,
+  convertToEmulatorURL
+} from '@/lib/pageUtils';
 
-// --- UTILITY FOR FRACTIONAL INDEXING ---
-const getMidpointString = (prev = '', next = '') => {
-  const alphabet = 'abcdefghijklmnopqrstuvwxyz';
-  let p = 0;
-  while (p < prev.length || p < next.length) {
-    const prevChar = prev.charAt(p) || 'a';
-    const nextChar = next.charAt(p) || 'z';
-    if (prevChar !== nextChar) {
-      const prevIndex = alphabet.indexOf(prevChar);
-      const nextIndex = alphabet.indexOf(nextChar);
-      if (nextIndex - prevIndex > 1) {
-        const midIndex = Math.round((prevIndex + nextIndex) / 2);
-        return prev.substring(0, p) + alphabet[midIndex];
+// --- focusWithRetry: helper for reliable cursor placement on newly created pages ---
+const focusWithRetry = async (pageRefs, pageId, position = 'start', maxAttempts = 20) => {
+  console.log(`🎯 focusWithRetry called: pageId=${pageId}, position=${position}`);
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const api = pageRefs.current?.[pageId];
+    if (api) {
+      const focusFn = position === 'end' ? api.focusAtEnd : api.focusAtStart;
+      console.log(`  Attempt ${attempt + 1}: api found, calling focusFn (${position})...`);
+      if (focusFn?.()) {
+        console.log(`  ✅ Focus successful on page ${pageId} at ${position}`);
+        return true;
       }
+    } else {
+      console.log(`  Attempt ${attempt + 1}: api not ready yet...`);
     }
-    p++;
+    await new Promise(resolve => setTimeout(resolve, 100));
   }
-  return prev + 'm';
-};
-const getNewOrderBetween = (prevOrder = '', nextOrder = '') =>
-  getMidpointString(prevOrder, nextOrder);
-
-// --- helper to strip HTML for shortNote ---
-const stripHtml = (html = '') =>
-  html
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<\/(p|div|br|li|h[1-6])>/gi, ' ')
-    .replace(/<[^>]+>/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-// Turn plain text into simple HTML paragraphs for preview fallback
-const textToHtml = (text = '') =>
-  String(text)
-    .split('\n')
-    .map(seg => seg.trim())
-    .filter(Boolean)
-    .map(seg => `<p>${seg.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`)
-    .join('');
-
-// Heuristic: does a string look like HTML?
-const isLikelyHtml = (s = '') => /<\w+[^>]*>/.test(s);
-
-const convertToEmulatorURL = (url) => {
-  if (!url) return url;
-
-  const useEmulator = import.meta.env.VITE_USE_EMULATOR === 'true';
-
-  if (!useEmulator) {
-    return url;
-  }
-
-  if (url.includes('127.0.0.1:9199') || url.includes('localhost:9199')) {
-    return url;
-  }
-
-  if (url.includes('storage.googleapis.com')) {
-    try {
-      const urlObj = new URL(url);
-      const pathParts = urlObj.pathname.split('/').filter(p => p);
-
-      if (pathParts.length >= 1) {
-        const bucket = pathParts[0];
-        const storagePath = pathParts.slice(1).join('/');
-
-        let emulatorBucket = bucket;
-        if (bucket.endsWith('.appspot.com')) {
-          emulatorBucket = bucket.replace('.appspot.com', '.firebasestorage.app');
-        }
-
-        const encodedPath = encodeURIComponent(storagePath);
-        const token = urlObj.searchParams.get('token') || 'emulator-token';
-        return `http://127.0.0.1:9199/v0/b/${emulatorBucket}/o/${encodedPath}?alt=media&token=${token}`;
-      }
-    } catch (error) {
-      console.error('Error converting URL to emulator format:', error, url);
-      return url;
-    }
-  }
-
-  return url;
+  console.log(`  ❌ Focus failed after ${maxAttempts} attempts for page ${pageId}`);
+  return false;
 };
 
-// --- ReactQuill toolbar / formats ---
-const quillModules = {
-  toolbar: [
-    [{ header: [1, 2, 3, false] }],
-    ['bold', 'italic', 'underline', 'strike'],
-    [{ list: 'ordered' }, { list: 'bullet' }],
-    [{ align: [] }],
-    ['link', 'blockquote', 'code-block'],
-    [{ color: [] }, { background: [] }],
-    ['clean'],
-  ],
-};
-const quillFormats = [
-  'header',
-  'bold', 'italic', 'underline', 'strike',
-  'list', 'bullet',
-  'align',
-  'link', 'blockquote', 'code-block',
-  'color', 'background',
-];
-
-// --- REUSABLE UI COMPONENTS ---
-
-const HoverDeleteMenu = ({ onDelete, side = 'left' }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const rootRef = useRef(null);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const onDocMouseDown = (e) => {
-      if (!rootRef.current) return;
-      if (!rootRef.current.contains(e.target)) setIsOpen(false);
-    };
-    document.addEventListener('mousedown', onDocMouseDown, true);
-    return () => document.removeEventListener('mousedown', onDocMouseDown, true);
-  }, [isOpen]);
-
-  const handleDeleteClick = (e) => {
-    e.stopPropagation();
-    onDelete();
-    setIsOpen(false);
-  };
-
-  return (
-    <div ref={rootRef} className="relative opacity-0 group-hover:opacity-100 transition-opacity">
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="h-7 w-7 data-[state=open]:bg-violet-100"
-        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-        onClick={(e) => {
-          e.stopPropagation();
-          setIsOpen((v) => !v);
-        }}
-      >
-        <MoreVertical className="h-4 w-4" />
-      </Button>
-
-      {isOpen && (
-        <div className={`absolute top-full mt-1 w-28 bg-white rounded-md shadow-2xl z-[9999] border ${side === 'right' ? 'right-0' : 'left-0'}`}>
-          <Button
-            type="button"
-            variant="ghost"
-            className="w-full justify-start text-red-600 hover:bg-red-50 hover:text-red-700 text-sm px-2 py-1.5"
-            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-            onClick={handleDeleteClick}
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Delete
-          </Button>
-        </div>
-      )}
-    </div>
-  );
-};
-
-const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description }) => {
-  if (!isOpen) return null;
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-md p-6 bg-white rounded-2xl shadow-lg text-center">
-        <h2 className="text-2xl font-bold text-gray-800">{title}</h2>
-        <p className="mt-2 text-gray-600">{description}</p>
-        <div className="mt-6 flex justify-center space-x-4">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button variant="destructive" onClick={onConfirm}>Confirm</Button>
-        </div>
-      </div>
-    </div>
-  );
-};
+// PageEditor and ChatPanel are imported from separate files
 
 // ======================
-// PageEditor (UPDATED)
+// BookDetail Component (Main Orchestrator)
 // ======================
-const PageEditor = ({ bookId, chapterId, page, onPageUpdate, onAddPage, onNavigate, pageIndex, totalPages, chapterTitle, draftNote, onDraftChange }) => {
-  const [note, setNote] = useState(draftNote ?? page.note ?? '');
-  const [isSaving, setIsSaving] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState({});
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewIndex, setPreviewIndex] = useState(0);
-  const [aiBusy, setAiBusy] = useState(false);
-  const [aiStyle, setAiStyle] = useState('');
-  const [showStyleDropdown, setShowStyleDropdown] = useState(false);
-
-  // AI preview dialog state
-  const [aiPreviewOpen, setAiPreviewOpen] = useState(false);
-  const [aiPreviewText, setAiPreviewText] = useState('');
-
-  const [pendingNote, setPendingNote] = useState(null);
-  const [mediaToDelete, setMediaToDelete] = useState(null);
-
-  const quillRef = useRef(null);
-  const { user, appUser } = useAuth();
-  const { toast } = useToast();
-  const fileInputRef = useRef(null);
-
-  const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
-  const [mediaPickerTab, setMediaPickerTab] = useState('upload');
-  const [albums, setAlbums] = useState([]);
-  const [selectedAlbumId, setSelectedAlbumId] = useState(null);
-  const [albumMedia, setAlbumMedia] = useState([]);
-  const [loadingAlbums, setLoadingAlbums] = useState(false);
-  const [selectedAssets, setSelectedAssets] = useState([]);
-
-  const mediaList = page.media || [];
-  const previewItem = mediaList[previewIndex] || null;
-
-  useEffect(() => {
-    setNote(draftNote ?? page.note ?? '');
-  }, [page?.id, draftNote]);
-
-  useEffect(() => {
-    const availableAlbums = appUser?.accessibleAlbums || [];
-    setAlbums(availableAlbums);
-    if (!selectedAlbumId && availableAlbums.length > 0) {
-      setSelectedAlbumId(availableAlbums[0].id);
-    } else if (availableAlbums.length === 0) {
-      setSelectedAlbumId(null);
-    }
-  }, [appUser, selectedAlbumId]);
-
-  useEffect(() => {
-    if (!mediaPickerOpen || mediaPickerTab !== 'library' || !selectedAlbumId) {
-      return;
-    }
-
-    let isMounted = true;
-    const fetchAlbumMedia = async () => {
-      try {
-        setLoadingAlbums(true);
-        setAlbumMedia([]);
-        const albumRef = doc(firestore, 'albums', selectedAlbumId);
-        const albumSnap = await getDoc(albumRef);
-        if (!albumSnap.exists()) {
-          toast({ title: 'Album not found', description: 'Please pick another album.', variant: 'destructive' });
-          return;
-        }
-
-        const data = albumSnap.data();
-        const images = (data.images || []).map((item) => {
-          const url = typeof item === 'string' ? item : item.url;
-          const storagePath = typeof item === 'string' ? null : item.storagePath;
-          return {
-            url: convertToEmulatorURL(url),
-            storagePath,
-            type: 'image',
-            name: typeof item === 'string' ? (url?.split('/')?.pop() || 'Image') : (item.name || item.fileName || 'Image'),
-          };
-        });
-        const videos = (data.videos || []).map((item) => {
-          const url = typeof item === 'string' ? item : item.url;
-          const storagePath = typeof item === 'string' ? null : item.storagePath;
-          return {
-            url: convertToEmulatorURL(url),
-            storagePath,
-            type: 'video',
-            name: typeof item === 'string' ? (url?.split('/')?.pop() || 'Video') : (item.name || item.fileName || 'Video'),
-          };
-        });
-
-        if (isMounted) {
-          setAlbumMedia([...images, ...videos]);
-        }
-      } catch (error) {
-        console.error('Failed to load album assets', error);
-        toast({ title: 'Unable to load assets', description: error.message || 'Try again later.', variant: 'destructive' });
-      } finally {
-        if (isMounted) setLoadingAlbums(false);
-      }
-    };
-
-    fetchAlbumMedia();
-
-    return () => { isMounted = false; };
-  }, [mediaPickerOpen, mediaPickerTab, selectedAlbumId, toast]);
-
-  // Close style dropdown when clicking outside
-  useEffect(() => {
-    if (!showStyleDropdown) return;
-    const handleClickOutside = (event) => {
-      const target = event.target;
-      if (!target.closest('.style-dropdown-container')) {
-        setShowStyleDropdown(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showStyleDropdown]);
-
-  // keyboard arrows for media modal
-  useEffect(() => {
-    if (!previewOpen) return;
-    const onKey = (e) => {
-      if (e.key === 'ArrowLeft') goPrev();
-      if (e.key === 'ArrowRight') goNext();
-      if (e.key === 'Escape') closePreview();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [previewOpen, mediaList.length]);
-
-  const handleSave = async () => {
-    setIsSaving(true);
-    const plain = stripHtml(note);
-    const shortNote = plain.substring(0, 40) + (plain.length > 40 ? '...' : '');
-
-    try {
-      const updatePageFn = httpsCallable(functions, 'updatePage');
-      await updatePageFn({
-        bookId,
-        chapterId,
-        pageId: page.id,
-        note,
-        media: page.media || []
-      });
-
-      onPageUpdate({ ...page, note, shortNote });
-      onDraftChange?.(page.id, null);
-      toast({ title: 'Success', description: 'Page saved.' });
-    } catch (error) {
-      console.error('Save error:', error);
-      toast({ title: 'Error', description: 'Failed to save page.', variant: 'destructive' });
-    }
-    setIsSaving(false);
-  };
-
-  const handleNoteChange = (newNote) => {
-    setNote(newNote);
-    onDraftChange?.(page.id, newNote);
-  };
-
-  const handleFileSelect = (event) => {
-    const files = Array.from(event.target.files || []);
-    if (files.length === 0) return;
-
-    const currentMediaCount = page.media?.length || 0;
-    if (currentMediaCount + files.length > 5) {
-      toast({
-        title: 'Upload Limit Exceeded',
-        description: `You can only upload up to 5 media items per page. You have ${currentMediaCount} already.`,
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setMediaPickerOpen(false);
-
-    // Clear the input value so selecting the same file again still triggers onChange
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-
-    files.forEach(file => handleUpload(file));
-  };
-
-  const openFileDialog = () => {
-    if (fileInputRef.current) {
-      // Reset value on open to ensure re-selecting the same file works
-      fileInputRef.current.value = '';
-      fileInputRef.current.click();
-    }
-  };
-
-  const handleUpload = (file) => {
-    if (!file || !user) return;
-
-    const mediaType = file.type.startsWith('video') ? 'video' : 'image';
-    const uniqueFileName = `${Date.now()}_${file.name}`;
-    // Construct path: {userId}/{bookId}/{chapterId}/{pageId}/media/{type}/{filename}
-    const storagePath = `${user.uid}/${bookId}/${chapterId}/${page.id}/media/${mediaType}/${uniqueFileName}`;
-    const storageRef = ref(storage, storagePath);
-
-    // Add custom metadata for original name
-    const metadata = {
-      customMetadata: {
-        originalName: file.name,
-        bookId: bookId
-      }
-    };
-
-    const uploadTask = uploadBytesResumable(storageRef, file, metadata);
-
-    uploadTask.on('state_changed',
-      (snapshot) => {
-        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        setUploadProgress(prev => ({ ...prev, [file.name]: progress }));
-      },
-      (error) => {
-        toast({ title: 'Upload Error', description: error.message, variant: 'destructive' });
-        setUploadProgress(prev => {
-          const next = { ...prev };
-          delete next[file.name];
-          return next;
-        });
-      },
-      () => {
-        getDownloadURL(uploadTask.snapshot.ref).then(async (downloadURL) => {
-          const newMediaItem = {
-            url: downloadURL,
-            storagePath,
-            type: mediaType,
-            name: file.name,
-            uploadedAt: new Date().toISOString(),
-          };
-
-          // Update Page document in Firestore
-          const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', page.id);
-          await updateDoc(pageRef, { media: arrayUnion(newMediaItem) });
-
-          // Update local state
-          onPageUpdate(prev => ({
-            ...prev,
-            media: [...(prev?.media || []), newMediaItem],
-          }));
-
-          setUploadProgress(prev => {
-            const next = { ...prev };
-            delete next[file.name];
-            return next;
-          });
-          toast({ title: 'Upload Success', description: `"${file.name}" has been uploaded.` });
-        });
-      }
-    );
-  };
-
-  const handleAttachFromAlbum = async (asset) => {
-    const currentMediaCount = page.media?.length || 0;
-    if (currentMediaCount + 1 > 5) {
-      toast({
-        title: 'Upload Limit Exceeded',
-        description: 'You can only attach up to 5 media items per page.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    const alreadyAttached = (page.media || []).some((item) =>
-      item.storagePath && asset.storagePath
-        ? item.storagePath === asset.storagePath
-        : item.url === asset.url
-    );
-    if (alreadyAttached) {
-      toast({ title: 'Already attached', description: 'This asset is already on the page.' });
-      return;
-    }
-
-    try {
-      const newMediaItem = {
-        url: asset.url,
-        storagePath: asset.storagePath || asset.url,
-        type: asset.type || 'image',
-        name: asset.name || 'Asset',
-        uploadedAt: new Date().toISOString(),
-        albumId: selectedAlbumId, // Store albumId for untracking later
-      };
-
-      const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', page.id);
-      await updateDoc(pageRef, { media: arrayUnion(newMediaItem) });
-
-      // Track usage in album
-      try {
-        const trackUsage = httpsCallable(functions, 'trackMediaUsage');
-        await trackUsage({
-          albumId: selectedAlbumId,
-          storagePath: asset.storagePath,
-          bookId,
-          chapterId,
-          pageId: page.id
-        });
-      } catch (trackError) {
-        console.error('Failed to track usage:', trackError);
-        // Don't fail the whole operation if tracking fails
-      }
-
-      onPageUpdate((prev) => ({
-        ...prev,
-        media: [...(prev?.media || []), newMediaItem],
-      }));
-
-      toast({ title: 'Asset added', description: `${newMediaItem.name} attached from library.` });
-    } catch (error) {
-      console.error('Failed to attach asset', error);
-      toast({ title: 'Attach failed', description: error.message || 'Could not attach asset.', variant: 'destructive' });
-    }
-  };
-
-  const toggleAssetSelection = (asset) => {
-    setSelectedAssets(prev => {
-      const isSelected = prev.some(a => (a.storagePath || a.url) === (asset.storagePath || asset.url));
-      if (isSelected) {
-        return prev.filter(a => (a.storagePath || a.url) !== (asset.storagePath || asset.url));
-      } else {
-        return [...prev, asset];
-      }
-    });
-  };
-
-  const handleSaveSelectedAssets = async () => {
-    if (selectedAssets.length === 0) return;
-
-    const currentMediaCount = page.media?.length || 0;
-    if (currentMediaCount + selectedAssets.length > 5) {
-      toast({
-        title: 'Upload Limit Exceeded',
-        description: `You can only attach up to 5 media items per page. You have ${currentMediaCount} already.`,
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    for (const asset of selectedAssets) {
-      await handleAttachFromAlbum(asset);
-    }
-
-    setSelectedAssets([]);
-    setMediaPickerOpen(false);
-  };
-
-  const handleMediaDelete = (mediaItemToDelete) => {
-    setMediaToDelete(mediaItemToDelete);
-  };
-
-  const confirmMediaDelete = async () => {
-    if (!mediaToDelete) return;
-
-    const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', page.id);
-    try {
-      await updateDoc(pageRef, { media: arrayRemove(mediaToDelete) });
-
-      // Untrack usage if this was attached from an album
-      if (mediaToDelete.albumId && mediaToDelete.storagePath) {
-        try {
-          const untrackUsage = httpsCallable(functions, 'untrackMediaUsage');
-          await untrackUsage({
-            albumId: mediaToDelete.albumId,
-            storagePath: mediaToDelete.storagePath,
-            bookId,
-            chapterId,
-            pageId: page.id
-          });
-        } catch (untrackError) {
-          console.error('Failed to untrack usage:', untrackError);
-          // Don't fail the whole operation if untracking fails
-        }
-      }
-
-      onPageUpdate({
-        ...page,
-        media: (page.media || []).filter(m => m.storagePath !== mediaToDelete.storagePath),
-      });
-      toast({ title: 'Success', description: 'Media deleted.' });
-    } catch {
-      toast({ title: 'Deletion Error', description: 'Could not update page details.', variant: 'destructive' });
-    } finally {
-      setMediaToDelete(null);
-    }
-  };
-
-  const openPreview = (mediaOrIndex) => {
-    const idx = typeof mediaOrIndex === 'number'
-      ? mediaOrIndex
-      : mediaList.findIndex(m => m.storagePath === mediaOrIndex.storagePath);
-    if (idx >= 0) {
-      setPreviewIndex(idx);
-      setPreviewOpen(true);
-    }
-  };
-
-  const closePreview = () => setPreviewOpen(false);
-  const goPrev = () => {
-    if (mediaList.length === 0) return;
-    setPreviewIndex((i) => (i - 1 + mediaList.length) % mediaList.length);
-  };
-  const goNext = () => {
-    if (mediaList.length === 0) return;
-    setPreviewIndex((i) => (i + 1) % mediaList.length);
-  };
-
-  // --- AI: callable + preview modal ---
-  const callRewrite = async () => {
-    setAiBusy(true);
-    try {
-      const call = httpsCallable(functions, 'rewriteNote');
-      const { data } = await call({
-        note: note, // Full note content (HTML or plain text)
-        noteText: stripHtml(note), // Plain text version (fallback)
-        prompt: aiStyle, // User-selected preset or custom prompt (up to 25 characters)
-        maxTokens: 512,
-        bookId: bookId, // Book ID for context
-        chapterId: chapterId, // Chapter ID for context
-        pageId: page.id, // Page ID for context
-      });
-      // Handle both direct response and wrapped response structure
-      const candidate = data?.rewritten ?? data?.result?.rewritten ?? '';
-      if (!candidate) {
-        toast({ title: 'No rewrite returned', description: 'Try again.', variant: 'destructive' });
-        return;
-      }
-      setAiPreviewText(candidate);
-      setAiPreviewOpen(true);
-    } catch (e) {
-      toast({ title: 'AI error', description: String(e?.message || e), variant: 'destructive' });
-    } finally {
-      setAiBusy(false);
-    }
-  };
-
-  const insertAtCursor = () => {
-    const editor = quillRef.current?.getEditor?.();
-    const candidate = aiPreviewText || '';
-
-    if (!editor) {
-      // Fallback: update state directly
-      const newNote = note + candidate;
-      setPendingNote(newNote);
-      return;
-    }
-
-    const range = editor.getSelection(true);
-    const currentIndex = range ? range.index : editor.getLength();
-
-    // Insert at cursor position
-    if (isLikelyHtml(candidate)) {
-      editor.clipboard.dangerouslyPasteHTML(currentIndex, candidate);
-    } else {
-      editor.insertText(currentIndex, candidate);
-    }
-
-    // Get updated content
-    const updatedContent = editor.root.innerHTML;
-    setPendingNote(updatedContent);
-    setNote(updatedContent);
-  };
-
-  const replaceAll = () => {
-    const editor = quillRef.current?.getEditor?.();
-    const candidate = aiPreviewText || '';
-
-    if (!editor) {
-      // Fallback: update state directly
-      setPendingNote(candidate);
-      return;
-    }
-
-    // Replace all content
-    const length = editor.getLength();
-    editor.deleteText(0, length);
-
-    if (isLikelyHtml(candidate)) {
-      editor.clipboard.dangerouslyPasteHTML(0, candidate);
-    } else {
-      editor.insertText(0, candidate);
-    }
-
-    // Get updated content
-    const updatedContent = editor.root.innerHTML;
-    setPendingNote(updatedContent);
-    setNote(updatedContent);
-  };
-
-  const handleSaveChanges = async () => {
-    if (!pendingNote) return;
-
-    setIsSaving(true);
-    const plain = stripHtml(pendingNote);
-    const shortNote = plain.substring(0, 40) + (plain.length > 40 ? '...' : '');
-
-    try {
-      const updatePageFn = httpsCallable(functions, 'updatePage');
-      await updatePageFn({
-        bookId,
-        chapterId,
-        pageId: page.id,
-        note: pendingNote,
-        media: page.media || []
-      });
-
-      // Update editor content
-      const editor = quillRef.current?.getEditor?.();
-      if (editor) {
-        const length = editor.getLength();
-        editor.deleteText(0, length);
-        if (isLikelyHtml(pendingNote)) {
-          editor.clipboard.dangerouslyPasteHTML(0, pendingNote);
-        } else {
-          editor.insertText(0, pendingNote);
-        }
-      }
-
-      setNote(pendingNote);
-      onPageUpdate({ ...page, note: pendingNote, shortNote });
-      setPendingNote(null);
-      setAiPreviewOpen(false);
-      onDraftChange?.(page.id, null);
-      toast({ title: 'Success', description: 'Changes saved successfully.' });
-    } catch (error) {
-      console.error('Failed to save changes:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to save changes. Please try again.',
-        variant: 'destructive'
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleCancelChanges = () => {
-    // Restore original content if changes were made
-    if (pendingNote) {
-      const editor = quillRef.current?.getEditor?.();
-      if (editor) {
-        const length = editor.getLength();
-        editor.deleteText(0, length);
-        if (isLikelyHtml(page.note)) {
-          editor.clipboard.dangerouslyPasteHTML(0, page.note || '');
-        } else {
-          editor.insertText(0, page.note || '');
-        }
-      }
-      setNote(page.note || '');
-    }
-    setPendingNote(null);
-    setAiPreviewOpen(false);
-  };
-
-  return (
-    <div className="p-6 bg-white rounded-2xl shadow-lg border border-gray-200 flex flex-col h-full">
-      <div className="flex justify-between items-center mb-4">
-        <div>
-          {chapterTitle && (
-            <div className="text-xs font-semibold text-violet-600 uppercase tracking-wider mb-1">
-              {chapterTitle}
-            </div>
-          )}
-          <h2 className="text-2xl font-bold text-gray-800">
-            Page {pageIndex + 1}
-          </h2>
-        </div>
-        <div className="relative group">
-          <Button
-            variant="secondary"
-            size="icon"
-            onClick={onAddPage}
-            className="h-8 w-8 rounded-full"
-            title="Add New Page"
-          >
-            <PlusCircle className="h-4 w-4" />
-          </Button>
-          <div
-            className="absolute left-1/2 -translate-x-1/2 mt-2 px-2 py-1 bg-gray-800 text-white text-xs rounded-md
-                    opacity-0 group-hover:opacity-100 translate-y-1 group-hover:translate-y-0
-                    transition-all duration-200 whitespace-nowrap"
-          >
-            Add new page
-          </div>
-        </div>
-      </div>
-
-      {/* Hidden file input for uploader */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*,video/*"
-        multiple
-        className="hidden"
-        onChange={handleFileSelect}
-      />
-
-      <Dialog open={mediaPickerOpen} onOpenChange={(open) => {
-        setMediaPickerOpen(open);
-        if (!open) setSelectedAssets([]);
-      }}>
-        <DialogContent className="max-w-4xl bg-white rounded-2xl shadow-2xl border border-gray-100 p-6">
-          <DialogHeader>
-            <DialogTitle>Add media to this page</DialogTitle>
-            <DialogDescription>
-              Upload from your computer or attach existing assets from your library.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="flex gap-2 mb-4">
-            <Button
-              variant={mediaPickerTab === 'upload' ? 'appPrimary' : 'outline'}
-              onClick={() => setMediaPickerTab('upload')}
-              className="flex-1"
-            >
-              Upload from computer
-            </Button>
-            <Button
-              variant={mediaPickerTab === 'library' ? 'appPrimary' : 'outline'}
-              onClick={() => setMediaPickerTab('library')}
-              className="flex-1"
-            >
-              Choose from asset registry
-            </Button>
-          </div>
-
-          {mediaPickerTab === 'upload' ? (
-            <div
-              className="p-6 border-2 border-dashed rounded-lg bg-gray-50 text-center text-sm text-app-gray-700"
-              onClick={openFileDialog}
-            >
-              <UploadCloud className="h-10 w-10 mx-auto mb-3 text-app-iris" />
-              <p className="font-semibold">Select files to upload</p>
-              <p className="text-xs text-app-gray-500">Up to 5 images or videos per page</p>
-              <div className="mt-4">
-                <Button variant="appPrimary" onClick={(e) => {
-                  e.stopPropagation();
-                  openFileDialog();
-                }}>
-                  Choose files
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="grid gap-4 lg:grid-cols-[220px,1fr]">
-              <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-                {albums.length === 0 ? (
-                  <div className="text-sm text-app-gray-600 bg-app-gray-50 border border-app-gray-100 rounded-md p-3">
-                    No asset albums yet. Create one from the Asset Registry page.
-                  </div>
-                ) : (
-                  albums.map((album) => (
-                    <button
-                      key={album.id}
-                      className={`w-full text-left px-3 py-2 rounded-md border transition-colors ${selectedAlbumId === album.id
-                        ? 'border-app-iris bg-app-iris/10 text-app-iris'
-                        : 'border-app-gray-100 hover:border-app-iris/40'
-                        }`}
-                      onClick={() => setSelectedAlbumId(album.id)}
-                    >
-                      <div className="font-semibold text-sm">{album.name || 'Untitled album'}</div>
-                      <div className="text-xs text-app-gray-500">{album.mediaCount || 0} assets</div>
-                    </button>
-                  ))
-                )}
-              </div>
-
-              <div className="border border-app-gray-100 rounded-lg p-4 min-h-[260px] max-h-[400px] overflow-y-auto bg-white">
-                {loadingAlbums ? (
-                  <div className="flex items-center justify-center h-full text-sm text-app-gray-600">Loading assets...</div>
-                ) : !selectedAlbumId ? (
-                  <div className="text-sm text-app-gray-600">Select an album to view its assets.</div>
-                ) : albumMedia.length === 0 ? (
-                  <div className="text-sm text-app-gray-600">No assets found in this album.</div>
-                ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                    {albumMedia.map((asset) => {
-                      const isSelected = selectedAssets.some(a => (a.storagePath || a.url) === (asset.storagePath || asset.url));
-                      return (
-                        <button
-                          key={`${asset.storagePath || asset.url}`}
-                          className={`relative rounded-lg overflow-hidden border-2 group transition-all ${isSelected
-                            ? 'border-app-iris bg-app-iris/10'
-                            : 'border-app-gray-100 hover:border-app-iris/60'
-                            }`}
-                          onClick={() => toggleAssetSelection(asset)}
-                        >
-                          {asset.type === 'image' ? (
-                            <img src={asset.url} alt={asset.name} className="h-24 w-full object-cover" />
-                          ) : (
-                            <video src={asset.url} className="h-24 w-full object-cover" />
-                          )}
-                          <div className={`absolute inset-0 transition-opacity flex items-center justify-center ${isSelected ? 'bg-app-iris/40' : 'bg-black/30 opacity-0 group-hover:opacity-100'
-                            }`}>
-                            {isSelected ? (
-                              <div className="bg-app-iris rounded-full p-1">
-                                <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                </svg>
-                              </div>
-                            ) : (
-                              <span className="text-xs font-semibold text-white">Select</span>
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Action buttons for selected assets */}
-              {selectedAssets.length > 0 && (
-                <div className="mt-4 flex justify-end gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => setSelectedAssets([])}
-                    size="sm"
-                  >
-                    Clear Selection
-                  </Button>
-                  <Button
-                    variant="appPrimary"
-                    onClick={handleSaveSelectedAssets}
-                    size="sm"
-                  >
-                    Add ({selectedAssets.length})
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Dropzone / uploader */}
-      <div
-        className="mb-4 p-4 border-2 border-dashed rounded-lg flex flex-col justify-center items-center bg-gray-50 text-gray-500 hover:bg-violet-50 hover:border-violet-400 transition-colors"
-        onClick={() => { setMediaPickerTab('upload'); setMediaPickerOpen(true); }}
-      >
-        {(!page.media || page.media.length === 0) && Object.keys(uploadProgress).length === 0 && (
-          <div className="text-center pointer-events-none">
-            <UploadCloud className="h-10 w-10 mx-auto mb-2" />
-            <p className="font-semibold">Add media to this page</p>
-            <p className="text-xs">Upload from your computer or choose from the asset registry</p>
-          </div>
-        )}
-
-        {/* Media grid */}
-        <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3 w-full">
-          {(page.media || []).map((media, idx) => (
-            <div
-              key={media.storagePath}
-              className="relative group aspect-square bg-gray-200 rounded-md overflow-hidden"
-              onClick={(e) => {
-                e.stopPropagation();
-                openPreview(idx);
-              }}
-            >
-              {media.type === 'image' ? (
-                <img src={media.url} alt={media.name} className="w-full h-full object-cover cursor-zoom-in" />
-              ) : (
-                <video src={media.url} className="w-full h-full object-cover cursor-pointer" />
-              )}
-
-              <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex justify-center items-center text-white text-xs font-medium">
-                <span>Click to view</span>
-              </div>
-
-              <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <Button
-                  variant="destructive"
-                  size="icon"
-                  className="h-6 w-6"
-                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleMediaDelete(media);
-                  }}
-                >
-                  <Trash2 className="h-3 w-3" />
-                </Button>
-              </div>
-            </div>
-          ))}
-
-          {/* Upload progress tiles */}
-          {Object.entries(uploadProgress).map(([name, progress]) => (
-            <div
-              key={name}
-              className="relative aspect-square bg-gray-200 rounded-md flex flex-col justify-center items-center text-xs p-1"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <p className="font-semibold truncate w-full text-center">{name}</p>
-              <div className="w-full bg-gray-300 rounded-full h-1.5 mt-1">
-                <div className="bg-violet-600 h-1.5 rounded-full" style={{ width: `${progress}%` }} />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Notes + controls */}
-      <div className="space-y-4 flex-grow flex flex-col">
-        <div className="flex-grow flex flex-col">
-          <div className="flex items-center justify-between mb-1"></div>
-
-          <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-          <div className="flex-grow">
-            <ReactQuill
-              ref={quillRef}
-              value={note}
-              onChange={handleNoteChange}
-              modules={quillModules}
-              formats={quillFormats}
-              theme="snow"
-              placeholder="Add notes for this page..."
-              className="[&_.ql-container]:min-h-[200px] [&_.ql-container]:rounded-b-md [&_.ql-toolbar]:rounded-t-md"
-            />
-          </div>
-        </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-          {/* Page navigation */}
-          <div className="flex items-center space-x-2 shrink-0">
-            <Button variant="outline" size="icon" onClick={() => onNavigate('prev')} disabled={pageIndex === 0}>
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <span className="text-sm font-medium text-gray-600 whitespace-nowrap">
-              Page {pageIndex + 1} of {totalPages}
-            </span>
-            <Button variant="outline" size="icon" onClick={() => onNavigate('next')} disabled={pageIndex === totalPages - 1}>
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {/* AI controls + Save */}
-          <div className="flex flex-wrap items-center gap-2">
-            {draftNote != null && draftNote !== (page.note || '') && (
-              <span className="text-xs text-gray-500 flex items-center shrink-0">
-                Unsaved changes
-              </span>
-            )}
-
-            {/* AI style input + dropdown */}
-            <div className="relative flex items-center style-dropdown-container min-w-0">
-              <Input
-                type="text"
-                value={aiStyle}
-                onChange={(e) => setAiStyle(e.target.value)}
-                maxLength={25}
-                placeholder="Custom style or choose pre"
-                className="text-sm h-9 rounded-r-none border-r-0 pr-2 min-w-0 w-full max-w-[180px]"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setShowStyleDropdown(!showStyleDropdown);
-                }}
-                className="h-9 rounded-l-none px-2 shrink-0"
-              >
-                <ChevronDown className="h-4 w-4" />
-              </Button>
-              {showStyleDropdown && (
-                <div className="absolute top-full right-0 mt-1 z-50 bg-white border rounded-md shadow-lg min-w-[200px]">
-                  <div className="py-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAiStyle('Improve clarity');
-                        setShowStyleDropdown(false);
-                      }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
-                    >
-                      Improve clarity
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAiStyle('Warm & supportive');
-                        setShowStyleDropdown(false);
-                      }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
-                    >
-                      Warm & supportive
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAiStyle('Concise summary');
-                        setShowStyleDropdown(false);
-                      }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
-                    >
-                      Concise summary
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAiStyle('Fix grammar only');
-                        setShowStyleDropdown(false);
-                      }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
-                    >
-                      Fix grammar only
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Rewrite button */}
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={aiBusy || !stripHtml(note)?.trim() || !aiStyle?.trim()}
-              onClick={callRewrite}
-              className="flex items-center gap-1 shrink-0 whitespace-nowrap"
-            >
-              <Sparkles className="h-4 w-4" />
-              {aiBusy ? 'Rewriting...' : 'Rewrite with AI'}
-            </Button>
-
-            {/* Save button */}
-            <Button onClick={handleSave} disabled={isSaving} variant="appSuccess" className="shrink-0">
-              {isSaving ? 'Saving...' : 'Save'}
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Media Preview Modal */}
-      <Dialog open={previewOpen} onOpenChange={(open) => (open ? setPreviewOpen(true) : closePreview())}>
-        <DialogContent className="relative max-w-4xl p-0 overflow-hidden bg-transparent border-0 shadow-none">
-          <DialogHeader className="px-6 pt-6">
-            <DialogTitle className="text-lg font-semibold text-gray-200 truncate">
-              {previewItem?.name || 'Preview'}
-            </DialogTitle>
-            <DialogDescription className="text-sm text-gray-400 truncate">
-              {previewItem?.type}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div
-            className="relative flex justify-center items-center p-4 group transition-all"
-            style={{ maxHeight: '80vh' }}
-          >
-            {previewItem?.type === 'image' ? (
-              <img
-                src={previewItem.url}
-                alt={previewItem.name}
-                className="object-contain max-h-[75vh] w-auto rounded-md"
-              />
-            ) : previewItem ? (
-              <video
-                src={previewItem.url}
-                controls
-                className="object-contain max-h-[75vh] w-auto rounded-md"
-              />
-            ) : null}
-
-            {mediaList.length > 1 && (
-              <>
-                <button
-                  onClick={goPrev}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 z-20 h-10 w-10 flex items-center justify-center 
-                       rounded-full bg-white/60 hover:bg-white/90 transition-all shadow-md backdrop-blur-md 
-                       opacity-0 group-hover:opacity-100"
-                  aria-label="Previous"
-                >
-                  <ChevronLeft className="h-5 w-5 text-gray-800" />
-                </button>
-                <button
-                  onClick={goNext}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 z-20 h-10 w-10 flex items-center justify-center 
-                       rounded-full bg-white/60 hover:bg-white/90 transition-all shadow-md backdrop-blur-md 
-                       opacity-0 group-hover:opacity-100"
-                  aria-label="Next"
-                >
-                  <ChevronRight className="h-5 w-5 text-gray-800" />
-                </button>
-              </>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* AI Preview Modal */}
-      <Dialog open={aiPreviewOpen} onOpenChange={(open) => !open && handleCancelChanges()}>
-        <DialogContent className="max-w-3xl bg-gradient-to-br from-violet-50 via-rose-50 to-amber-50 border-2 border-violet-200 shadow-2xl">
-          {/* Header with prompt type */}
-          <DialogHeader className="bg-white rounded-t-lg p-6 border-b-2 border-violet-200">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-violet-100 rounded-full">
-                <Sparkles className="h-6 w-6 text-violet-600" />
-              </div>
-              <div className="flex-1">
-                <DialogTitle className="text-2xl font-bold text-violet-900">
-                  Suggestion
-                </DialogTitle>
-                <DialogDescription className="text-base text-violet-700 mt-1">
-                  {aiStyle || 'Custom prompt'}
-                </DialogDescription>
-              </div>
-            </div>
-          </DialogHeader>
-
-          {/* Suggested content */}
-          <div className="p-6 bg-white/90 backdrop-blur-sm rounded-lg mx-4 my-4 max-h-[50vh] overflow-auto border border-violet-100 shadow-inner">
-            <div
-              className="prose prose-lg max-w-none text-gray-800"
-              dangerouslySetInnerHTML={{
-                __html: isLikelyHtml(aiPreviewText)
-                  ? aiPreviewText
-                  : textToHtml(aiPreviewText || '')
-              }}
-            />
-          </div>
-
-          {/* Action buttons */}
-          <div className="px-6 pb-6 space-y-3">
-            <div className="flex items-center justify-center gap-3">
-              <Button
-                variant="outline"
-                onClick={insertAtCursor}
-                className="bg-white hover:bg-violet-50 border-violet-300 text-violet-700 hover:text-violet-900"
-              >
-                Insert at cursor
-              </Button>
-              <Button
-                variant="outline"
-                onClick={replaceAll}
-                className="bg-white hover:bg-rose-50 border-rose-300 text-rose-700 hover:text-rose-900"
-              >
-                Replace all
-              </Button>
-            </div>
-
-            {pendingNote && (
-              <div className="pt-3 border-t border-violet-200">
-                <p className="text-sm text-center text-gray-600 mb-3">
-                  Changes are ready. Save to update or cancel to discard.
-                </p>
-                <div className="flex items-center justify-center gap-3">
-                  <Button
-                    variant="outline"
-                    onClick={handleCancelChanges}
-                    className="bg-white hover:bg-gray-50 border-gray-300"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleSaveChanges}
-                    disabled={isSaving}
-                    className="bg-gradient-to-r from-violet-500 to-rose-500 hover:from-violet-600 hover:to-rose-600 text-white shadow-lg"
-                  >
-                    {isSaving ? 'Saving...' : 'Save Changes'}
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {!pendingNote && (
-              <div className="flex items-center justify-center pt-3 border-t border-violet-200">
-                <Button
-                  variant="outline"
-                  onClick={handleCancelChanges}
-                  className="bg-white hover:bg-gray-50 border-gray-300"
-                >
-                  Close
-                </Button>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Confirmation Modal for Media Deletion */}
-      <ConfirmationModal
-        isOpen={!!mediaToDelete}
-        onClose={() => setMediaToDelete(null)}
-        onConfirm={confirmMediaDelete}
-        title="Remove Media"
-        description="Removing this media only deletes the reference from this page. The file remains in your Assets Registry. To permanently delete the file and free up storage space, please remove it from the Assets Registry."
-      />
-    </div>
-  );
-};
-
-// --- MAIN COMPONENT ---
-
-const ChatPanel = () => {
-  const [messages, setMessages] = useState([
-    { role: 'assistant', content: 'Hello! I can help you plan your book, brainstorm ideas, or review your writing. What are you working on today?' }
-  ]);
-  const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
-  const [panelWidth, setPanelWidth] = useState(320); // Default 320px (w-80)
-  const [isResizing, setIsResizing] = useState(false);
-
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
-
-    const userQuery = input.trim();
-    setMessages(prev => [...prev, { role: 'user', content: userQuery }]);
-    setInput('');
-    setIsLoading(true);
-
-    try {
-      const queryBookFlowFn = httpsCallable(functions, 'queryBookFlow');
-
-      // Construct history including the new user message
-      const history = [...messages, { role: 'user', content: userQuery }];
-
-      const result = await queryBookFlowFn({ messages: history });
-
-      const { answer, sources } = result.data;
-
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: answer,
-        sources: sources
-      }]);
-    } catch (error) {
-      console.error('RAG Query Error:', error);
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: 'Sorry, I encountered an error while searching your book. Please try again.'
-      }]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Handle resize drag
-  const handleMouseDown = (e) => {
-    e.preventDefault();
-    setIsResizing(true);
-  };
-
-  useEffect(() => {
-    const handleMouseMove = (e) => {
-      if (!isResizing) return;
-      const newWidth = window.innerWidth - e.clientX;
-      // Clamp width between 280px and 600px
-      setPanelWidth(Math.max(280, Math.min(600, newWidth)));
-    };
-
-    const handleMouseUp = () => {
-      setIsResizing(false);
-    };
-
-    if (isResizing) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    }
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isResizing]);
-
-  if (isMinimized) {
-    return (
-      <div className="shrink-0 bg-card border-l border-border flex flex-col items-center py-4 px-2 w-12">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setIsMinimized(false)}
-          className="h-8 w-8 text-app-iris hover:bg-app-iris/10"
-          title="Expand AI Assistant"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <div className="mt-4 writing-mode-vertical text-xs font-semibold text-muted-foreground transform rotate-180">
-          AI Assistant
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className="flex flex-col h-full bg-card border-l border-border shrink-0 relative transition-all duration-200"
-      style={{ width: `${panelWidth}px` }}
-    >
-      {/* Resize handle */}
-      <div
-        className={`absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-app-iris/40 transition-colors ${isResizing ? 'bg-app-iris/60' : 'bg-transparent'}`}
-        onMouseDown={handleMouseDown}
-        title="Drag to resize"
-      />
-
-      <div className="p-4 border-b border-border flex items-center justify-between bg-app-gray-50/70">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-app-iris" />
-          <h3 className="font-semibold text-foreground text-sm">AI Assistant</h3>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setIsMinimized(true)}
-          className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-app-gray-100"
-          title="Minimize"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${msg.role === 'user'
-              ? 'bg-app-iris text-white rounded-br-none'
-              : 'bg-app-gray-100 text-foreground rounded-bl-none'
-              }`}>
-              <p>{msg.content}</p>
-              {msg.sources && msg.sources.length > 0 && (
-                <div className="mt-2 pt-2 border-t border-border/20 text-xs opacity-80">
-                  <p className="font-semibold mb-1">Sources:</p>
-                  <ul className="list-disc pl-4 space-y-0.5">
-                    {msg.sources.map((source, idx) => (
-                      <li key={idx}>{source.shortNote}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-        {isLoading && (
-          <div className="flex justify-start">
-            <div className="bg-app-gray-100 text-foreground rounded-2xl rounded-bl-none px-3 py-2 text-sm flex items-center gap-1">
-              <div className="w-1.5 h-1.5 bg-app-gray-300 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <div className="w-1.5 h-1.5 bg-app-gray-300 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-              <div className="w-1.5 h-1.5 bg-app-gray-300 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="p-3 border-t border-border bg-card">
-        <div className="relative">
-          <Input
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            placeholder="Ask anything..."
-            className="pr-10 text-sm"
-            onKeyDown={e => e.key === 'Enter' && !isLoading && handleSend()}
-            disabled={isLoading}
-          />
-          <Button
-            size="icon"
-            variant="ghost"
-            className="absolute right-1 top-1 h-7 w-7 text-app-iris hover:bg-app-iris/10"
-            onClick={handleSend}
-            disabled={isLoading || !input.trim()}
-          >
-            <Send className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
+// NOTE: The large inline PageEditor and ChatPanel components have been extracted.
+// PageEditor -> src/components/PageEditor/index.jsx
+// ChatPanel -> src/components/ChatPanel.jsx
 
 const BookDetail = () => {
   const { bookId } = useParams();
@@ -1481,55 +72,426 @@ const BookDetail = () => {
 
   // ---------------------------------------------------------------------------
   // ⚡ OPTIMIZATION 1: Synchronous State Initialization
-  // Initialize state directly from location.state so we don't show loading screen
   // ---------------------------------------------------------------------------
   const [book, setBook] = useState(() => location.state?.prefetchedBook || null);
   const [chapters, setChapters] = useState(() => location.state?.prefetchedChapters || []);
-
-  // Only show loading if we don't have the book data yet
   const [loading, setLoading] = useState(() => !location.state?.prefetchedBook);
-
-  // Derived state for initial selection
   const [selectedChapterId, setSelectedChapterId] = useState(() => {
     if (location.state?.prefetchedChapters?.length > 0) {
       return location.state.prefetchedChapters[0].id;
     }
     return null;
   });
-
   const [expandedChapters, setExpandedChapters] = useState(() => {
     if (location.state?.prefetchedChapters?.length > 0) {
       return new Set([location.state.prefetchedChapters[0].id]);
     }
     return new Set();
   });
-
   const [pages, setPages] = useState([]);
   const [selectedPageId, setSelectedPageId] = useState(null);
 
   // UI States
-  const [newChapterTitle, setNewChapterTitle] = useState('');
-  const [modalState, setModalState] = useState({ isOpen: false });
-  const [pageDrafts, setPageDrafts] = useState({});
-  const [pageSaveConfirmOpen, setPageSaveConfirmOpen] = useState(false);
-  const [pendingPageAction, setPendingPageAction] = useState(null);
-  const [editingChapterId, setEditingChapterId] = useState(null);
-  const [editingChapterTitle, setEditingChapterTitle] = useState('');
-  const [saveConfirmOpen, setSaveConfirmOpen] = useState(false);
-  const [pendingChapterEdit, setPendingChapterEdit] = useState(null);
-  const [publishModalOpen, setPublishModalOpen] = useState(false);
-  const [editBookModalOpen, setEditBookModalOpen] = useState(false);
-  const [coAuthorModalOpen, setCoAuthorModalOpen] = useState(false);
-  const [userSearchQuery, setUserSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [coAuthorUsers, setCoAuthorUsers] = useState([]);
-  const searchTimeoutRef = useRef(null);
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
+  const [leftSidebarWidth, setLeftSidebarWidth] = useState(288);
+  const [isResizingLeft, setIsResizingLeft] = useState(false);
+
+  // Resize Handler Logic
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isResizingLeft) return;
+      const newWidth = e.clientX;
+      setLeftSidebarWidth(Math.max(200, Math.min(480, newWidth)));
+    };
+    const handleMouseUp = () => setIsResizingLeft(false);
+
+    if (isResizingLeft) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'ew-resize';
+      document.body.style.userSelect = 'none';
+    } else {
+      document.body.style.cursor = 'default';
+      document.body.style.userSelect = 'auto';
+    }
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'default';
+      document.body.style.userSelect = 'auto';
+    };
+  }, [isResizingLeft]);
+
+  const {
+    newChapterTitle,
+    setNewChapterTitle,
+    modalState,
+    setModalState,
+    pageDrafts,
+    setPageDrafts,
+    pageSaveConfirmOpen,
+    setPageSaveConfirmOpen,
+    pendingPageAction,
+    setPendingPageAction,
+    editingChapterId,
+    setEditingChapterId,
+    editingChapterTitle,
+    setEditingChapterTitle,
+    saveConfirmOpen,
+    setSaveConfirmOpen,
+    pendingChapterEdit,
+    setPendingChapterEdit,
+    publishModalOpen,
+    setPublishModalOpen,
+    editBookModalOpen,
+    setEditBookModalOpen,
+    coAuthorModalOpen,
+    setCoAuthorModalOpen,
+    userSearchQuery,
+    setUserSearchQuery,
+    searchResults,
+    setSearchResults,
+    isSearching,
+    setIsSearching,
+    coAuthorUsers,
+    setCoAuthorUsers,
+    searchTimeoutRef,
+    pageRefs,
+    pageContainerRefs,
+    scrollContainerRef,
+    activePageId,
+    setActivePageId,
+    isSavingChapter,
+    setIsSavingChapter,
+    isChatMinimized,
+    setIsChatMinimized,
+    standardPageHeightPx,
+    setStandardPageHeightPx,
+    scrollContainerWidthPx,
+    setScrollContainerWidthPx
+  } = useBookDetailState();
   const { toast } = useToast();
 
-  // Refs
+  // ---------------------------------------------------------------------------
+  // 📜 Continuous Scroll & Footer Logic
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // 🕐 User Input Tracking for Typing Cooldown
+  // ---------------------------------------------------------------------------
+
+  // Pre-emptive creation: Create next page if current is >90% full
+  const checkPreemptiveCreation = useCallback((pageId) => {
+    const pageIdx = pages.findIndex(p => p.id === pageId);
+    if (pageIdx < 0) return;
+
+    // Only if it's the last page (or followed by temps we want to manage?)
+    // Actually, just if next page DOES NOT exist.
+    if (pages[pageIdx + 1]) return;
+
+    const api = pageRefs.current[pageId];
+    if (!api) return;
+
+    const clientH = api.getContentClientHeight();
+    const scrollH = api.getContentScrollHeight();
+
+    if (clientH > 0 && scrollH > clientH * 0.9) {
+      console.log(`[BookDetail] Pre-emptive creation for ${pageId} (Fill: ${(scrollH / clientH).toFixed(2)})`);
+
+      const currentPage = pages[pageIdx];
+      const nextOrder = getNewOrderBetween(currentPage.order, null);
+      const tempId = `temp_${Date.now()}_pre`;
+
+      const newPage = {
+        id: tempId,
+        order: nextOrder,
+        note: '',
+        media: [],
+        shortNote: '',
+      };
+
+      setPages(prev => [...prev, newPage]);
+      setPageDrafts(prev => ({
+        ...prev,
+        [tempId]: { blocks: [], updatedAt: Date.now() }
+      }));
+    }
+  }, [pages, setPages, setPageDrafts, getNewOrderBetween]);
+
+  const lastUserInputAtRef = useRef({});
+  const handleUserInput = useCallback((pageId) => {
+    lastUserInputAtRef.current[pageId] = Date.now();
+    // Trigger pre-emptive check
+    requestAnimationFrame(() => checkPreemptiveCreation(pageId));
+  }, [checkPreemptiveCreation]);
+  const getLastUserInputAt = useCallback((pageId) => {
+    return lastUserInputAtRef.current[pageId] || 0;
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // 📄 Page API (cursor-aware for reflow)
+  // ---------------------------------------------------------------------------
+  const pageApi = useMemo(() => ({
+    getBlocks: (pageId) => pageRefs.current?.[pageId]?.getBlocks?.() || [],
+    setBlocks: (pageId, blocks, options) => {
+      const api = pageRefs.current?.[pageId];
+      if (!api?.setBlocks) return Promise.resolve();
+      return api.setBlocks(blocks, options);
+    },
+    getScrollHeight: (pageId) => pageRefs.current?.[pageId]?.getContentScrollHeight?.() || 0,
+    getClientHeight: (pageId) => pageRefs.current?.[pageId]?.getContentClientHeight?.() || 0,
+    // Cursor APIs
+    getSelection: (pageId) => pageRefs.current?.[pageId]?.getSelection?.() || null,
+    getActiveBlockId: (pageId) => pageRefs.current?.[pageId]?.getActiveBlockId?.() || null,
+    isCursorInLastBlock: (pageId) => pageRefs.current?.[pageId]?.isCursorInLastBlock?.() || false,
+    isCursorAtEndOfPage: (pageId) => pageRefs.current?.[pageId]?.isCursorAtEndOfPage?.() || false,
+    focusBlock: (pageId, blockId, pos) => pageRefs.current?.[pageId]?.focusBlock?.(blockId, pos) || false,
+    focusAtStart: (pageId) => pageRefs.current?.[pageId]?.focusAtStart?.() || false,
+    focusAtEnd: (pageId) => pageRefs.current?.[pageId]?.focusAtEnd?.() || false,
+    splitActiveBlockAtCursor: (pageId) => pageRefs.current?.[pageId]?.splitActiveBlockAtCursor?.() || null,
+  }), []);
+
+  const { requestReflow } = usePaginationReflow({
+    layoutMode: book?.layoutMode || 'standard',
+    pages,
+    setPages,
+    pageDrafts,
+    setPageDrafts,
+    chapterId: selectedChapterId,
+    getNewOrderBetween,
+    pageApi,
+    activePageId,
+    getLastUserInputAt,
+    canRemoveTempPages: true,
+    options: {
+      maxMovesPerFrame: 1,
+      maxOverflowMoves: 1,
+      underfillPull: true,
+      fillTargetRatio: 0.9,
+      minFillRatio: 0.7,
+      overflowStartPx: 0,
+      overflowStopPx: 24,
+      typingCooldownMs: 500,
+    },
+  });
+
+  const reflowDebounceRef = useRef(null);
+  const requestReflowDebounced = useCallback((pageId) => {
+    if (!pageId) return;
+    if (reflowDebounceRef.current) clearTimeout(reflowDebounceRef.current);
+    reflowDebounceRef.current = setTimeout(() => {
+      requestReflow(pageId);
+    }, 200);
+  }, [requestReflow]);
+
+  const isBlocksEmpty = useCallback((blocks = []) => {
+    if (!Array.isArray(blocks) || blocks.length === 0) return true;
+    return blocks.every((block) => {
+      if (!block) return true;
+      if (block.type === 'image' || block.type === 'video') return false;
+      if (Array.isArray(block.content)) {
+        const text = block.content.map(part => part?.text || '').join('').trim();
+        return text.length === 0;
+      }
+      if (typeof block.text === 'string') return block.text.trim().length === 0;
+      return true;
+    });
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // 🚀 Fast-Path: Handle typing at end of full page
+  // ---------------------------------------------------------------------------
+  const pageAlign = !leftSidebarOpen && isChatMinimized ? 'center' : 'start';
+
+  // (Moved checkPreemptiveCreation up to fix ReferenceError)
+
+  const handleNearOverflowAtEnd = useCallback(async (pageId) => {
+    console.log(`[BookDetail] handleNearOverflowAtEnd detected for page ${pageId}`);
+    const pageIdx = pages.findIndex(p => p.id === pageId);
+    if (pageIdx < 0) return;
+
+    // Check if next page exists
+    let nextPage = pages[pageIdx + 1];
+    if (!nextPage) {
+      // Create a temp page
+      const currentPage = pages[pageIdx];
+      const nextOrder = pages[pageIdx + 1]?.order;
+      const newOrder = getNewOrderBetween(currentPage.order, nextOrder);
+      const tempId = `temp_${Date.now()}`;
+      console.log(`[BookDetail] Creating new temp page: ${tempId} after ${currentPage?.id}`);
+      nextPage = {
+        id: tempId,
+        order: newOrder,
+        note: '',
+        media: [],
+        shortNote: '',
+      };
+      setPages(prev => {
+        const newPages = [...prev];
+        newPages.splice(pageIdx + 1, 0, nextPage);
+        return newPages;
+      });
+      setPageDrafts(prev => ({
+        ...prev,
+        [tempId]: { blocks: [], updatedAt: Date.now() }
+      }));
+    }
+
+    const currentPage = pages[pageIdx];
+    if (currentPage?.id && !currentPage.id.startsWith('temp_')) {
+      // ⚡ OPTIMIZATION: Fire and forget save to avoid blocking UI
+      pageRefs.current?.[currentPage.id]?.save?.().catch(e => console.error('Background save failed:', e));
+    }
+
+    // Focus the next page at start with retry
+    console.log(`📄 handleNearOverflowAtEnd: Moving cursor to next page ${nextPage.id}`);
+    await focusWithRetry(pageRefs, nextPage.id, 'start');
+  }, [pages, setPages, setPageDrafts, getNewOrderBetween]);
+
+  const handleBackspaceAtStart = useCallback((pageId) => {
+    const pageIdx = pages.findIndex(p => p.id === pageId);
+    if (pageIdx <= 0) return false;
+
+    const page = pages[pageIdx];
+    const blocks = pageRefs.current?.[pageId]?.getBlocks?.() || pageDrafts[pageId]?.blocks || [];
+    if (!isBlocksEmpty(blocks)) return false;
+
+    const prevPage = pages[pageIdx - 1];
+    if (page?.id?.startsWith('temp_')) {
+      setPages(prev => prev.filter(p => p.id !== pageId));
+      setPageDrafts(prev => {
+        const next = { ...prev };
+        delete next[pageId];
+        return next;
+      });
+      setChapters(prev => prev.map(c => c.id === selectedChapterId ? {
+        ...c,
+        pagesSummary: (c.pagesSummary || []).filter(ps => ps.pageId !== pageId)
+      } : c));
+
+      if (selectedPageId === pageId && prevPage) {
+        setSelectedPageId(prevPage.id);
+      }
+    }
+
+    setTimeout(() => {
+      if (prevPage) {
+        const el = pageContainerRefs.current[prevPage.id];
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        focusWithRetry(pageRefs, prevPage.id, 'end');
+      }
+    }, 0);
+
+    return true;
+  }, [pages, pageDrafts, selectedChapterId, selectedPageId, isBlocksEmpty]);
+
+  const removeTempPage = useCallback((pageId) => {
+    const pageIdx = pages.findIndex(p => p.id === pageId);
+    if (pageIdx < 0) return;
+    const prevPage = pages[pageIdx - 1] || pages[pageIdx + 1] || null;
+
+    setPages(prev => prev.filter(p => p.id !== pageId));
+    setPageDrafts(prev => {
+      const next = { ...prev };
+      delete next[pageId];
+      return next;
+    });
+    setChapters(prev => prev.map(c => c.id === selectedChapterId ? {
+      ...c,
+      pagesSummary: (c.pagesSummary || []).filter(ps => ps.pageId !== pageId)
+    } : c));
+
+    if (selectedPageId === pageId && prevPage) {
+      setSelectedPageId(prevPage.id);
+    }
+  }, [pages, selectedChapterId, selectedPageId]);
+
+  // Update active page on scroll
+  useEffect(() => {
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting && entry.intersectionRatio > 0.3) {
+          const pageId = entry.target.getAttribute('data-page-id');
+          if (pageId) {
+            setActivePageId(pageId);
+          }
+        }
+      });
+    }, {
+      root: scrollContainerRef.current,
+      threshold: [0.1, 0.3, 0.5]
+    });
+
+    const currentRefs = pageContainerRefs.current;
+    Object.values(currentRefs).forEach(el => {
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, [pages]);
+
+  // Standard layout: compute viewport-based fixed page height
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+
+    const compute = () => {
+      const h = el.clientHeight || 0;
+      const w = el.clientWidth || 0;
+      const clampedHeight = Math.max(900, Math.min(15000, h - 140));
+      setStandardPageHeightPx(clampedHeight);
+      setScrollContainerWidthPx(w);
+    };
+
+    compute();
+    const ro = new ResizeObserver(() => compute());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!pages?.length) return;
+    const startId = activePageId || pages[0]?.id;
+    if (startId) requestReflowDebounced(startId);
+  }, [standardPageHeightPx, scrollContainerWidthPx, pages, activePageId, requestReflowDebounced]);
+
+  useEffect(() => {
+    if (!pages?.length) return;
+    const firstId = pages[0]?.id;
+    if (firstId) requestReflowDebounced(firstId);
+  }, [pages?.length, requestReflowDebounced]);
+
+  // Sync activePageId with selectedPageId when user clicks sidebar
+  useEffect(() => {
+    if (selectedPageId) {
+      const el = pageContainerRefs.current[selectedPageId];
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        setActivePageId(selectedPageId);
+        focusWithRetry(pageRefs, selectedPageId, 'start');
+      }
+    }
+  }, [selectedPageId]);
+
+  const handleSaveChapter = async () => {
+    if (!selectedChapterId || isSavingChapter) return;
+    setIsSavingChapter(true);
+    try {
+      for (const page of pages) {
+        await pageRefs.current?.[page.id]?.save?.();
+      }
+      toast({ title: 'Chapter saved', description: 'All pages have been saved.' });
+    } catch (error) {
+      console.error('Save chapter failed:', error);
+      toast({ title: 'Save Failed', description: error.message || 'Could not save chapter.', variant: 'destructive' });
+    } finally {
+      setIsSavingChapter(false);
+    }
+  };
+
   const isFetchingRef = useRef(false);
-  // Track if we've done the initial page load for the selected chapter
   const loadedChaptersRef = useRef(new Set());
 
   // ---------------------------------------------------------------------------
@@ -1638,18 +600,27 @@ const BookDetail = () => {
     setChapters(chaptersList);
   }, [bookId]);
 
+  const handleDraftChange = useCallback((pageId, newContent) => {
+    setPageDrafts(prev => {
+      if (newContent === null) {
+        const next = { ...prev };
+        delete next[pageId];
+        return next;
+      }
+      return { ...prev, [pageId]: newContent };
+    });
+  }, []);
+
   // Permission checks
   // Permission checks
   const isOwner = book?.ownerId === user?.uid || book?.members?.[user?.uid] === 'Owner';
   const isCoAuthor = book?.members?.[user?.uid] === 'Co-author';
   const canEdit = isOwner || isCoAuthor;
+  const chapterTitle = chapters.find(c => c.id === selectedChapterId)?.title;
 
-  console.log('👤 Auth Check:', {
-    userId: user?.uid,
-    bookOwnerId: book?.ownerId,
-    isOwner,
-    members: book?.members
-  });
+
+  // Permissions end
+
 
   // User search function
   const searchUsers = useCallback(async (searchTerm) => {
@@ -1897,7 +868,13 @@ const BookDetail = () => {
   const handleConfirmDelete = async () => {
     const { type, data } = modalState;
     if (type === 'chapter') await handleDeleteChapter(data.id);
-    else if (type === 'page') await handleDeletePage(data.chapterId, data.pageId, data.pageIndex);
+    else if (type === 'page') {
+      if (data.pageId?.startsWith('temp_')) {
+        removeTempPage(data.pageId);
+      } else {
+        await handleDeletePage(data.chapterId, data.pageId, data.pageIndex);
+      }
+    }
     closeModal();
   };
 
@@ -2044,7 +1021,42 @@ const BookDetail = () => {
     setNewChapterTitle('');
   };
 
-  const handleAddPage = async () => {
+  // Legacy AI functions removed. PageEditor handles AI writes internally.
+  // Keeping this comment as placeholder if logic path is needed.
+
+  const handlePageFocus = useCallback((pageId) => {
+    // console.log('Focus triggered for:', pageId);
+    if (pageId && activePageId !== pageId) {
+      console.log('Set active page (focus):', pageId);
+      setActivePageId(pageId);
+    }
+  }, [activePageId]);
+
+  const handlePageNavigate = useCallback(async (pageId, direction) => {
+    const currentIndex = pages.findIndex(p => p.id === pageId);
+    if (currentIndex === -1) return;
+
+    let targetPageId = null;
+    if (direction === 'next' && currentIndex < pages.length - 1) {
+      targetPageId = pages[currentIndex + 1].id;
+    } else if (direction === 'prev' && currentIndex > 0) {
+      targetPageId = pages[currentIndex - 1].id;
+    }
+
+    if (targetPageId) {
+      // Scroll to the target page
+      const el = pageContainerRefs.current[targetPageId];
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      // Focus using PageEditor ref with proper cursor positioning
+      const focusPosition = direction === 'next' ? 'start' : 'end';
+      console.log(`📄 handlePageNavigate: Moving cursor to ${direction} page ${targetPageId} at ${focusPosition}`);
+      await focusWithRetry(pageRefs, targetPageId, focusPosition);
+    }
+  }, [pages]);
+
+  const handleAddPage = async (saveImmediately = false, overflowContent = '') => {
     if (!canEdit) {
       toast({
         title: 'Permission Denied',
@@ -2058,36 +1070,51 @@ const BookDetail = () => {
     try {
       const newOrder = getMidpointString(pages[pages.length - 1]?.order);
 
-      // Call Cloud Function to create NEW page with embeddings
-      const createPageFn = httpsCallable(functions, 'createPage');
-      const result = await createPageFn({
-        bookId,
-        chapterId: selectedChapterId,
-        note: '',
-        media: [],
-        order: newOrder,
-      });
+      if (!saveImmediately) {
+        const tempId = `temp_${Date.now()}`;
+        const newPage = {
+          id: tempId,
+          chapterId: selectedChapterId,
+          note: overflowContent, // Use overflow content if provided
+          media: [],
+          order: newOrder,
+        };
 
-      const newPage = result.data.page;
+        // Update local state immediately
+        setPages([...pages, newPage].sort((a, b) => a.order.localeCompare(b.order)));
+        setSelectedPageId(tempId);
+        setPageDrafts(prev => ({
+          ...prev,
+          [tempId]: { blocks: [], updatedAt: Date.now() }
+        }));
 
-      // Update local state
-      setPages([...pages, newPage].sort((a, b) => a.order.localeCompare(b.order)));
-      setSelectedPageId(newPage.id);
+        // Update sidebar
+        const plain = stripHtml(overflowContent);
+        const newPageSummary = {
+          pageId: tempId,
+          shortNote: plain ? plain.substring(0, 40) + (plain.length > 40 ? '...' : '') : 'New Page (Draft)',
+          order: newOrder
+        };
 
-      // Update chapters with new page summary
-      const plain = stripHtml(newPage.note || '');
-      const newPageSummary = {
-        pageId: newPage.id,
-        shortNote: plain ? plain.substring(0, 40) + (plain.length > 40 ? '...' : '') : 'New Page',
-        order: newOrder
-      };
+        setChapters(chapters.map(c => c.id === selectedChapterId ? {
+          ...c,
+          pagesSummary: [...(c.pagesSummary || []), newPageSummary].sort((a, b) => a.order.localeCompare(b.order))
+        } : c));
 
-      setChapters(chapters.map(c => c.id === selectedChapterId ? {
-        ...c,
-        pagesSummary: [...(c.pagesSummary || []), newPageSummary].sort((a, b) => a.order.localeCompare(b.order))
-      } : c));
+        toast({ title: 'New Page Added', description: overflowContent ? 'Content has been moved to the new page.' : 'This page is a draft and will be saved when you click Save.' });
 
-      toast({ title: 'New Page Added' });
+        // UX: Scroll and focus on the new draft page
+        setTimeout(() => {
+          const el = pageContainerRefs.current[tempId];
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            pageRefs.current[tempId]?.focus?.();
+          }
+        }, 50);
+        return;
+      }
+
+      // saveImmediately path kept for future use
 
     } catch (error) {
       console.error('Error creating page:', error);
@@ -2101,7 +1128,7 @@ const BookDetail = () => {
 
   const selectedPage = selectedPageId ? pages.find(p => p.id === selectedPageId) : null;
   const selectedDraft = selectedPageId ? pageDrafts[selectedPageId] : undefined;
-  const isSelectedPageDirty = !!(selectedPageId && selectedPage && selectedDraft != null && selectedDraft !== (selectedPage.note || ''));
+  const isSelectedPageDirty = !!(selectedPageId && selectedPage && selectedDraft != null);
 
   const onDraftChange = useCallback((pageId, nextNote) => {
     setPageDrafts(prev => {
@@ -2152,28 +1179,38 @@ const BookDetail = () => {
   }, [isSelectedPageDirty, handleAddPage]);
 
   const saveSelectedDraft = useCallback(async () => {
-    if (!selectedPageId || !selectedPage) return;
-    const noteToSave = selectedDraft ?? selectedPage.note ?? '';
-    const plain = stripHtml(noteToSave);
-    const shortNote = plain.substring(0, 40) + (plain.length > 40 ? '...' : '');
+    if (!selectedPageId) return;
 
     try {
+      // Prefer saving through the page editor (handles temp_ pages too).
+      if (pageRefs.current?.[selectedPageId]?.save) {
+        await pageRefs.current[selectedPageId].save();
+        return;
+      }
+
+      // Fallback: save HTML directly if ref is unavailable
+      const current = selectedPageId ? pages.find(p => p.id === selectedPageId) : null;
+      if (!current) return;
+      const html = await (pageRefs.current?.[selectedPageId]?.getHTML?.() ?? Promise.resolve(current.note || ''));
+      const plain = stripHtml(html);
+      const shortNote = plain.substring(0, 40) + (plain.length > 40 ? '...' : '');
+
       const updatePageFn = httpsCallable(functions, 'updatePage');
       await updatePageFn({
         bookId,
         chapterId: selectedChapterId,
         pageId: selectedPageId,
-        note: noteToSave,
-        media: selectedPage.media || [],
+        note: html,
+        media: current.media || [],
       });
-      handlePageUpdate({ ...selectedPage, note: noteToSave, shortNote });
+      handlePageUpdate({ ...current, note: html, shortNote });
       onDraftChange(selectedPageId, null);
     } catch (e) {
       console.error('Failed to save page before leaving:', e);
       toast({ title: 'Error', description: 'Failed to save page.', variant: 'destructive' });
       throw e;
     }
-  }, [bookId, selectedChapterId, selectedPageId, selectedPage, selectedDraft, onDraftChange, toast]);
+  }, [bookId, selectedChapterId, selectedPageId, pages, onDraftChange, toast]);
 
   const handlePageLeaveSave = useCallback(async () => {
     try {
@@ -2217,6 +1254,24 @@ const BookDetail = () => {
       return nextPages;
     });
   }
+
+  const handleReplacePageId = (oldId, newPage) => {
+    setPages(prev => prev.map(p => p.id === oldId ? newPage : p));
+    setChapters(prev => prev.map(c => ({
+      ...c,
+      pagesSummary: (c.pagesSummary || []).map(ps => ps.pageId === oldId ? { ...ps, pageId: newPage.id, shortNote: stripHtml(newPage.note || '').substring(0, 40) } : ps)
+    })));
+    setPageDrafts(prev => {
+      const val = prev[oldId];
+      const next = { ...prev };
+      delete next[oldId];
+      if (val !== undefined) next[newPage.id] = val;
+      return next;
+    });
+    if (selectedPageId === oldId) setSelectedPageId(newPage.id);
+  };
+
+  // Pagination overflow/underflow is handled centrally via the reflow engine (no HTML splitting).
 
   // ---------- Chapter Title Editing ----------
   const handleStartEditChapter = (chapter) => {
@@ -2367,7 +1422,7 @@ const BookDetail = () => {
   }
 
   return (
-    <DragDropContext onDragEnd={onDragEnd}>
+    <>
       <ConfirmationModal {...modalState} onClose={closeModal} onConfirm={handleConfirmDelete} />
       <Dialog open={pageSaveConfirmOpen} onOpenChange={setPageSaveConfirmOpen}>
         <DialogContent className="w-full max-w-md p-6 bg-white rounded-2xl shadow-lg text-center">
@@ -2523,239 +1578,336 @@ const BookDetail = () => {
         </DialogContent>
       </Dialog>
 
-      <div className="flex flex-col h-full overflow-hidden">
-        {/* Header */}
-        <div className="shrink-0 py-3 px-4 border-b border-border bg-card flex items-center justify-between z-10">
-          <div className="flex items-center gap-4">
-            <Button
-              variant="appGhost"
-              onClick={() => navigate('/books')}
-              className="flex items-center gap-2 text-xs"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back
-            </Button>
-            {book?.coverImageUrl && (
-              <img
-                src={book.coverImageUrl}
-                alt="Cover"
-                className="h-8 w-8 rounded object-cover border border-gray-200"
-              />
-            )}
-            <h1 className="text-lg font-semibold text-app-gray-900 truncate max-w-md" title={book?.babyName}>
-              {book?.babyName}
-            </h1>
-            {isOwner && (
+      <DragDropContext onDragEnd={onDragEnd}>
+        <div className="flex flex-col h-full overflow-hidden">
+          {/* Header */}
+          <div className="shrink-0 py-3 px-4 border-b border-border bg-card flex items-center justify-between z-10">
+            <div className="flex items-center gap-4">
               <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setEditBookModalOpen(true)}
-                className="ml-2 h-6 w-6 text-app-gray-400 hover:text-app-gray-900"
-                title="Edit book details"
+                variant="appGhost"
+                onClick={() => navigate('/books')}
+                className="flex items-center gap-2 text-xs"
               >
-                <Edit className="h-3 w-3" />
+                <ArrowLeft className="h-4 w-4" />
+                Back
               </Button>
+              {book?.coverImageUrl && (
+                <img
+                  src={book.coverImageUrl}
+                  alt="Cover"
+                  className="h-8 w-8 rounded object-cover border border-gray-200"
+                />
+              )}
+              <h1 className="text-lg font-semibold text-app-gray-900 truncate max-w-md" title={book?.babyName}>
+                {book?.babyName}
+              </h1>
+              {isOwner && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setEditBookModalOpen(true)}
+                  className="ml-2 h-6 w-6 text-app-gray-400 hover:text-app-gray-900"
+                  title="Edit book details"
+                >
+                  <Edit className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
+
+            {isOwner && (
+              <div className="flex items-center gap-2">
+                <span title="Currently Disabled, Coming Soon">
+                  <Button
+                    variant="appGhost"
+                    disabled
+                    className="flex items-center gap-2 h-8 text-xs pointer-events-none"
+                  >
+                    <Globe className="h-3 w-3" />
+                    Publish
+                  </Button>
+                </span>
+                <span title="Currently Disabled, Coming Soon">
+                  <Button
+                    variant="outline"
+                    disabled
+                    className="flex items-center gap-2 h-8 text-xs pointer-events-none"
+                  >
+                    <Users className="h-3 w-3" />
+                    Co-Authors
+                  </Button>
+                </span>
+              </div>
             )}
           </div>
 
-          {isOwner && (
-            <div className="flex items-center gap-2">
-              <span title="Currently Disabled, Coming Soon">
-                <Button
-                  variant="appGhost"
-                  disabled
-                  className="flex items-center gap-2 h-8 text-xs pointer-events-none"
-                >
-                  <Globe className="h-3 w-3" />
-                  Publish
-                </Button>
-              </span>
-              <span title="Currently Disabled, Coming Soon">
-                <Button
-                  variant="outline"
-                  disabled
-                  className="flex items-center gap-2 h-8 text-xs pointer-events-none"
-                >
-                  <Users className="h-3 w-3" />
-                  Co-Authors
-                </Button>
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Main Content */}
-        <div className="flex flex-1 overflow-hidden">
-          {/* Left Sidebar: Chapters */}
-          <div className="w-72 bg-app-gray-50 border-r border-border flex flex-col shrink-0 overflow-visible relative z-20">
-            <div className="p-3 border-b border-border bg-card/80 backdrop-blur-sm">
-              <form onSubmit={handleCreateChapter} className="flex items-center space-x-2">
-                <Input
-                  value={newChapterTitle}
-                  onChange={(e) => setNewChapterTitle(e.target.value)}
-                  placeholder="New chapter..."
-                  disabled={!canEdit}
-                  className="h-8 text-sm"
+          {/* Main Content */}
+          <div className="flex flex-1 overflow-hidden">
+            {/* Left Sidebar: Chapters */}
+            <div
+              className={`${leftSidebarOpen ? '' : 'w-12 items-center'} bg-app-gray-50 border-r border-border flex flex-col shrink-0 overflow-visible relative z-20 transition-all duration-300`}
+              style={leftSidebarOpen ? { width: leftSidebarWidth } : {}}
+            >
+              {leftSidebarOpen && (
+                <div
+                  className={`absolute right-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-app-iris/40 transition-colors z-30 ${isResizingLeft ? 'bg-app-iris/60' : 'bg-transparent'}`}
+                  onMouseDown={(e) => { e.preventDefault(); setIsResizingLeft(true); }}
                 />
-                <Button type="submit" size="icon" disabled={!canEdit} className="h-8 w-8">
-                  <PlusCircle className="h-4 w-4" />
-                </Button>
-              </form>
+              )}
+              <div className="p-2 border-b border-border flex justify-between items-center bg-card/80 backdrop-blur-sm h-[57px]">
+                {leftSidebarOpen ? (
+                  <>
+                    <span className="font-semibold text-sm pl-2">Chapters</span>
+                    <Button variant="ghost" size="icon" onClick={() => setLeftSidebarOpen(false)} className="h-6 w-6">
+                      <PanelLeftClose className="h-4 w-4" />
+                    </Button>
+                  </>
+                ) : (
+                  <Button variant="ghost" size="icon" onClick={() => setLeftSidebarOpen(true)} className="h-6 w-6 mt-1">
+                    <PanelLeftOpen className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+
+              {leftSidebarOpen && (
+                <>
+                  <div className="p-3 border-b border-border bg-card/80 backdrop-blur-sm">
+                    <form onSubmit={handleCreateChapter} className="flex items-center space-x-2">
+                      <Input
+                        value={newChapterTitle}
+                        onChange={(e) => setNewChapterTitle(e.target.value)}
+                        placeholder="New chapter..."
+                        disabled={!canEdit}
+                        className="h-8 text-sm"
+                      />
+                      <Button type="submit" size="icon" disabled={!canEdit} className="h-8 w-8">
+                        <PlusCircle className="h-4 w-4" />
+                      </Button>
+                    </form>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto overflow-x-visible p-2">
+                    <div className="space-y-1">
+                      {[...chapters].sort((a, b) => a.order.localeCompare(b.order)).map(chapter => (
+                        <div key={chapter.id} className="group">
+                          <div
+                            onClick={(e) => {
+                              if (editingChapterId === chapter.id) return;
+                              if (editingChapterId && editingChapterId !== chapter.id) {
+                                const chapterTitle = chapters.find(c => c.id === chapter.id)?.title || '';
+                                setPendingChapterEdit({ chapterId: chapter.id, originalTitle: chapterTitle });
+                                setSaveConfirmOpen(true);
+                                return;
+                              }
+                              setSelectedChapterId(chapter.id);
+                              setExpandedChapters(new Set([chapter.id]));
+                            }}
+                            className={`w-full text-left p-2 rounded-lg flex items-center justify-between ${editingChapterId === chapter.id ? '' : 'cursor-pointer'} ${selectedChapterId === chapter.id ? 'bg-app-iris/10 text-app-iris font-medium' : 'hover:bg-app-gray-100 text-foreground'}`}
+                          >
+                            <div className="flex items-center flex-1 min-w-0 mr-2">
+                              {isOwner && <HoverDeleteMenu onDelete={() => openDeleteModal('chapter', chapter)} />}
+                              {editingChapterId === chapter.id ? (
+                                <input
+                                  value={editingChapterTitle}
+                                  onChange={(e) => setEditingChapterTitle(e.target.value)}
+                                  onBlur={handleChapterTitleBlur}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      handleSaveChapterTitle(chapter.id);
+                                    }
+                                    if (e.key === 'Escape') {
+                                      e.preventDefault();
+                                      handleCancelChapterEdit();
+                                    }
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="flex-1 ml-1 px-2 py-1 border border-border rounded text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary"
+                                  autoFocus
+                                />
+                              ) : (
+                                <span
+                                  className="truncate pr-2 ml-1 text-sm"
+                                  title={chapter.title}
+                                  onDoubleClick={(e) => {
+                                    e.stopPropagation();
+                                    handleStartEditChapter(chapter);
+                                  }}
+                                >
+                                  {chapter.title}
+                                </span>
+                              )}
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 shrink-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const s = new Set(expandedChapters);
+                                s.has(chapter.id) ? s.delete(chapter.id) : s.add(chapter.id);
+                                setExpandedChapters(s);
+                              }}
+                            >
+                              {expandedChapters.has(chapter.id) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                            </Button>
+                          </div>
+                          {expandedChapters.has(chapter.id) && (
+                            <Droppable droppableId={chapter.id} type="PAGE">
+                              {(provided) => (
+                                <div ref={provided.innerRef} {...provided.droppableProps} className="ml-3 pl-3 border-l border-border py-1 space-y-0.5">
+                                  {chapter.pagesSummary?.length > 0 ? chapter.pagesSummary.map((pageSummary, index) => (
+                                    <Draggable key={pageSummary.pageId} draggableId={pageSummary.pageId} index={index}>
+                                      {(provided2) => (
+                                        <div
+                                          ref={provided2.innerRef}
+                                          {...provided2.draggableProps}
+                                          onClick={() => {
+                                            requestSelectPage(chapter.id, pageSummary.pageId);
+                                          }}
+                                          role="button"
+                                          tabIndex={0}
+                                          className={`group w-full text-left p-1.5 rounded-md text-sm flex items-center justify-between cursor-pointer ${selectedPageId === pageSummary.pageId ? 'bg-app-iris/10 text-app-iris font-medium' : 'hover:bg-app-gray-50 text-app-gray-600'}`}
+                                        >
+                                          <div className="flex items-center truncate">
+                                            <span
+                                              {...provided2.dragHandleProps}
+                                              className="mr-2 text-app-gray-300 hover:text-foreground shrink-0 cursor-grab active:cursor-grabbing"
+                                            >
+                                              <GripVertical className="h-3 w-3" />
+                                            </span>
+                                            <span className="truncate text-xs">{pageSummary.shortNote || 'Untitled Page'}</span>
+                                          </div>
+
+                                          {canEdit && <HoverDeleteMenu side="right" onDelete={() => openDeleteModal('page', { ...pageSummary, chapterId: chapter.id, pageIndex: index })} />}
+                                        </div>
+                                      )}
+                                    </Draggable>
+                                  )) : <div className="p-2 text-xs text-muted-foreground italic">No pages</div>}
+                                  {provided.placeholder}
+                                </div>
+                              )}
+                            </Droppable>
+                          )}
+                        </div>
+                      ))}
+
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
-            <div className="flex-1 overflow-y-auto overflow-x-visible p-2">
-              <div className="space-y-1">
-                {[...chapters].sort((a, b) => a.order.localeCompare(b.order)).map(chapter => (
-                  <div key={chapter.id} className="group">
-                    <div
-                      onClick={(e) => {
-                        if (editingChapterId === chapter.id) return;
-                        if (editingChapterId && editingChapterId !== chapter.id) {
-                          const chapterTitle = chapters.find(c => c.id === chapter.id)?.title || '';
-                          setPendingChapterEdit({ chapterId: chapter.id, originalTitle: chapterTitle });
-                          setSaveConfirmOpen(true);
-                          return;
-                        }
-                        setSelectedChapterId(chapter.id);
-                        setExpandedChapters(new Set([chapter.id]));
-                      }}
-                      className={`w-full text-left p-2 rounded-lg flex items-center justify-between ${editingChapterId === chapter.id ? '' : 'cursor-pointer'} ${selectedChapterId === chapter.id ? 'bg-app-iris/10 text-app-iris font-medium' : 'hover:bg-app-gray-100 text-foreground'}`}
-                    >
-                      <div className="flex items-center flex-1 min-w-0 mr-2">
-                        {isOwner && <HoverDeleteMenu onDelete={() => openDeleteModal('chapter', chapter)} />}
-                        {editingChapterId === chapter.id ? (
-                          <input
-                            value={editingChapterTitle}
-                            onChange={(e) => setEditingChapterTitle(e.target.value)}
-                            onBlur={handleChapterTitleBlur}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                handleSaveChapterTitle(chapter.id);
-                              }
-                              if (e.key === 'Escape') {
-                                e.preventDefault();
-                                handleCancelChapterEdit();
-                              }
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            className="flex-1 ml-1 px-2 py-1 border border-border rounded text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary"
-                            autoFocus
-                          />
-                        ) : (
-                          <span
-                            className="truncate pr-2 ml-1 text-sm"
-                            title={chapter.title}
-                            onDoubleClick={(e) => {
-                              e.stopPropagation();
-                              handleStartEditChapter(chapter);
-                            }}
-                          >
-                            {chapter.title}
-                          </span>
-                        )}
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 shrink-0"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const s = new Set(expandedChapters);
-                          s.has(chapter.id) ? s.delete(chapter.id) : s.add(chapter.id);
-                          setExpandedChapters(s);
-                        }}
+            {/* Center: Editor List */}
+            <div className="flex-1 flex flex-col min-h-0 relative bg-white overflow-hidden">
+              <div className="flex-1 overflow-y-auto h-full scroll-smooth" ref={scrollContainerRef}>
+                <div className="min-h-full pb-32">
+                  {pages.length > 0 ? (
+                    pages.map((p, index) => (
+                      <div
+                        key={p.id}
+                        ref={el => pageContainerRefs.current[p.id] = el}
+                        data-page-id={p.id}
+                        className={book?.layoutMode === 'standard' ? 'w-full max-w-5xl mx-auto px-6' : 'w-full pl-4 pr-6'}
                       >
-                        {expandedChapters.has(chapter.id) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                        {/* Page Divider (except for first page) */}
+                        {index > 0 && book?.layoutMode !== 'standard' && (
+                          <div className="w-full h-px bg-gray-100 my-10" />
+                        )}
+
+                        {/* Page Header (First page only or all?) User said "page 1, 2" */}
+
+
+                        <PageEditor
+                          ref={el => pageRefs.current[p.id] = el}
+                          bookId={bookId}
+                          chapterId={selectedChapterId}
+                          page={p}
+                          onPageUpdate={handlePageUpdate}
+                          onAddPage={handleAddPage}
+                          onNavigate={(dir) => handlePageNavigate(p.id, dir)}
+                          pageIndex={index}
+                          totalPages={pages.length}
+                          chapterTitle={chapterTitle}
+                          draft={pageDrafts[p.id]}
+                          onDraftChange={(pageId, val) => handleDraftChange(pageId, val)}
+                          onBlocksChange={(pageId) => requestReflowDebounced(pageId)}
+                          onRequestReflow={(pageId) => requestReflow(pageId)}
+                          onNearOverflowAtEnd={handleNearOverflowAtEnd}
+                          onBackspaceAtStart={handleBackspaceAtStart}
+                          onUserInput={handleUserInput}
+                          onFocus={handlePageFocus}
+                          onReplacePageId={handleReplacePageId}
+                          onRequestPageDelete={(page, pageIndex) => openDeleteModal('page', { ...page, chapterId: selectedChapterId, pageId: page.id, pageIndex })}
+                          pages={pages}
+                          layoutMode={book?.layoutMode}
+                          pageAlign={pageAlign}
+                          standardPageHeightPx={standardPageHeightPx}
+                        />
+                      </div>
+                    ))
+                  ) : (
+                    <div className="flex flex-col justify-center items-center text-center h-full p-6">
+                      <div className="bg-app-gray-50 rounded-full p-6 mb-4">
+                        <Sparkles className="h-8 w-8 text-app-iris" />
+                      </div>
+                      {selectedChapterId && (
+                        <h3 className="text-lg font-medium text-app-iris mb-1">
+                          {chapters.find(c => c.id === selectedChapterId)?.title}
+                        </h3>
+                      )}
+                      <h2 className="text-xl font-semibold text-gray-800">{selectedChapterId ? 'Ready to write?' : 'Select a chapter'}</h2>
+                      <p className="mt-2 text-gray-500 max-w-xs">{selectedChapterId ? 'Select a page or create a new one to start writing.' : 'Create a new chapter to get started.'}</p>
+                      {selectedChapterId && canEdit && <Button onClick={requestAddPage} className="mt-6"><PlusCircle className="h-4 w-4 mr-2" />Add Page</Button>}
+                    </div>
+                  )}
+
+                  {/* Space at bottom for scrolling past last page */}
+                  <div className="h-20"></div>
+                </div>
+              </div>
+
+              {/* Sticky Footer */}
+              {pages.length > 0 && (
+                <div className="shrink-0 border-t border-gray-100 bg-white/80 backdrop-blur-md p-4 z-30">
+                  <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-4">
+                    {/* Status Indicator */}
+                    <div className="flex items-center gap-4 text-sm text-gray-500">
+                      <span className="font-medium text-gray-800">
+                        {activePageId
+                          ? `Page ${pages.findIndex(p => p.id === activePageId) + 1} of ${pages.length}`
+                          : 'No page selected'}
+                      </span>
+                      {activePageId && pageDrafts[activePageId] && (
+                        <span className="text-amber-600 flex items-center gap-1 text-xs">
+                          <div className="w-2 h-2 rounded-full bg-amber-500"></div>
+                          Unsaved changes
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Controls */}
+                    <div className="flex items-center gap-2">
+                      <Button
+                        onClick={handleSaveChapter}
+                        variant="appSuccess"
+                        size="sm"
+                        className="min-w-[130px]"
+                        disabled={!selectedChapterId || isSavingChapter}
+                      >
+                        Save Chapter
                       </Button>
                     </div>
-                    {expandedChapters.has(chapter.id) && (
-                      <Droppable droppableId={chapter.id} type="PAGE">
-                        {(provided) => (
-                          <div ref={provided.innerRef} {...provided.droppableProps} className="ml-3 pl-3 border-l border-border py-1 space-y-0.5">
-                            {chapter.pagesSummary?.length > 0 ? chapter.pagesSummary.map((pageSummary, index) => (
-                              <Draggable key={pageSummary.pageId} draggableId={pageSummary.pageId} index={index}>
-                                {(provided2) => (
-                                  <div
-                                    ref={provided2.innerRef}
-                                    {...provided2.draggableProps}
-                                    onClick={() => {
-                                      requestSelectPage(chapter.id, pageSummary.pageId);
-                                    }}
-                                    role="button"
-                                    tabIndex={0}
-                                    className={`group w-full text-left p-1.5 rounded-md text-sm flex items-center justify-between cursor-pointer ${selectedPageId === pageSummary.pageId ? 'bg-app-iris/10 text-app-iris font-medium' : 'hover:bg-app-gray-50 text-app-gray-600'}`}
-                                  >
-                                    <div className="flex items-center truncate">
-                                      <span
-                                        {...provided2.dragHandleProps}
-                                        className="mr-2 text-app-gray-300 hover:text-foreground shrink-0 cursor-grab active:cursor-grabbing"
-                                      >
-                                        <GripVertical className="h-3 w-3" />
-                                      </span>
-                                      <span className="truncate text-xs">{pageSummary.shortNote || 'Untitled Page'}</span>
-                                    </div>
-
-                                    {canEdit && <HoverDeleteMenu side="right" onDelete={() => openDeleteModal('page', { ...pageSummary, chapterId: chapter.id, pageIndex: index })} />}
-                                  </div>
-                                )}
-                              </Draggable>
-                            )) : <div className="p-2 text-xs text-muted-foreground italic">No pages</div>}
-                            {provided.placeholder}
-                          </div>
-                        )}
-                      </Droppable>
-                    )}
                   </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Center: Editor */}
-          <div className="flex-1 overflow-y-auto bg-card relative">
-            <div className="max-w-4xl mx-auto min-h-full p-8">
-              {selectedPageId && pages.find(p => p.id === selectedPageId) ? (
-                <PageEditor
-                  bookId={bookId}
-                  chapterId={selectedChapterId}
-                  page={pages.find(p => p.id === selectedPageId)}
-                  onPageUpdate={handlePageUpdate}
-                  onAddPage={requestAddPage}
-                  onNavigate={(dir) => {
-                    const currentIndex = pages.findIndex(p => p.id === selectedPageId);
-                    if (dir === 'next' && currentIndex < pages.length - 1) requestSelectPage(selectedChapterId, pages[currentIndex + 1].id);
-                    else if (dir === 'prev' && currentIndex > 0) requestSelectPage(selectedChapterId, pages[currentIndex - 1].id);
-                  }}
-                  pageIndex={pages.findIndex(p => p.id === selectedPageId)}
-                  totalPages={pages.length}
-                  chapterTitle={chapters.find(c => c.id === selectedChapterId)?.title}
-                  draftNote={pageDrafts[selectedPageId]}
-                  onDraftChange={onDraftChange}
-                />
-              ) : (
-                <div className="flex flex-col justify-center items-center text-center h-full p-6">
-                  <div className="bg-app-gray-50 rounded-full p-6 mb-4">
-                    <Sparkles className="h-8 w-8 text-app-iris" />
-                  </div>
-                  {selectedChapterId && (
-                    <h3 className="text-lg font-medium text-app-iris mb-1">
-                      {chapters.find(c => c.id === selectedChapterId)?.title}
-                    </h3>
-                  )}
-                  <h2 className="text-xl font-semibold text-gray-800">{selectedChapterId ? 'Ready to write?' : 'Select a chapter'}</h2>
-                  <p className="mt-2 text-gray-500 max-w-xs">{selectedChapterId ? 'Select a page or create a new one to start writing.' : 'Create a new chapter to get started.'}</p>
-                  {selectedChapterId && canEdit && <Button onClick={requestAddPage} className="mt-6"><PlusCircle className="h-4 w-4 mr-2" />Add Page</Button>}
                 </div>
               )}
             </div>
-          </div>
 
-          {/* Right Sidebar: Chat */}
-          <ChatPanel />
+            {/* Right Sidebar: Chat */}
+            <ChatPanel onMinimizeChange={setIsChatMinimized} />
+          </div>
         </div>
-      </div>
-    </DragDropContext>
+      </DragDropContext>
+    </>
   );
 };
 
