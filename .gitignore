@@ -13,3 +13,5 @@ functions/serviceAccountKey.json
 dist/
 .vscode/
 .logs/
+.DS_Store
+.cursor/
