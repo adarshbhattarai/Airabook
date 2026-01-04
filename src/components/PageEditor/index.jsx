@@ -81,6 +81,29 @@ const PageEditor = forwardRef(({
   const previewItem = mediaList[previewIndex] || null;
   const isResponsiveLayout = layoutMode === 'standard';
 
+  const logContentMeasure = React.useCallback((label) => {
+    const el = contentMeasureRef.current;
+    if (!el) return;
+    console.log(`[PageEditor] ${label}`, {
+      pageId: page.id,
+      scrollTop: el.scrollTop,
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight
+    });
+  }, [page.id]);
+
+  useEffect(() => {
+    const el = contentMeasureRef.current;
+    if (!el) return undefined;
+    const onScroll = () => {
+      logContentMeasure('contentMeasureRef scroll');
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+    };
+  }, [page.id, logContentMeasure]);
+
   useEffect(() => {
     if (!toolbarOpen) return undefined;
     const handleClick = (event) => {
@@ -1134,10 +1157,14 @@ const PageEditor = forwardRef(({
                 <div className="flex items-center justify-between mb-1"></div>
 
                 <div className="flex-grow">
-                  <div
-                    className="flex-grow bg-transparent overflow-hidden relative"
-                    onKeyDownCapture={handleKeyDownCapture}
-                  >
+                <div
+                  className="flex-grow bg-transparent overflow-hidden relative"
+                  onKeyDownCapture={handleKeyDownCapture}
+                  onMouseDownCapture={() => {
+                    logContentMeasure('editor mousedown');
+                    requestAnimationFrame(() => logContentMeasure('editor mousedown raf'));
+                  }}
+                >
                     <BlockEditor
                       key={page.id}
                       ref={quillRef}
@@ -1145,7 +1172,11 @@ const PageEditor = forwardRef(({
                       initialContent={page.note || ""}
                       onBlocksChange={handleBlocksChange}
                       onSave={handleSave}
-                      onFocus={() => onFocus?.(page.id)}
+                      onFocus={() => {
+                        logContentMeasure('editor focus');
+                        requestAnimationFrame(() => logContentMeasure('editor focus raf'));
+                        onFocus?.(page.id);
+                      }}
                       onMediaRequest={handleMediaRequest}
                     />
                   </div>
