@@ -23,6 +23,7 @@ import AlbumDetail from '@/pages/AlbumDetail';
 import ErrorPage from '@/pages/ErrorPage';
 import ProfileSettings from '@/pages/ProfileSettings';
 import AdminDashboard from '@/pages/admin/AdminDashboard';
+import AdvancedBookBuilder from '@/pages/AdvancedBookBuilder';
 import AdminRoute from '@/components/AdminRoute';
 
 // A wrapper to protect routes that require authentication
@@ -138,6 +139,16 @@ function App() {
                 <PrivateRoute>
                   <ThemedAppShell>
                     <BookView />
+                  </ThemedAppShell>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/create-book/advanced"
+              element={
+                <PrivateRoute>
+                  <ThemedAppShell>
+                    <AdvancedBookBuilder />
                   </ThemedAppShell>
                 </PrivateRoute>
               }

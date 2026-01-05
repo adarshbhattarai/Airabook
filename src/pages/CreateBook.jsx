@@ -62,6 +62,11 @@ const CreateBook = () => {
       return;
     }
 
+    if (creationType === 2) {
+      navigate('/create-book/advanced', { state: { title: title, subtitle: subtitle } });
+      return;
+    }
+
     // Validate prompt if prompt mode is enabled
     if (creationType === 0 && promptMode && !prompt.trim()) {
       toast({ title: "Error", description: "Please provide a prompt or disable prompt mode.", variant: "destructive" });
@@ -333,6 +338,18 @@ const CreateBook = () => {
                       >
                         Start Blank
                       </Button>
+                      <Button
+                        type="button"
+                        variant={creationType === 2 ? 'appPrimary' : 'appGhost'}
+                        size="sm"
+                        className="h-8 px-4 text-xs rounded-pill"
+                        onClick={() => {
+                          setCreationType(2);
+                          setPromptMode(false);
+                        }}
+                      >
+                        Advanced Graph
+                      </Button>
                     </div>
                   </div>
 
@@ -482,7 +499,7 @@ const CreateBook = () => {
                   label: 'Mode',
                   value: creationType === 0
                     ? (promptMode ? 'AI-assisted (Custom)' : 'AI-assisted (Baby Journal)')
-                    : 'Start Blank'
+                    : (creationType === 2 ? 'Advanced Graph' : 'Start Blank')
                 },
                 { label: 'Est. chapters', value: creationType === 0 ? '8–12 (editable later)' : 'Add manually' },
               ]}
