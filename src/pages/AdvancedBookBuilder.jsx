@@ -8,7 +8,8 @@ import ReactFlow, {
     addEdge,
     Handle,
     Position,
-    useReactFlow
+    useReactFlow,
+    MarkerType
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -18,7 +19,15 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { Textarea } from '@/components/ui/textarea';
 import { AppInput } from '@/components/ui/input';
-
+import { Label } from '@/components/ui/label';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 // Custom Node for Chapters
 const ChapterNode = ({ data }) => {
     return (
@@ -30,8 +39,14 @@ const ChapterNode = ({ data }) => {
                 <div className="text-sm font-bold text-gray-800">{data.label}</div>
             </div>
             <div className='text-xs text-gray-500 line-clamp-2 leading-tight'>{data.summary || "No summary"}</div>
-            <Handle type="source" position={Position.Right} className="!w-3 !h-3 !bg-app-iris" />
-            <Handle type="target" position={Position.Left} className="!w-3 !h-3 !bg-app-iris" />
+
+            {/* Handles: Target on Left, Top, Bottom */}
+            <Handle type="target" position={Position.Left} id="t-left" className="!w-3 !h-3 !bg-app-iris" />
+            <Handle type="target" position={Position.Top} id="t-top" className="!w-3 !h-3 !bg-app-iris !left-1/2" />
+            <Handle type="target" position={Position.Bottom} id="t-bottom" className="!w-3 !h-3 !bg-app-iris !left-1/2" />
+
+            {/* Source on Right */}
+            <Handle type="source" position={Position.Right} id="s-right" className="!w-3 !h-3 !bg-app-iris" />
         </div>
     );
 };
@@ -66,8 +81,14 @@ const CharacterNode = ({ data }) => {
                 </div>
                 <div className="text-xs font-bold text-gray-700">{data.label}</div>
             </div>
-            <Handle type="source" position={Position.Bottom} className="!w-2 !h-2 !bg-orange-400" />
-            <Handle type="target" position={Position.Top} className="!w-2 !h-2 !bg-orange-400" />
+
+            {/* Target: Top, Left */}
+            <Handle type="target" position={Position.Top} id="t-top" className="!w-2 !h-2 !bg-orange-400" />
+            <Handle type="target" position={Position.Left} id="t-left" className="!w-2 !h-2 !bg-orange-400" />
+
+            {/* Source: Bottom, Right */}
+            <Handle type="source" position={Position.Bottom} id="s-bottom" className="!w-2 !h-2 !bg-orange-400" />
+            <Handle type="source" position={Position.Right} id="s-right" className="!w-2 !h-2 !bg-orange-400" />
         </div>
     );
 };
@@ -82,6 +103,196 @@ const initialNodes = [
     { id: 'start', type: 'chapter', position: { x: 50, y: 300 }, data: { label: 'Start Here', summary: 'Drag nodes from the sidebar!' } },
 ];
 
+const EdgeLabelDialog = ({ isOpen, onClose, edge, onSave }) => {
+    const [label, setLabel] = useState('');
+
+    useEffect(() => {
+        if (edge) {
+            setLabel(edge.label || '');
+        }
+    }, [edge]);
+
+    const handleSave = () => {
+        onSave(edge.id, label);
+        onClose();
+    };
+
+    if (!edge) return null;
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="sm:max-w-[400px] bg-white border border-gray-200 shadow-lg rounded-xl p-6">
+                <DialogHeader>
+                    <DialogTitle>Connection Role</DialogTitle>
+                    <DialogDescription>
+                        Describe the relationship or role for this connection.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                    <div className="grid gap-2">
+                        <Label htmlFor="edge-label">Role / Label</Label>
+                        <AppInput
+                            id="edge-label"
+                            placeholder="e.g. Hero, Antagonist, Appears in..."
+                            value={label}
+                            onChange={(e) => setLabel(e.target.value)}
+                        />
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button type="button" onClick={handleSave} variant="appPrimary">Save Label</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
+const NodePropertiesDialog = ({ isOpen, onClose, node, nodes, onSave }) => {
+    const [formData, setFormData] = useState({});
+
+    useEffect(() => {
+        if (node) {
+            setFormData({ ...node.data });
+        }
+    }, [node]);
+
+    const handleChange = (field, value) => {
+        setFormData(prev => ({ ...prev, [field]: value }));
+    };
+
+    const handleRoleChange = (chapterId, role) => {
+        setFormData(prev => ({
+            ...prev,
+            roles: {
+                ...(prev.roles || {}),
+                [chapterId]: role
+            }
+        }));
+    };
+
+    const handleSave = () => {
+        onSave(node.id, formData);
+        onClose();
+    };
+
+    if (!node) return null;
+
+    const isChapter = node.type === 'chapter';
+    const isCharacter = node.type === 'character';
+    const isPage = node.type === 'page';
+
+    // Find all chapters
+    const chapters = nodes.filter(n => n.type === 'chapter');
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="sm:max-w-[500px] max-h-[80vh] overflow-y-auto bg-white border border-gray-200 shadow-lg rounded-xl p-6">
+                <DialogHeader>
+                    <DialogTitle>Edit {isChapter ? 'Chapter' : isCharacter ? 'Character' : 'Node'}</DialogTitle>
+                    <DialogDescription>
+                        Update the properties for this {node.type}.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="grid gap-4 py-4">
+                    <div className="grid gap-2">
+                        <Label htmlFor="node-label">Name</Label>
+                        <AppInput
+                            id="node-label"
+                            value={formData.label || ''}
+                            onChange={(e) => handleChange('label', e.target.value)}
+                        />
+                    </div>
+
+                    {isChapter && (
+                        <div className="grid gap-2">
+                            <Label htmlFor="chapter-summary">Detailed Prompt / Idea</Label>
+                            <Textarea
+                                id="chapter-summary"
+                                placeholder="Describe what happens in this chapter..."
+                                className="min-h-[120px]"
+                                value={formData.summary || ''}
+                                onChange={(e) => handleChange('summary', e.target.value)}
+                            />
+                        </div>
+                    )}
+
+                    {isCharacter && (
+                        <>
+                            <div className="grid gap-2">
+                                <Label>Character Type</Label>
+                                <div className="flex gap-4">
+                                    <label className="flex items-center gap-2 text-sm">
+                                        <input
+                                            type="radio"
+                                            name="charType"
+                                            value="Male"
+                                            checked={formData.charType === 'Male'}
+                                            onChange={(e) => handleChange('charType', e.target.value)}
+                                        /> Male
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm">
+                                        <input
+                                            type="radio"
+                                            name="charType"
+                                            value="Female"
+                                            checked={formData.charType === 'Female'}
+                                            onChange={(e) => handleChange('charType', e.target.value)}
+                                        /> Female
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm">
+                                        <input
+                                            type="radio"
+                                            name="charType"
+                                            value="Other"
+                                            checked={formData.charType === 'Other'}
+                                            onChange={(e) => handleChange('charType', e.target.value)}
+                                        /> Other
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div className="grid gap-2">
+                                <Label>Roles per Chapter</Label>
+                                <div className="space-y-3 max-h-[200px] overflow-y-auto border rounded-md p-2">
+                                    {chapters.length === 0 && <span className="text-xs text-gray-500">No chapters found.</span>}
+                                    {chapters.map(ch => (
+                                        <div key={ch.id} className="grid gap-1">
+                                            <span className="text-xs font-medium text-gray-700">{ch.data.label}</span>
+                                            <AppInput
+                                                placeholder={`Role in ${ch.data.label}...`}
+                                                className="h-8 text-xs"
+                                                value={formData.roles?.[ch.id] || ''}
+                                                onChange={(e) => handleRoleChange(ch.id, e.target.value)}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </>
+                    )}
+
+                    {isPage && (
+                        <div className="grid gap-2">
+                            <Label htmlFor="page-content">Content / Image Prompt</Label>
+                            <Textarea
+                                id="page-content"
+                                className="min-h-[100px]"
+                                value={formData.content || ''}
+                                onChange={(e) => handleChange('content', e.target.value)}
+                            />
+                        </div>
+                    )}
+                </div>
+
+                <DialogFooter>
+                    <Button type="button" onClick={handleSave} variant="appPrimary">Save changes</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 const AdvancedBookBuilder = () => {
     const navigate = useNavigate();
     const location = useLocation();
@@ -91,10 +302,58 @@ const AdvancedBookBuilder = () => {
     const [prompt, setPrompt] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
 
+    // Node Selection State
+    const [selectedNode, setSelectedNode] = useState(null);
+    const [selectedEdge, setSelectedEdge] = useState(null);
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [isEdgeDialogOpen, setIsEdgeDialogOpen] = useState(false);
+
     // Title from state or fallback
     const bookTitle = location.state?.title || "New Book Project";
 
-    const onConnect = useCallback((params) => setEdges((eds) => addEdge(params, eds)), [setEdges]);
+    const onConnect = useCallback((params) => {
+        const sourceNode = nodes.find(n => n.id === params.source);
+        const isCharacterSource = sourceNode?.type === 'character';
+
+        const newEdge = {
+            ...params,
+            markerEnd: { type: MarkerType.ArrowClosed },
+            type: isCharacterSource ? 'default' : 'default', // standard bezier
+            style: isCharacterSource ? { stroke: '#fb923c', strokeDasharray: '5,5' } : {}, // Orange dashed for characters
+            label: isCharacterSource ? 'Role?' : undefined,
+        };
+        setEdges((eds) => addEdge(newEdge, eds));
+    }, [nodes, setEdges]); // Added nodes dependency to check source type
+
+    const onNodeClick = useCallback((event, node) => {
+        setSelectedNode(node);
+        setIsDialogOpen(true);
+    }, []);
+
+    const onEdgeClick = useCallback((event, edge) => {
+        setSelectedEdge(edge);
+        setIsEdgeDialogOpen(true);
+    }, []);
+
+    const handleNodeSave = (nodeId, newData) => {
+        setNodes((nds) => nds.map((node) => {
+            if (node.id === nodeId) {
+                return { ...node, data: newData };
+            }
+            return node;
+        }));
+        toast({ title: "Updated", description: "Node properties saved." });
+    };
+
+    const handleEdgeSave = (edgeId, newLabel) => {
+        setEdges((eds) => eds.map((edge) => {
+            if (edge.id === edgeId) {
+                return { ...edge, label: newLabel };
+            }
+            return edge;
+        }));
+        toast({ title: "Updated", description: "Connection label saved." });
+    };
 
     const addNode = (type) => {
         const id = `${type}-${Date.now()}`;
@@ -102,8 +361,8 @@ const AdvancedBookBuilder = () => {
         const y = Math.random() * 300 + 100;
 
         let data = { label: `New ${type}` };
-        if (type === 'chapter') data = { label: 'New Chapter', summary: 'Chapter description...' };
-        if (type === 'character') data = { label: 'New Character' };
+        if (type === 'chapter') data = { label: 'New Chapter', summary: '' };
+        if (type === 'character') data = { label: 'New Character', charType: 'Other', roles: {} };
 
         const newNode = {
             id,
@@ -135,7 +394,7 @@ const AdvancedBookBuilder = () => {
                 id: charId,
                 type: 'character',
                 position: { x: startX, y: 50 },
-                data: { label: 'Protagonist' }
+                data: { label: 'Protagonist', charType: 'Other', roles: {} }
             });
 
             // Create 3 generated chapters linked to char
@@ -150,7 +409,12 @@ const AdvancedBookBuilder = () => {
 
                 // Edge from Character to Chapter 1
                 if (i === 1) {
-                    newEdges.push({ id: `e-${charId}-${chId}`, source: charId, target: chId });
+                    newEdges.push({
+                        id: `e-${charId}-${chId}`,
+                        source: charId,
+                        target: chId,
+                        markerEnd: { type: MarkerType.ArrowClosed }
+                    });
                 }
                 // Link sequential chapters
                 if (i > 1) {
@@ -290,6 +554,8 @@ const AdvancedBookBuilder = () => {
                         onNodesChange={onNodesChange}
                         onEdgesChange={onEdgesChange}
                         onConnect={onConnect}
+                        onNodeClick={onNodeClick}
+                        onEdgeClick={onEdgeClick}
                         nodeTypes={nodeTypes}
                         fitView
                         className="bg-gray-50"
@@ -304,6 +570,21 @@ const AdvancedBookBuilder = () => {
                     </ReactFlow>
                 </div>
             </div>
+
+            <NodePropertiesDialog
+                isOpen={isDialogOpen}
+                onClose={() => setIsDialogOpen(false)}
+                node={selectedNode}
+                nodes={nodes}
+                onSave={handleNodeSave}
+            />
+
+            <EdgeLabelDialog
+                isOpen={isEdgeDialogOpen}
+                onClose={() => setIsEdgeDialogOpen(false)}
+                edge={selectedEdge}
+                onSave={handleEdgeSave}
+            />
         </div>
     );
 };
