@@ -1152,19 +1152,19 @@ const PageEditor = forwardRef(({
             )}
 
             {/* Notes + controls */}
-            <div className="space-y-4 flex-grow flex flex-col">
-              <div className="flex-grow flex flex-col">
+            <div className="space-y-4 flex-grow flex flex-col h-full">
+              <div className="flex-grow flex flex-col h-full">
                 <div className="flex items-center justify-between mb-1"></div>
 
-                <div className="flex-grow">
-                <div
-                  className="flex-grow bg-transparent overflow-hidden relative"
-                  onKeyDownCapture={handleKeyDownCapture}
-                  onMouseDownCapture={() => {
-                    logContentMeasure('editor mousedown');
-                    requestAnimationFrame(() => logContentMeasure('editor mousedown raf'));
-                  }}
-                >
+                <div className="flex-grow h-full">
+                  <div
+                    className="h-full bg-transparent overflow-hidden relative"
+                    onKeyDownCapture={handleKeyDownCapture}
+                    onMouseDownCapture={() => {
+                      logContentMeasure('editor mousedown');
+                      requestAnimationFrame(() => logContentMeasure('editor mousedown raf'));
+                    }}
+                  >
                     <BlockEditor
                       key={page.id}
                       ref={quillRef}
@@ -1186,7 +1186,7 @@ const PageEditor = forwardRef(({
               {/* Focus Trigger */}
               <div
                 className="absolute inset-0 -z-10"
-                onClick={() => onFocus && onFocus()}
+                onClick={() => onFocus && onFocus(page.id)}
               />
             </div>
 

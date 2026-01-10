@@ -479,12 +479,16 @@ const BlockEditor = forwardRef(
           // Prefer blocks if provided, fallback to HTML.
           if (Array.isArray(initialBlocks)) {
             suppressChangeRef.current = true;
-            editor.replaceBlocks(editor.document, initialBlocks);
+            // Ensure at least one empty paragraph block exists for the editor to be interactive
+            const blocksToLoad = initialBlocks.length > 0 ? initialBlocks : [{ type: "paragraph", content: [] }];
+            editor.replaceBlocks(editor.document, blocksToLoad);
             unsuppressSoon();
           } else if (initialContent) {
             const blocks = await editor.tryParseHTMLToBlocks(initialContent);
             suppressChangeRef.current = true;
-            editor.replaceBlocks(editor.document, blocks);
+            // Ensure at least one empty paragraph block exists
+            const blocksToLoad = blocks.length > 0 ? blocks : [{ type: "paragraph", content: [] }];
+            editor.replaceBlocks(editor.document, blocksToLoad);
             unsuppressSoon();
           }
           setIsLoaded(true);
