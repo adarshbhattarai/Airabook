@@ -19,6 +19,8 @@ import { httpsCallable } from 'firebase/functions';
 import EditBookModal from '@/components/EditBookModal';
 import PageEditor from '@/components/PageEditor';
 import ChatPanel from '@/components/ChatPanel';
+import GenerateChapterContent from '@/components/GenerateChapterContent';
+import ChapterChatBox from '@/components/ChapterChatBox';
 import HoverDeleteMenu from '@/components/ui/HoverDeleteMenu';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import { usePaginationReflow } from '@/hooks/usePaginationReflow';
@@ -90,6 +92,8 @@ const BookDetail = () => {
   });
   const [pages, setPages] = useState([]);
   const [selectedPageId, setSelectedPageId] = useState(null);
+  const [chapterChatInput, setChapterChatInput] = useState('');
+  const [chatPanelSeed, setChatPanelSeed] = useState(null);
 
   // UI States
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
@@ -1858,6 +1862,28 @@ const BookDetail = () => {
                       <h2 className="text-xl font-semibold text-gray-800">{selectedChapterId ? 'Ready to write?' : 'Select a chapter'}</h2>
                       <p className="mt-2 text-gray-500 max-w-xs">{selectedChapterId ? 'Select a page or create a new one to start writing.' : 'Create a new chapter to get started.'}</p>
                       {selectedChapterId && canEdit && <Button onClick={requestAddPage} className="mt-6"><PlusCircle className="h-4 w-4 mr-2" />Add Page</Button>}
+                      {selectedChapterId && (
+                        <div className="w-full max-w-3xl mt-6 text-left space-y-4">
+                          <ChapterChatBox
+                            inputValue={chapterChatInput}
+                            onInputChange={setChapterChatInput}
+                            bookId={bookId}
+                            chapterId={selectedChapterId}
+                            canTransfer={pages.length > 0}
+                            onTransfer={(transferMessages) => {
+                              setChatPanelSeed({
+                                messages: transferMessages,
+                                token: Date.now(),
+                              });
+                            }}
+                          />
+                          <GenerateChapterContent
+                            bookId={bookId}
+                            chapterId={selectedChapterId}
+                            onSuggestionSelect={setChapterChatInput}
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -1903,7 +1929,13 @@ const BookDetail = () => {
             </div>
 
             {/* Right Sidebar: Chat */}
-            <ChatPanel onMinimizeChange={setIsChatMinimized} />
+            <ChatPanel
+              onMinimizeChange={setIsChatMinimized}
+              bookId={bookId}
+              chapterId={selectedChapterId}
+              incomingMessages={chatPanelSeed?.messages}
+              incomingMessagesToken={chatPanelSeed?.token}
+            />
           </div>
         </div>
       </DragDropContext>

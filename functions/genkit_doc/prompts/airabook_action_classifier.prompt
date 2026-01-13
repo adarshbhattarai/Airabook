@@ -1,0 +1,36 @@
+---
+model: googleai/gemini-2.5-flash
+config:
+  temperature: 0.2
+input:
+  schema:
+    query: string
+    answer: string
+    hasChapterContext: boolean
+output:
+  schema:
+    showAction: boolean, whether to show the action bar
+    actionPrompt?: string
+    actions(array):
+      id: string
+      label: string
+---
+
+Decide if the user should be offered a follow-up action to generate chapter content.
+
+Rules:
+- If hasChapterContext is false: showAction must be false and actions must be empty.
+- Only show actions when the user is asking to draft, expand, or write chapter content.
+- Do not show actions for account, billing, or unrelated questions.
+- If showAction is true, actionPrompt should ask if they want to generate a chapter draft.
+- If showAction is true, actions must be exactly:
+  - { "id": "generate_chapter", "label": "Allow" }
+  - { "id": "deny_generate_chapter", "label": "Deny" }
+
+User question:
+{{query}}
+
+Assistant answer:
+{{answer}}
+
+hasChapterContext: {{hasChapterContext}}

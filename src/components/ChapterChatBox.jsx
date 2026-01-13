@@ -1,30 +1,30 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sparkles, Send } from 'lucide-react';
-import { PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { streamAirabookAI } from '@/lib/aiStream';
 
-const ChatPanel = ({
-  onMinimizeChange,
+const ChapterChatBox = ({
+  inputValue,
+  onInputChange,
   bookId,
   chapterId,
-  incomingMessages,
-  incomingMessagesToken,
+  canTransfer,
+  onTransfer,
 }) => {
   const [messages, setMessages] = useState([
-    { role: 'assistant', content: 'Hello! I can help you plan your book, brainstorm ideas, or review your writing. What are you working on today?' }
+    { role: 'assistant', content: 'Hello! I can help you plan this chapter, brainstorm ideas, or outline key moments. What should we start with?' }
   ]);
-  const [input, setInput] = useState('');
+  const [internalInput, setInternalInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
-  const [panelWidth, setPanelWidth] = useState(320); // Default 320px (w-80)
-  const [isResizing, setIsResizing] = useState(false);
+  const isControlled = typeof onInputChange === 'function' && inputValue !== undefined;
+  const input = isControlled ? inputValue : internalInput;
+  const setInput = isControlled ? onInputChange : setInternalInput;
   const messagesRef = useRef(messages);
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
-
+    debugger;
     const userQuery = input.trim();
     const assistantId = typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID()
@@ -32,14 +32,14 @@ const ChatPanel = ({
     setMessages(prev => [
       ...prev,
       { role: 'user', content: userQuery },
-      { id: assistantId, role: 'assistant', content: '', sources: [], actions: [] },
+      { id: assistantId, role: 'assistant', content: '', actions: [] },
     ]);
     setInput('');
     setIsLoading(true);
 
     try {
-      // Construct history including the new user message
-      const history = [...messages, { role: 'user', content: userQuery }];
+      const history = [...messages, 
+        { role: 'user', content: userQuery, isChapterGenerator: true }];
 
       await streamAirabookAI({
         messages: history,
@@ -57,7 +57,6 @@ const ChatPanel = ({
               ? {
                 ...msg,
                 content: data?.text || msg.content,
-                sources: data?.sources || msg.sources,
                 actions: data?.actions || [],
                 actionPrompt: data?.actionPrompt || '',
               }
@@ -67,7 +66,7 @@ const ChatPanel = ({
         onError: () => {
           setMessages(prev => prev.map(msg => (
             msg.id === assistantId
-              ? { ...msg, content: 'Sorry, I encountered an error while searching your book. Please try again.' }
+              ? { ...msg, content: 'Sorry, I hit an error while responding. Please try again.' }
               : msg
           )));
         },
@@ -76,7 +75,7 @@ const ChatPanel = ({
       console.error('RAG Query Error:', error);
       setMessages(prev => prev.map(msg => (
         msg.id === assistantId
-          ? { ...msg, content: 'Sorry, I encountered an error while searching your book. Please try again.' }
+          ? { ...msg, content: 'Sorry, I hit an error while responding. Please try again.' }
           : msg
       )));
     } finally {
@@ -104,7 +103,7 @@ const ChatPanel = ({
         msg.id === messageId ? { ...msg, actions: [], actionPrompt: '' } : msg
       )),
       userMessage,
-      { id: assistantId, role: 'assistant', content: '', sources: [], actions: [] },
+      { id: assistantId, role: 'assistant', content: '', actions: [] },
     ]));
 
     try {
@@ -123,11 +122,7 @@ const ChatPanel = ({
         onDone: (data) => {
           setMessages(prev => prev.map(msg => (
             msg.id === assistantId
-              ? {
-                ...msg,
-                content: data?.text || msg.content,
-                sources: data?.sources || msg.sources,
-              }
+              ? { ...msg, content: data?.text || msg.content }
               : msg
           )));
         },
@@ -149,116 +144,39 @@ const ChatPanel = ({
     }
   };
 
-  // Handle resize drag
-  const handleMouseDown = (e) => {
-    e.preventDefault();
-    setIsResizing(true);
-  };
-
-  useEffect(() => {
-    onMinimizeChange?.(isMinimized);
-  }, [isMinimized, onMinimizeChange]);
-
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
 
-  useEffect(() => {
-    if (!Array.isArray(incomingMessages) || incomingMessages.length === 0) {
-      return;
-    }
-    setMessages(incomingMessages);
-  }, [incomingMessagesToken, incomingMessages]);
-
-  useEffect(() => {
-    const handleMouseMove = (e) => {
-      if (!isResizing) return;
-      const newWidth = window.innerWidth - e.clientX;
-      // Clamp width between 280px and 600px
-      setPanelWidth(Math.max(280, Math.min(600, newWidth)));
-    };
-
-    const handleMouseUp = () => {
-      setIsResizing(false);
-    };
-
-    if (isResizing) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    }
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isResizing]);
-
-  if (isMinimized) {
-    return (
-      <div className="shrink-0 bg-card border-l border-border flex flex-col items-center w-12 transition-all duration-300">
-        <div className="h-[57px] flex items-center justify-center w-full border-b border-border bg-card/80 backdrop-blur-sm">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setIsMinimized(false)}
-            className="h-6 w-6 text-muted-foreground hover:text-foreground"
-            title="Expand AI Assistant"
-          >
-            <PanelRightOpen className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div
-      className="flex flex-col h-full bg-card border-l border-border shrink-0 relative transition-all duration-200"
-      style={{ width: `${panelWidth}px` }}
-    >
-      {/* Resize handle */}
-      <div
-        className={`absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-app-iris/40 transition-colors ${isResizing ? 'bg-app-iris/60' : 'bg-transparent'}`}
-        onMouseDown={handleMouseDown}
-        title="Drag to resize"
-      />
-
-      <div className="h-[57px] px-4 border-b border-border flex items-center justify-between bg-card/80 backdrop-blur-sm">
+    <div className="rounded-lg border border-border bg-card p-4">
+      <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-app-iris" />
-          <h3 className="font-semibold text-foreground text-sm">AI Assistant</h3>
+          <h3 className="text-sm font-semibold text-foreground">AI Assistant</h3>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setIsMinimized(true)}
-          className="h-6 w-6 text-muted-foreground hover:text-foreground"
-          title="Minimize"
-        >
-          <PanelRightClose className="h-4 w-4" />
-        </Button>
+        {canTransfer && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2 text-xs"
+            onClick={() => onTransfer?.(messages)}
+          >
+            Transfer &lt;-&gt;
+          </Button>
+        )}
       </div>
-
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="mt-3 max-h-56 space-y-3 overflow-y-auto">
         {messages.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${msg.role === 'user'
               ? 'bg-app-iris text-white rounded-br-none'
               : 'bg-app-gray-100 text-foreground rounded-bl-none'
-              }`}>
+            }`}>
               <p>{msg.content}</p>
-              {msg.sources && msg.sources.length > 0 && (
-                <div className="mt-2 pt-2 border-t border-border/20 text-xs opacity-80">
-                  <p className="font-semibold mb-1">Sources:</p>
-                  <ul className="list-disc pl-4 space-y-0.5">
-                    {msg.sources.map((source, idx) => (
-                      <li key={idx}>{source.shortNote}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
               {msg.actions && msg.actions.length > 0 && (
-                <div className="mt-3 rounded-lg border border-border/30 bg-app-gray-50 px-2 py-2 text-xs text-foreground">
+                <div className="mt-2 rounded-lg border border-border/30 bg-white/70 px-2 py-2 text-xs text-foreground">
                   <p className="font-semibold text-[10px] uppercase tracking-wide text-muted-foreground">
                     {msg.actionPrompt || 'Next step'}
                   </p>
@@ -292,7 +210,7 @@ const ChatPanel = ({
         )}
       </div>
 
-      <div className="p-3 border-t border-border bg-card">
+      <div className="mt-3">
         <div className="relative">
           <Input
             value={input}
@@ -309,7 +227,7 @@ const ChatPanel = ({
             onClick={handleSend}
             disabled={isLoading || !input.trim()}
           >
-            <Send className="h-4 w-4" />
+            <Sparkles className="h-4 w-4" />
           </Button>
         </div>
       </div>
@@ -317,4 +235,4 @@ const ChatPanel = ({
   );
 };
 
-export default ChatPanel;
+export default ChapterChatBox;
