@@ -59,6 +59,7 @@ const streamRagAnswer = async ({
   let query = lastUserMessage.content || '';
   let contextText = '';
 
+
   if (useRetriever) {
     const basePayload = await buildQueryBookContext({
       ai,

@@ -43,9 +43,9 @@ const ChapterChatBox = ({
 
       await streamAirabookAI({
         messages: history,
+        scope: 'chapter_assistant',
         bookId,
         chapterId,
-        mode: 'book_chat',
         onChunk: (text) => {
           setMessages(prev => prev.map(msg => (
             msg.id === assistantId ? { ...msg, content: `${msg.content}${text}` } : msg
@@ -110,10 +110,10 @@ const ChapterChatBox = ({
       const history = messagesRef.current;
       await streamAirabookAI({
         messages: history,
+        scope: 'chapter_assistant',
         action: 'generate_chapter',
         bookId,
         chapterId,
-        mode: 'book_chat',
         onChunk: (text) => {
           setMessages(prev => prev.map(msg => (
             msg.id === assistantId ? { ...msg, content: `${msg.content}${text}` } : msg

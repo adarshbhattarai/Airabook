@@ -28,7 +28,7 @@ const buildHistory = (items) => {
   const history = (items || [])
     .slice(0, -1)
     .map((message) => ({
-      role: message.role === 'assistant' ? 'model' : message.role,
+      role: message.role === 'assistant' ? 'model': message.role,
       content: [{ text: message.content || '' }],
     }))
     .filter((message) => message.role && message.content?.[0]?.text);
@@ -39,6 +39,10 @@ const buildHistory = (items) => {
   }
   return history.slice(firstUserIndex);
 };
+
+const answerPrompt = ai.prompt('airabook_answer');
+const actionClassifierPrompt = ai.prompt('airabook_action_classifier');
+const surprisePrompt = ai.prompt('airabook_surprise');
 
 exports.airabookaiStream = onRequest({ region: REGION }, async (req, res) => {
   setCorsHeaders(req, res);
@@ -80,7 +84,7 @@ exports.airabookaiStream = onRequest({ region: REGION }, async (req, res) => {
   const messages = Array.isArray(payload?.messages) ? payload.messages : [];
   const isSurprise = Boolean(payload?.isSurprise);
   const action = typeof payload?.action === 'string' ? payload.action : '';
-  const mode = typeof payload?.mode === 'string' ? payload.mode.trim() : '';
+  const scope = typeof payload?.scope === 'string' ? payload.scope.trim() : '';
   const bookId = typeof payload?.bookId === 'string' ? payload.bookId.trim() : '';
   const chapterId = typeof payload?.chapterId === 'string' ? payload.chapterId.trim() : '';
   const hasChapterContext = Boolean(bookId && chapterId);
@@ -107,9 +111,6 @@ exports.airabookaiStream = onRequest({ region: REGION }, async (req, res) => {
   setSseHeaders(res);
   const isClosed = attachCloseHandler(req);
 
-  const answerPrompt = ai.prompt('airabook_answer');
-  const actionClassifierPrompt = ai.prompt('airabook_action_classifier');
-  const surprisePrompt = ai.prompt('airabook_surprise');
 
   try {
     if (isSurprise) {

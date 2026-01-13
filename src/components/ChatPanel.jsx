@@ -39,10 +39,11 @@ const ChatPanel = ({
 
     try {
       // Construct history including the new user message
-      const history = [...messages, { role: 'user', content: userQuery }];
+      const history = [...messagesRef.current, { role: 'user', content: userQuery }];
 
       await streamAirabookAI({
         messages: history,
+        scope: 'book_assistant',
         bookId,
         chapterId,
         mode: 'book_chat',
@@ -92,7 +93,7 @@ const ChatPanel = ({
       return;
     }
 
-    if (actionId !== 'generate_chapter') return;
+    if (actionId !== 'generate_chapter' || actionId === 'create_book') return;
 
     const userMessage = { role: 'user', content: 'Generate this chapter.' };
     const assistantId = typeof crypto !== 'undefined' && crypto.randomUUID
@@ -111,7 +112,8 @@ const ChatPanel = ({
       const history = messagesRef.current;
       await streamAirabookAI({
         messages: history,
-        action: 'generate_chapter',
+        action: actionId,
+        scope: 'book_assistant',
         bookId,
         chapterId,
         mode: 'book_chat',
@@ -268,7 +270,7 @@ const ChatPanel = ({
                         key={action.id}
                         type="button"
                         size="sm"
-                        variant={action.id === 'generate_chapter' ? 'appPrimary' : 'appOutline'}
+                        variant={action.id === 'generate_chapter' || action.id === 'create_book' ? 'appPrimary' : 'appOutline'}
                         onClick={() => handleAction(msg.id, action.id)}
                         className="h-7 px-2 text-[11px]"
                       >

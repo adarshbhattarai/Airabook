@@ -53,6 +53,7 @@ const Dashboard = () => {
 
       await streamAirabookAI({
         messages: history,
+        scope:'dashboard',
         isSurprise,
         onChunk: (text) => {
           setMessages(prev => prev.map(msg => (
@@ -100,7 +101,7 @@ const Dashboard = () => {
       return;
     }
 
-    if (actionId !== 'generate_chapter') return;
+    if(actionId !=='generate_chapter' || actionId !=='create_book')  return;
 
     const userMessage = { role: 'user', content: 'Generate this chapter.' };
     const assistantId = typeof crypto !== 'undefined' && crypto.randomUUID
@@ -119,7 +120,8 @@ const Dashboard = () => {
       const history = messagesRef.current;
       await streamAirabookAI({
         messages: history,
-        action: 'generate_chapter',
+        action: actionId,
+        scope: 'dashboard',
         onChunk: (text) => {
           setMessages(prev => prev.map(msg => (
             msg.id === assistantId ? { ...msg, content: `${msg.content}${text}` } : msg
@@ -215,7 +217,7 @@ const Dashboard = () => {
                           key={action.id}
                           type="button"
                           size="sm"
-                          variant={action.id === 'generate_chapter' ? 'appPrimary' : 'appOutline'}
+                          variant={action.id === 'generate_chapter' || action.id === 'create_book' ? 'appPrimary' : 'appOutline'}
                           onClick={() => handleAction(msg.id, action.id)}
                           className="h-8 px-3 text-xs"
                         >

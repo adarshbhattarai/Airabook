@@ -69,7 +69,7 @@ export const streamAirabookAI = async ({
   action,
   bookId,
   chapterId,
-  mode,
+  scope,
   onChunk,
   onOutline,
   onPageStart,
