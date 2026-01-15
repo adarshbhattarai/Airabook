@@ -11,6 +11,7 @@ const ChapterChatBox = ({
   chapterId,
   canTransfer,
   onTransfer,
+  onPageCreated,
 }) => {
   const [messages, setMessages] = useState([
     { role: 'assistant', content: 'Hello! I can help you plan this chapter, brainstorm ideas, or outline key moments. What should we start with?' }
@@ -118,6 +119,13 @@ const ChapterChatBox = ({
           setMessages(prev => prev.map(msg => (
             msg.id === assistantId ? { ...msg, content: `${msg.content}${text}` } : msg
           )));
+        },
+        onPageDone: (data) => {
+          console.log('📄 Page created:', data);
+          // Notify parent component that a new page was created
+          if (typeof onPageCreated === 'function') {
+            onPageCreated(data);
+          }
         },
         onDone: (data) => {
           setMessages(prev => prev.map(msg => (

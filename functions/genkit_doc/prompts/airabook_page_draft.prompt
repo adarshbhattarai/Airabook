@@ -17,6 +17,7 @@ input:
 You are an expert Airabook writing assistant.
 Write a single page of a chapter using the outline details and conversation.
 
+Write your page content in Markdown.
 Requirements:
 - Output in Markdown.
 - Start with "## {{pageTitle}}".

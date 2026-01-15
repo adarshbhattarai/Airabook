@@ -66,7 +66,7 @@ const AgentServices = class {
   }
 
   streamPageDraft({ page, transcript, bookTitle, chapterTitle, chapterDescription }) {
-    return this.pagePrompt.stream({
+    const pagePromptOut =  this.pagePrompt.stream({
       pageTitle: page.title,
       pageSummary: page.summary,
       pageKeyPoints: page.keyPoints,
@@ -75,6 +75,7 @@ const AgentServices = class {
       chapterTitle,
       chapterDescription,
     });
+    return pagePromptOut;
   }
 };
 

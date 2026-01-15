@@ -88,7 +88,7 @@ exports.airabookaiStream = onRequest({ region: REGION }, async (req, res) => {
   const bookId = typeof payload?.bookId === 'string' ? payload.bookId.trim() : '';
   const chapterId = typeof payload?.chapterId === 'string' ? payload.chapterId.trim() : '';
   const hasChapterContext = Boolean(bookId && chapterId);
-  const useRetriever = mode === 'book_chat' && hasChapterContext;
+  const useRetriever = scope === 'book_assistant' && hasChapterContext;
 
   if (!messages.length) {
     res.status(400).send('Messages are required.');

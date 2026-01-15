@@ -46,7 +46,6 @@ const ChatPanel = ({
         scope: 'book_assistant',
         bookId,
         chapterId,
-        mode: 'book_chat',
         onChunk: (text) => {
           setMessages(prev => prev.map(msg => (
             msg.id === assistantId ? { ...msg, content: `${msg.content}${text}` } : msg
@@ -116,7 +115,6 @@ const ChatPanel = ({
         scope: 'book_assistant',
         bookId,
         chapterId,
-        mode: 'book_chat',
         onChunk: (text) => {
           setMessages(prev => prev.map(msg => (
             msg.id === assistantId ? { ...msg, content: `${msg.content}${text}` } : msg

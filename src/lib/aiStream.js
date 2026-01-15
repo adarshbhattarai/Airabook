@@ -93,7 +93,7 @@ export const streamAirabookAI = async ({
       'Content-Type': 'application/json',
       Authorization: `Bearer ${idToken}`,
     },
-    body: JSON.stringify({ messages, isSurprise, action, bookId, chapterId, mode }),
+    body: JSON.stringify({ messages, isSurprise, action, bookId, chapterId, scope }),
     signal,
   });
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
-  doc, getDoc, collection, getDocs, addDoc, deleteDoc, updateDoc, writeBatch, query, orderBy, where, limit
+  doc, getDoc, collection, getDocs, addDoc, deleteDoc, updateDoc, writeBatch, query, orderBy, where, limit, onSnapshot
 } from 'firebase/firestore';
 import { firestore, functions } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
@@ -592,6 +592,38 @@ const BookDetail = () => {
       fetchPages(selectedChapterId);
     }
   }, [selectedChapterId, fetchPages]);
+
+  // Real-time listener for pages (automatically updates when new pages are created)
+  useEffect(() => {
+    if (!selectedChapterId || !bookId) return;
+
+    console.log('🔔 Setting up real-time listener for pages in chapter:', selectedChapterId);
+
+    const pagesRef = collection(firestore, 'books', bookId, 'chapters', selectedChapterId, 'pages');
+    const qy = query(pagesRef, orderBy('order'));
+
+    const unsubscribe = onSnapshot(qy, (snapshot) => {
+      console.log('📄 Pages snapshot update received:', snapshot.docs.length, 'pages');
+      const pagesList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      setPages(pagesList);
+
+      // Auto-select first page if none selected
+      if (pagesList.length > 0) {
+        setSelectedPageId(p => pagesList.some(pg => pg.id === p) ? p : pagesList[0].id);
+      } else {
+        setSelectedPageId(null);
+      }
+    }, (error) => {
+      console.error('❌ Error in pages snapshot listener:', error);
+    });
+
+    // Cleanup listener on unmount or chapter change
+    return () => {
+      console.log('🔕 Cleaning up pages listener for chapter:', selectedChapterId);
+      unsubscribe();
+    };
+  }, [selectedChapterId, bookId]);
 
   // Deprecated old fetchers (keeping names to avoid breaking other refs if any, but making them no-ops or aliased)
   // We don't need separate fetchChapters anymore as it's handled in main effect
@@ -1875,6 +1907,11 @@ const BookDetail = () => {
                                 messages: transferMessages,
                                 token: Date.now(),
                               });
+                            }}
+                            onPageCreated={(pageData) => {
+                              console.log('🔄 Refreshing pages after page creation:', pageData);
+                              // Refresh pages for the current chapter
+                              fetchPages(selectedChapterId);
                             }}
                           />
                           <GenerateChapterContent
