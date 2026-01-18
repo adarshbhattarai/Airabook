@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { httpsCallable } from 'firebase/functions';
+import { RefreshCw } from 'lucide-react';
 import { functions } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 
@@ -16,14 +17,14 @@ const GenerateChapterContent = ({ bookId, chapterId, onSuggestionSelect }) => {
     (suggestions || []).map((item) => String(item).trim()).filter(Boolean)
   ), [suggestions]);
 
-  const fetchSuggestions = useCallback(async () => {
+  const fetchSuggestions = useCallback(async ({ force = false } = {}) => {
     if (!bookId || !chapterId || !user?.uid) {
       setSuggestions([]);
       return;
     }
 
     const requestKey = `${bookId}:${chapterId}:${user.uid}`;
-    if (inFlightKeyRef.current === requestKey || lastCompletedKeyRef.current === requestKey) {
+    if (inFlightKeyRef.current === requestKey || (!force && lastCompletedKeyRef.current === requestKey)) {
       return;
     }
 
@@ -69,7 +70,19 @@ const GenerateChapterContent = ({ bookId, chapterId, onSuggestionSelect }) => {
     <div className="mt-3 rounded-lg border border-border bg-card p-3">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-foreground">Chapter suggestions</p>
-        {isLoading && <span className="text-xs text-muted-foreground">Loading...</span>}
+        <div className="flex items-center gap-2">
+          {isLoading && <span className="text-xs text-muted-foreground">Loading...</span>}
+          <button
+            type="button"
+            onClick={() => fetchSuggestions({ force: true })}
+            disabled={isLoading || !user?.uid}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-app-gray-50 text-app-gray-700 transition hover:bg-app-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+            aria-label="Refresh chapter suggestions"
+            title="Refresh"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
       </div>
       {error ? (
         <p className="mt-2 text-xs text-destructive">{error}</p>
