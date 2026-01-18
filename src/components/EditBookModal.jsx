@@ -152,22 +152,22 @@ const EditBookModal = ({ isOpen, onClose, book, onUpdate }) => {
                     </div>
 
                     {/* Layout Mode Selector */}
-                    <div className="space-y-3">
-                        <Label htmlFor="layoutMode" className="text-base">Book Layout</Label>
-                        <select
-                            id="layoutMode"
-                            value={layoutMode}
-                            onChange={(e) => setLayoutMode(e.target.value)}
-                            className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                            <option value="standard">Responsive (Web Standard)</option>
-                            <option value="a4">A4 (Print Ready)</option>
-                            <option value="scrapbook">Scrapbook (Square 1:1)</option>
-                        </select>
-                        <p className="text-xs text-app-gray-500">
-                            Controls the page shape in the editor.
-                        </p>
-                    </div>
+                    {/*<div className="space-y-3">*/}
+                    {/*    <Label htmlFor="layoutMode" className="text-base">Book Layout</Label>*/}
+                    {/*    <select*/}
+                    {/*        id="layoutMode"*/}
+                    {/*        value={layoutMode}*/}
+                    {/*        onChange={(e) => setLayoutMode(e.target.value)}*/}
+                    {/*        className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"*/}
+                    {/*    >*/}
+                    {/*        <option value="standard">Responsive (Web Standard)</option>*/}
+                    {/*        /!*<option value="a4">A4 (Print Ready)</option>*!/*/}
+                    {/*        /!*<option value="scrapbook">Scrapbook (Square 1:1)</option>*!/*/}
+                    {/*    </select>*/}
+                    {/*    <p className="text-xs text-app-gray-500">*/}
+                    {/*        Controls the page shape in the editor.*/}
+                    {/*    </p>*/}
+                    {/*</div>*/}
 
                     {/* Cover Image Upload */}
                     <div className="space-y-3">

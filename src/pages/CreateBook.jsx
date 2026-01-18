@@ -82,13 +82,13 @@ const CreateBook = () => {
 
     try {
       console.log("📞 CreateBook: Calling Firebase function...");
-      console.log("🔧 Functions instance:", functions);
-      console.log("🌐 Functions region:", functions.app.options.region);
-
-      // Debug: Check current user and token
-      console.log("🔐 Current Firebase User:", auth.currentUser);
-      console.log("🔐 User UID:", auth.currentUser?.uid);
-      console.log("🔐 User Email:", auth.currentUser?.email);
+      // console.log("🔧 Functions instance:", functions);
+      // console.log("🌐 Functions region:", functions.app.options.region);
+      //
+      // // Debug: Check current user and token
+      // console.log("🔐 Current Firebase User:", auth.currentUser);
+      // console.log("🔐 User UID:", auth.currentUser?.uid);
+      // console.log("🔐 User Email:", auth.currentUser?.email);
 
       // Force refresh the ID token
       const idToken = await auth.currentUser.getIdToken(true);
@@ -337,45 +337,45 @@ const CreateBook = () => {
                   </div>
 
                   {/* Layout Selection */}
-                  <div>
-                    <label
-                      htmlFor="layout-mode"
-                      className="text-xs font-semibold text-app-gray-600 uppercase tracking-wide"
-                    >
-                      Book Layout
-                    </label>
-                    <div className="mt-3 grid grid-cols-3 gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setLayoutMode('standard')}
-                        className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${layoutMode === 'standard' ? 'border-app-iris bg-app-iris/5' : 'border-app-gray-200 hover:border-app-gray-300'}`}
-                      >
-                        <div className="w-full aspect-[4/3] bg-app-gray-200 rounded mb-2 border border-app-gray-300 shadow-sm" />
-                        <span className="text-xs font-medium text-app-gray-900">Standard</span>
-                        <span className="text-[10px] text-app-gray-500">Responsive</span>
-                      </button>
+                  {/*<div>*/}
+                  {/*  <label*/}
+                  {/*    htmlFor="layout-mode"*/}
+                  {/*    className="text-xs font-semibold text-app-gray-600 uppercase tracking-wide"*/}
+                  {/*  >*/}
+                  {/*    Book Layout*/}
+                  {/*  </label>*/}
+                  {/*  <div className="mt-3 grid grid-cols-3 gap-3">*/}
+                  {/*    <button*/}
+                  {/*      type="button"*/}
+                  {/*      onClick={() => setLayoutMode('standard')}*/}
+                  {/*      className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${layoutMode === 'standard' ? 'border-app-iris bg-app-iris/5' : 'border-app-gray-200 hover:border-app-gray-300'}`}*/}
+                  {/*    >*/}
+                  {/*      <div className="w-full aspect-[4/3] bg-app-gray-200 rounded mb-2 border border-app-gray-300 shadow-sm" />*/}
+                  {/*      <span className="text-xs font-medium text-app-gray-900">Standard</span>*/}
+                  {/*      <span className="text-[10px] text-app-gray-500">Responsive</span>*/}
+                  {/*    </button>*/}
 
-                      <button
-                        type="button"
-                        onClick={() => setLayoutMode('a4')}
-                        className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${layoutMode === 'a4' ? 'border-app-iris bg-app-iris/5' : 'border-app-gray-200 hover:border-app-gray-300'}`}
-                      >
-                        <div className="h-10 w-[min(100%,30px)] aspect-[210/297] bg-white rounded-sm mb-2 border border-app-gray-300 shadow-sm" />
-                        <span className="text-xs font-medium text-app-gray-900">A4 Print</span>
-                        <span className="text-[10px] text-app-gray-500">Fixed Page</span>
-                      </button>
+                  {/*    /!*<button*!/*/}
+                  {/*    /!*  type="button"*!/*/}
+                  {/*    /!*  onClick={() => setLayoutMode('a4')}*!/*/}
+                  {/*    /!*  className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${layoutMode === 'a4' ? 'border-app-iris bg-app-iris/5' : 'border-app-gray-200 hover:border-app-gray-300'}`}*!/*/}
+                  {/*    /!*>*!/*/}
+                  {/*    /!*  <div className="h-10 w-[min(100%,30px)] aspect-[210/297] bg-white rounded-sm mb-2 border border-app-gray-300 shadow-sm" />*!/*/}
+                  {/*    /!*  <span className="text-xs font-medium text-app-gray-900">A4 Print</span>*!/*/}
+                  {/*    /!*  <span className="text-[10px] text-app-gray-500">Fixed Page</span>*!/*/}
+                  {/*    /!*</button>*!/*/}
 
-                      <button
-                        type="button"
-                        onClick={() => setLayoutMode('scrapbook')}
-                        className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${layoutMode === 'scrapbook' ? 'border-app-iris bg-app-iris/5' : 'border-app-gray-200 hover:border-app-gray-300'}`}
-                      >
-                        <div className="w-10 h-10 bg-white rounded-sm mb-2 border border-app-gray-300 shadow-sm" />
-                        <span className="text-xs font-medium text-app-gray-900">Scrapbook</span>
-                        <span className="text-[10px] text-app-gray-500">Square 1:1</span>
-                      </button>
-                    </div>
-                  </div>
+                  {/*    /!*<button*!/*/}
+                  {/*    /!*  type="button"*!/*/}
+                  {/*    /!*  onClick={() => setLayoutMode('scrapbook')}*!/*/}
+                  {/*    /!*  className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${layoutMode === 'scrapbook' ? 'border-app-iris bg-app-iris/5' : 'border-app-gray-200 hover:border-app-gray-300'}`}*!/*/}
+                  {/*    /!*>*!/*/}
+                  {/*    /!*  <div className="w-10 h-10 bg-white rounded-sm mb-2 border border-app-gray-300 shadow-sm" />*!/*/}
+                  {/*    /!*  <span className="text-xs font-medium text-app-gray-900">Scrapbook</span>*!/*/}
+                  {/*    /!*  <span className="text-[10px] text-app-gray-500">Square 1:1</span>*!/*/}
+                  {/*    /!*</button>*!/*/}
+                  {/*  </div>*/}
+                  {/*</div>*/}
 
                   {/* Prompt Section - Only shown when Auto-generate is selected */}
                   {creationType === 0 && (
