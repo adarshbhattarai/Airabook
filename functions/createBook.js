@@ -209,6 +209,8 @@ exports.createBook = onCall(
     const db = admin.firestore();
 
     try {
+      logger.log(data
+      );
       // Validate input
       validateCreateBookRequest(data);
       logger.log(

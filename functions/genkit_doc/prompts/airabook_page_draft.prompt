@@ -1,0 +1,45 @@
+---
+model: googleai/gemini-2.5-flash
+config:
+  temperature: 0.7
+input:
+  schema:
+    pageTitle: string
+    pageSummary?: string
+    pageKeyPoints?(array): string
+    transcript: string
+    bookTitle?: string
+    chapterTitle?: string
+    chapterDescription?: string
+---
+
+{{role "system"}}
+You are an expert Airabook writing assistant.
+Write a single page of a chapter using the outline details and conversation.
+
+Write your page content in Markdown.
+Requirements:
+- Output in Markdown.
+- Start with "## {{pageTitle}}".
+- 2 to 4 sections with headings and rich paragraphs.
+- Keep the tone consistent with the conversation.
+- Fill in plausible details if needed, but do not contradict the context.
+
+{{role "user"}}
+Book: {{bookTitle}}
+Chapter: {{chapterTitle}}
+Chapter description: {{chapterDescription}}
+
+Page summary: {{pageSummary}}
+
+Key points:
+{{#if pageKeyPoints}}
+{{#each pageKeyPoints}}
+- {{this}}
+{{/each}}
+{{else}}
+No key points provided.
+{{/if}}
+
+Conversation:
+{{transcript}}

@@ -131,7 +131,8 @@ const { stripeWebhook } = require("./payments/stripeWebhook");
 const { createPage } = require("./createPage");
 const { updatePage } = require("./updatePage");
 const { updateAlbum } = require("./updateAlbum");
-const { queryBookFlow } = require("./genkit");
+const { queryBookFlow, generateChapterSuggestions } = require("./genkit");
+const { airabookaiStream } = require("./airabookaiStream");
 const { onBookDeleted, onPageDeleted, onChapterDeleted } = require("./usageTriggers");
 const { deleteMediaAsset, deleteAlbumAssets } = require("./deleteMedia");
 const { trackMediaUsage, untrackMediaUsage } = require("./mediaUsage");
@@ -156,6 +157,8 @@ exports.stripeWebhook = stripeWebhook;
 exports.createPage = createPage;
 exports.updatePage = updatePage;
 exports.queryBookFlow = queryBookFlow;
+exports.generateChapterSuggestions = generateChapterSuggestions;
+exports.airabookaiStream = airabookaiStream;
 exports.createUserDoc = createUserDoc;
 exports.onBookDeleted = onBookDeleted;
 exports.onPageDeleted = onPageDeleted;
@@ -427,6 +430,5 @@ exports.addPageSummary = onCall({ region: "us-central1", cors: true }, async (re
     throw new HttpsError('internal', 'Failed to add page summary. Please try again.');
   }
 });
-
 
 

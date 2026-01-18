@@ -1,10 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Send, Sparkles } from 'lucide-react';
+import { Send, Sparkles, BookText, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { functions } from '@/lib/firebase';
-import { httpsCallable } from 'firebase/functions';
+import { streamAirabookAI } from '@/lib/aiStream';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 const Dashboard = () => {
   const location = useLocation();
@@ -13,8 +18,18 @@ const Dashboard = () => {
   const [messages, setMessages] = useState([]);
   const [isChatStarted, setIsChatStarted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedBook, setSelectedBook] = useState(null);
   const messagesEndRef = React.useRef(null);
   const hasSubmittedInitialPrompt = React.useRef(false);
+  const messagesRef = useRef(messages);
+
+  // Extract books from appUser
+  const books = appUser?.accessibleBookIds ? appUser.accessibleBookIds.map(item => {
+    if (typeof item === 'string') {
+      return { bookId: item, title: 'Untitled Book' };
+    }
+    return item;
+  }) : [];
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -22,6 +37,10 @@ const Dashboard = () => {
 
   useEffect(() => {
     scrollToBottom();
+  }, [messages]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
   }, [messages]);
 
   const submitPrompt = async (promptText, options = {}) => {
@@ -34,37 +53,122 @@ const Dashboard = () => {
     // Display user-friendly message in chat for surprise mode
     const displayContent = isSurprise ? "Surprise me with a creative book idea!" : promptText;
     const userMessage = { role: 'user', content: displayContent };
-    setMessages(prev => [...prev, userMessage]);
+    const assistantId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `assistant-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const assistantMessage = { id: assistantId, role: 'model', content: '', sources: [], actions: [] };
+    setMessages(prev => [...prev, userMessage, assistantMessage]);
     setPrompt('');
     setIsChatStarted(true);
     setIsSubmitting(true);
 
     try {
-      const queryBookFlow = httpsCallable(functions, 'queryBookFlow');
-
       // Prepare history for backend (including the new message)
       const history = [...messages, userMessage];
 
-      const result = await queryBookFlow({
+      await streamAirabookAI({
         messages: history,
-        isSurprise: isSurprise
+        scope:'dashboard',
+        isSurprise,
+        bookContext: selectedBook ? { bookId: selectedBook.bookId, title: selectedBook.title } : null,
+        onChunk: (text) => {
+          setMessages(prev => prev.map(msg => (
+            msg.id === assistantId ? { ...msg, content: `${msg.content}${text}` } : msg
+          )));
+        },
+        onDone: (data) => {
+          setMessages(prev => prev.map(msg => (
+            msg.id === assistantId
+              ? {
+                ...msg,
+                content: data?.text || msg.content,
+                sources: data?.sources || msg.sources,
+                actions: data?.actions || [],
+                actionPrompt: data?.actionPrompt || '',
+              }
+              : msg
+          )));
+        },
+        onError: () => {
+          setMessages(prev => prev.map(msg => (
+            msg.id === assistantId
+              ? { ...msg, content: "I'm sorry, I encountered an error. Please try again." }
+              : msg
+          )));
+        },
       });
-
-      const aiMessage = {
-        role: 'model',
-        content: result.data.answer,
-        sources: result.data.sources
-      };
-
-      setMessages(prev => [...prev, aiMessage]);
     } catch (error) {
       console.error('Error submitting prompt:', error);
-      setMessages(prev => [...prev, {
-        role: 'model',
-        content: "I'm sorry, I encountered an error. Please try again."
-      }]);
+      setMessages(prev => prev.map(msg => (
+        msg.id === assistantId
+          ? { ...msg, content: "I'm sorry, I encountered an error. Please try again." }
+          : msg
+      )));
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleAction = async (messageId, actionId) => {
+    if (actionId === 'deny_generate_chapter') {
+      setMessages(prev => prev.map(msg => (
+        msg.id === messageId ? { ...msg, actions: [], actionPrompt: '' } : msg
+      )));
+      return;
+    }
+
+    if(actionId !=='generate_chapter' || actionId !=='create_book')  return;
+
+    const userMessage = { role: 'user', content: 'Generate this chapter.' };
+    const assistantId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `assistant-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+    setMessages(prev => ([
+      ...prev.map(msg => (
+        msg.id === messageId ? { ...msg, actions: [], actionPrompt: '' } : msg
+      )),
+      userMessage,
+      { id: assistantId, role: 'model', content: '', sources: [], actions: [] },
+    ]));
+
+    try {
+      const history = messagesRef.current;
+      await streamAirabookAI({
+        messages: history,
+        action: actionId,
+        scope: 'dashboard',
+        onChunk: (text) => {
+          setMessages(prev => prev.map(msg => (
+            msg.id === assistantId ? { ...msg, content: `${msg.content}${text}` } : msg
+          )));
+        },
+        onDone: (data) => {
+          setMessages(prev => prev.map(msg => (
+            msg.id === assistantId
+              ? {
+                ...msg,
+                content: data?.text || msg.content,
+                sources: data?.sources || msg.sources,
+              }
+              : msg
+          )));
+        },
+        onError: () => {
+          setMessages(prev => prev.map(msg => (
+            msg.id === assistantId
+              ? { ...msg, content: "I'm sorry, I couldn't generate the chapter. Please try again." }
+              : msg
+          )));
+        },
+      });
+    } catch (error) {
+      console.error('Generate chapter error:', error);
+      setMessages(prev => prev.map(msg => (
+        msg.id === assistantId
+          ? { ...msg, content: "I'm sorry, I couldn't generate the chapter. Please try again." }
+          : msg
+      )));
     }
   };
 
@@ -118,6 +222,27 @@ const Dashboard = () => {
                     </div>
                   </div>
                 )}
+                {msg.actions && msg.actions.length > 0 && (
+                  <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50 p-3 text-sm text-gray-600">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      {msg.actionPrompt || 'Next step'}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {msg.actions.map((action) => (
+                        <Button
+                          key={action.id}
+                          type="button"
+                          size="sm"
+                          variant={action.id === 'generate_chapter' || action.id === 'create_book' ? 'appPrimary' : 'appOutline'}
+                          onClick={() => handleAction(msg.id, action.id)}
+                          className="h-8 px-3 text-xs"
+                        >
+                          {action.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -161,6 +286,23 @@ const Dashboard = () => {
             <div className={`absolute -inset-1 bg-gradient-to-r from-app-iris via-purple-500 to-pink-500 rounded-2xl opacity-20 transition duration-500 blur-lg ${isChatStarted ? 'group-hover:opacity-20' : 'group-hover:opacity-30'}`}></div>
             <div className="relative bg-white rounded-2xl shadow-2xl border border-app-gray-100 overflow-hidden">
               <form onSubmit={handleSubmit} className="flex flex-col">
+                {/* Selected Book Badge */}
+                {selectedBook && (
+                  <div className="px-6 pt-4 pb-2">
+                    <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-app-iris/10 text-app-iris rounded-lg text-sm">
+                      <BookText className="h-3.5 w-3.5" />
+                      <span className="font-medium">{selectedBook.title}</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedBook(null)}
+                        className="ml-1 hover:bg-app-iris/20 rounded-full p-0.5 transition-colors"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <textarea
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
@@ -187,6 +329,40 @@ const Dashboard = () => {
                       <Sparkles className="h-4 w-4 mr-2" />
                       Surprise me
                     </Button>
+
+                    {/* Add Context Dropdown */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={isSubmitting || books.length === 0}
+                          className="text-app-gray-500 hover:text-app-iris hover:bg-app-iris/10 rounded-full px-3"
+                        >
+                          <BookText className="h-4 w-4 mr-2" />
+                          Add Context
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-56 max-h-64 overflow-y-auto">
+                        {books.length === 0 ? (
+                          <div className="px-2 py-3 text-sm text-app-gray-500 text-center">
+                            No books available
+                          </div>
+                        ) : (
+                          books.map((book) => (
+                            <DropdownMenuItem
+                              key={book.bookId}
+                              onClick={() => setSelectedBook(book)}
+                              className="cursor-pointer"
+                            >
+                              <BookText className="h-4 w-4 mr-2" />
+                              {book.title}
+                            </DropdownMenuItem>
+                          ))
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
 
                   <Button

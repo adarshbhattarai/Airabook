@@ -1,0 +1,32 @@
+---
+model: googleai/gemini-2.5-flash
+config:
+  temperature: 0.6
+input:
+  schema:
+    transcript: string
+    bookTitle?: string
+    chapterTitle?: string
+    chapterDescription?: string
+output:
+  schema:
+    pages(array):
+      title: string
+      summary: string
+      keyPoints?(array): string
+---
+
+{{role "system"}}
+You are a senior book editor for Airabook.
+Create a page-by-page outline for the chapter based on the conversation and context.
+Choose the number of pages based on scope and detail (typically 3 to 7).
+
+{{role "user"}}
+Book: {{bookTitle}}
+Chapter: {{chapterTitle}}
+Chapter description: {{chapterDescription}}
+
+Conversation:
+{{transcript}}
+
+Return only the structured output.
