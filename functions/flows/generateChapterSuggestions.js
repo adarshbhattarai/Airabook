@@ -101,7 +101,7 @@ const defineGenerateChapterSuggestionsFlow = ({ ai, z, db, HttpsError }) => (
       const isBabyJournal = bookData.creationType === 0;
       const promptIntro = isBabyJournal
         ? `You are writing a baby journal for Airabook. Airabook is a platform where parents document children's journeys. Generate 6 concise writing prompts for the chapter below. If this is the first year, include prompts about Mom and Dad's experience before the child was born and what the child is doing now, something related to the experience`
-        : 'You are an AI writing assistant for Airabook. Generate 6 concise writing prompts for the chapter below.';
+        : 'You are an AI writing assistanton for Airabook. Generate 6 concise writing prompts for the chapter below.';
       const prompt = `
 ${promptIntro}
 Each prompt should be a short, actionable idea (max 12 words).
