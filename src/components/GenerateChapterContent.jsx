@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { httpsCallable } from 'firebase/functions';
+import { RefreshCw } from 'lucide-react';
 import { functions } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 
@@ -12,18 +13,59 @@ const GenerateChapterContent = ({ bookId, chapterId, onSuggestionSelect }) => {
   const lastCompletedKeyRef = useRef('');
   const requestIdRef = useRef(0);
 
+  const cacheKey = useMemo(() => {
+    if (!bookId || !chapterId || !user?.uid) return '';
+    return `chapterSuggestions:${user.uid}:${bookId}:${chapterId}`;
+  }, [bookId, chapterId, user?.uid]);
+
   const normalizedSuggestions = useMemo(() => (
     (suggestions || []).map((item) => String(item).trim()).filter(Boolean)
   ), [suggestions]);
 
-  const fetchSuggestions = useCallback(async () => {
+  const readCachedSuggestions = useCallback(() => {
+    if (!cacheKey) return [];
+    try {
+      const raw = localStorage.getItem(cacheKey);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (err) {
+      return [];
+    }
+  }, [cacheKey]);
+
+  const writeCachedSuggestions = useCallback((nextSuggestions = []) => {
+    if (!cacheKey) return;
+    try {
+      if (!Array.isArray(nextSuggestions) || nextSuggestions.length === 0) {
+        localStorage.removeItem(cacheKey);
+        return;
+      }
+      localStorage.setItem(cacheKey, JSON.stringify(nextSuggestions));
+    } catch (err) {
+      // Ignore storage failures (private mode, quota, etc.)
+    }
+  }, [cacheKey]);
+
+  const fetchSuggestions = useCallback(async ({ force = false } = {}) => {
     if (!bookId || !chapterId || !user?.uid) {
       setSuggestions([]);
       return;
     }
 
     const requestKey = `${bookId}:${chapterId}:${user.uid}`;
-    if (inFlightKeyRef.current === requestKey || lastCompletedKeyRef.current === requestKey) {
+
+    if (!force) {
+      const cached = readCachedSuggestions();
+      if (cached.length > 0) {
+        setError('');
+        setSuggestions(cached);
+        lastCompletedKeyRef.current = requestKey;
+        return;
+      }
+    }
+
+    if (inFlightKeyRef.current === requestKey || (!force && lastCompletedKeyRef.current === requestKey)) {
       return;
     }
 
@@ -34,10 +76,16 @@ const GenerateChapterContent = ({ bookId, chapterId, onSuggestionSelect }) => {
     setError('');
     try {
       const getChapterSuggestions = httpsCallable(functions, 'generateChapterSuggestions');
-      const result = await getChapterSuggestions({ bookId, chapterId, userId: user.uid });
+      const result = await getChapterSuggestions({
+        bookId,
+        chapterId,
+        userId: user.uid,
+        refresh: force,
+      });
       if (requestIdRef.current !== requestId) return;
       const nextSuggestions = Array.isArray(result.data?.suggestions) ? result.data.suggestions : [];
       setSuggestions(nextSuggestions);
+      writeCachedSuggestions(nextSuggestions);
       lastCompletedKeyRef.current = requestKey;
     } catch (err) {
       console.error('Chapter suggestions fetch failed:', err);
@@ -51,7 +99,7 @@ const GenerateChapterContent = ({ bookId, chapterId, onSuggestionSelect }) => {
         inFlightKeyRef.current = null;
       }
     }
-  }, [bookId, chapterId, user?.uid]);
+  }, [bookId, chapterId, user?.uid, readCachedSuggestions, writeCachedSuggestions]);
 
   useEffect(() => {
     if (!bookId || !chapterId || !user?.uid) {
@@ -69,7 +117,19 @@ const GenerateChapterContent = ({ bookId, chapterId, onSuggestionSelect }) => {
     <div className="mt-3 rounded-lg border border-border bg-card p-3">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-foreground">Chapter suggestions</p>
-        {isLoading && <span className="text-xs text-muted-foreground">Loading...</span>}
+        <div className="flex items-center gap-2">
+          {isLoading && <span className="text-xs text-muted-foreground">Loading...</span>}
+          <button
+            type="button"
+            onClick={() => fetchSuggestions({ force: true })}
+            disabled={isLoading || !user?.uid}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-app-gray-50 text-app-gray-700 transition hover:bg-app-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+            aria-label="Refresh chapter suggestions"
+            title="Refresh"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
       </div>
       {error ? (
         <p className="mt-2 text-xs text-destructive">{error}</p>

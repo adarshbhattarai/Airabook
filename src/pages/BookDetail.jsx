@@ -1119,6 +1119,7 @@ const BookDetail = () => {
 
         // Update local state immediately
         setPages([...pages, newPage].sort((a, b) => a.order.localeCompare(b.order)));
+        setViewMode('pages');
         setSelectedPageId(tempId);
         setPageDrafts(prev => ({
           ...prev,
