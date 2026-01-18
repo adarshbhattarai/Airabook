@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
-  doc, getDoc, collection, getDocs, addDoc, deleteDoc, updateDoc, writeBatch, query, orderBy, where, limit
+  doc, getDoc, collection, getDocs, addDoc, deleteDoc, updateDoc, writeBatch, query, orderBy, where, limit, onSnapshot
 } from 'firebase/firestore';
 import { firestore, functions } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
@@ -19,6 +19,8 @@ import { httpsCallable } from 'firebase/functions';
 import EditBookModal from '@/components/EditBookModal';
 import PageEditor from '@/components/PageEditor';
 import ChatPanel from '@/components/ChatPanel';
+import GenerateChapterContent from '@/components/GenerateChapterContent';
+import ChapterChatBox from '@/components/ChapterChatBox';
 import HoverDeleteMenu from '@/components/ui/HoverDeleteMenu';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import { usePaginationReflow } from '@/hooks/usePaginationReflow';
@@ -90,6 +92,9 @@ const BookDetail = () => {
   });
   const [pages, setPages] = useState([]);
   const [selectedPageId, setSelectedPageId] = useState(null);
+  const [chapterChatInput, setChapterChatInput] = useState('');
+  const [chatPanelSeed, setChatPanelSeed] = useState(null);
+  const [viewMode, setViewMode] = useState('chapter'); // 'chapter' or 'pages'
 
   // UI States
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
@@ -588,6 +593,38 @@ const BookDetail = () => {
       fetchPages(selectedChapterId);
     }
   }, [selectedChapterId, fetchPages]);
+
+  // Real-time listener for pages (automatically updates when new pages are created)
+  useEffect(() => {
+    if (!selectedChapterId || !bookId) return;
+
+    console.log('🔔 Setting up real-time listener for pages in chapter:', selectedChapterId);
+
+    const pagesRef = collection(firestore, 'books', bookId, 'chapters', selectedChapterId, 'pages');
+    const qy = query(pagesRef, orderBy('order'));
+
+    const unsubscribe = onSnapshot(qy, (snapshot) => {
+      console.log('📄 Pages snapshot update received:', snapshot.docs.length, 'pages');
+      const pagesList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      setPages(pagesList);
+
+      // Auto-select first page if none selected
+      if (pagesList.length > 0) {
+        setSelectedPageId(p => pagesList.some(pg => pg.id === p) ? p : pagesList[0].id);
+      } else {
+        setSelectedPageId(null);
+      }
+    }, (error) => {
+      console.error('❌ Error in pages snapshot listener:', error);
+    });
+
+    // Cleanup listener on unmount or chapter change
+    return () => {
+      console.log('🔕 Cleaning up pages listener for chapter:', selectedChapterId);
+      unsubscribe();
+    };
+  }, [selectedChapterId, bookId]);
 
   // Deprecated old fetchers (keeping names to avoid breaking other refs if any, but making them no-ops or aliased)
   // We don't need separate fetchChapters anymore as it's handled in main effect
@@ -1698,10 +1735,13 @@ const BookDetail = () => {
                                 setSaveConfirmOpen(true);
                                 return;
                               }
+                              // Switch to chapter view mode
                               setSelectedChapterId(chapter.id);
+                              setViewMode('chapter');
+                              setSelectedPageId(null);
                               setExpandedChapters(new Set([chapter.id]));
                             }}
-                            className={`w-full text-left p-2 rounded-lg flex items-center justify-between ${editingChapterId === chapter.id ? '' : 'cursor-pointer'} ${selectedChapterId === chapter.id ? 'bg-app-iris/10 text-app-iris font-medium' : 'hover:bg-app-gray-100 text-foreground'}`}
+                            className={`w-full text-left p-2 rounded-lg flex items-center justify-between ${editingChapterId === chapter.id ? '' : 'cursor-pointer'} ${selectedChapterId === chapter.id && viewMode === 'chapter' ? 'bg-app-iris/10 text-app-iris font-medium' : 'hover:bg-app-gray-100 text-foreground'}`}
                           >
                             <div className="flex items-center flex-1 min-w-0 mr-2">
                               {isOwner && <HoverDeleteMenu onDelete={() => openDeleteModal('chapter', chapter)} />}
@@ -1755,34 +1795,47 @@ const BookDetail = () => {
                             <Droppable droppableId={chapter.id} type="PAGE">
                               {(provided) => (
                                 <div ref={provided.innerRef} {...provided.droppableProps} className="ml-3 pl-3 border-l border-border py-1 space-y-0.5">
-                                  {chapter.pagesSummary?.length > 0 ? chapter.pagesSummary.map((pageSummary, index) => (
-                                    <Draggable key={pageSummary.pageId} draggableId={pageSummary.pageId} index={index}>
-                                      {(provided2) => (
-                                        <div
-                                          ref={provided2.innerRef}
-                                          {...provided2.draggableProps}
-                                          onClick={() => {
-                                            requestSelectPage(chapter.id, pageSummary.pageId);
-                                          }}
-                                          role="button"
-                                          tabIndex={0}
-                                          className={`group w-full text-left p-1.5 rounded-md text-sm flex items-center justify-between cursor-pointer ${selectedPageId === pageSummary.pageId ? 'bg-app-iris/10 text-app-iris font-medium' : 'hover:bg-app-gray-50 text-app-gray-600'}`}
-                                        >
-                                          <div className="flex items-center truncate">
-                                            <span
-                                              {...provided2.dragHandleProps}
-                                              className="mr-2 text-app-gray-300 hover:text-foreground shrink-0 cursor-grab active:cursor-grabbing"
-                                            >
-                                              <GripVertical className="h-3 w-3" />
-                                            </span>
-                                            <span className="truncate text-xs">{pageSummary.shortNote || 'Untitled Page'}</span>
-                                          </div>
+                                  {(() => {
+                                    // Get pages for this chapter from the pages state if this is the selected chapter
+                                    const chapterPages = selectedChapterId === chapter.id
+                                      ? pages.map(p => ({
+                                          pageId: p.id,
+                                          shortNote: p.shortNote || stripHtml(p.note || '').substring(0, 40) || 'Untitled Page',
+                                          order: p.order
+                                        }))
+                                      : chapter.pagesSummary || [];
 
-                                          {canEdit && <HoverDeleteMenu side="right" onDelete={() => openDeleteModal('page', { ...pageSummary, chapterId: chapter.id, pageIndex: index })} />}
-                                        </div>
-                                      )}
-                                    </Draggable>
-                                  )) : <div className="p-2 text-xs text-muted-foreground italic">No pages</div>}
+                                    return chapterPages.length > 0 ? chapterPages.map((pageSummary, index) => (
+                                      <Draggable key={pageSummary.pageId} draggableId={pageSummary.pageId} index={index}>
+                                        {(provided2) => (
+                                          <div
+                                            ref={provided2.innerRef}
+                                            {...provided2.draggableProps}
+                                            onClick={() => {
+                                              // Switch to pages view mode
+                                              setViewMode('pages');
+                                              requestSelectPage(chapter.id, pageSummary.pageId);
+                                            }}
+                                            role="button"
+                                            tabIndex={0}
+                                            className={`group w-full text-left p-1.5 rounded-md text-sm flex items-center justify-between cursor-pointer ${selectedPageId === pageSummary.pageId && viewMode === 'pages' ? 'bg-app-iris/10 text-app-iris font-medium' : 'hover:bg-app-gray-50 text-app-gray-600'}`}
+                                          >
+                                            <div className="flex items-center truncate">
+                                              <span
+                                                {...provided2.dragHandleProps}
+                                                className="mr-2 text-app-gray-300 hover:text-foreground shrink-0 cursor-grab active:cursor-grabbing"
+                                              >
+                                                <GripVertical className="h-3 w-3" />
+                                              </span>
+                                              <span className="truncate text-xs">{pageSummary.shortNote || 'Untitled Page'}</span>
+                                            </div>
+
+                                            {canEdit && <HoverDeleteMenu side="right" onDelete={() => openDeleteModal('page', { ...pageSummary, chapterId: chapter.id, pageIndex: index })} />}
+                                          </div>
+                                        )}
+                                      </Draggable>
+                                    )) : <div className="p-2 text-xs text-muted-foreground italic">No pages</div>;
+                                  })()}
                                   {provided.placeholder}
                                 </div>
                               )}
@@ -1801,63 +1854,126 @@ const BookDetail = () => {
             <div className="flex-1 flex flex-col min-h-0 relative bg-white overflow-hidden">
               <div className="flex-1 overflow-y-auto h-full scroll-smooth" ref={scrollContainerRef}>
                 <div className="min-h-full pb-32">
-                  {pages.length > 0 ? (
-                    pages.map((p, index) => (
-                      <div
-                        key={p.id}
-                        ref={el => pageContainerRefs.current[p.id] = el}
-                        data-page-id={p.id}
-                        className={book?.layoutMode === 'standard' ? 'w-full max-w-5xl mx-auto px-6' : 'w-full pl-4 pr-6'}
-                      >
-                        {/* Page Divider (except for first page) */}
-                        {index > 0 && book?.layoutMode !== 'standard' && (
-                          <div className="w-full h-px bg-gray-100 my-10" />
-                        )}
+                  {selectedChapterId ? (
+                    <>
+                      {viewMode === 'chapter' ? (
+                        /* Chapter View: Show AI Assistant */
+                        <div className="flex flex-col justify-center items-center text-center h-full p-6">
+                          <div className="bg-app-gray-50 rounded-full p-6 mb-4">
+                            <Sparkles className="h-8 w-8 text-app-iris" />
+                          </div>
+                          <h3 className="text-lg font-medium text-app-iris mb-1">
+                            {chapters.find(c => c.id === selectedChapterId)?.title}
+                          </h3>
+                          <h2 className="text-xl font-semibold text-gray-800">Ready to write?</h2>
+                          <p className="mt-2 text-gray-500 max-w-xs">Use the AI assistant below to add content or create pages manually.</p>
 
-                        {/* Page Header (First page only or all?) User said "page 1, 2" */}
+                          {/* Show "Go to Pages" button if pages exist */}
+                          {pages.length > 0 && (
+                            <Button
+                              onClick={() => {
+                                setViewMode('pages');
+                                setSelectedPageId(pages[0].id);
+                              }}
+                              variant="outline"
+                              className="mt-4"
+                            >
+                              <Type className="h-4 w-4 mr-2" />
+                              View Pages ({pages.length})
+                            </Button>
+                          )}
 
+                          {canEdit && (
+                            <Button onClick={requestAddPage} className="mt-2">
+                              <PlusCircle className="h-4 w-4 mr-2" />
+                              Add Page Manually
+                            </Button>
+                          )}
 
-                        <PageEditor
-                          ref={el => pageRefs.current[p.id] = el}
-                          bookId={bookId}
-                          chapterId={selectedChapterId}
-                          page={p}
-                          onPageUpdate={handlePageUpdate}
-                          onAddPage={handleAddPage}
-                          onNavigate={(dir) => handlePageNavigate(p.id, dir)}
-                          pageIndex={index}
-                          totalPages={pages.length}
-                          chapterTitle={chapterTitle}
-                          draft={pageDrafts[p.id]}
-                          onDraftChange={(pageId, val) => handleDraftChange(pageId, val)}
-                          onBlocksChange={(pageId) => requestReflowDebounced(pageId)}
-                          onRequestReflow={(pageId) => requestReflow(pageId)}
-                          onNearOverflowAtEnd={handleNearOverflowAtEnd}
-                          onBackspaceAtStart={handleBackspaceAtStart}
-                          onUserInput={handleUserInput}
-                          onFocus={handlePageFocus}
-                          onReplacePageId={handleReplacePageId}
-                          onRequestPageDelete={(page, pageIndex) => openDeleteModal('page', { ...page, chapterId: selectedChapterId, pageId: page.id, pageIndex })}
-                          pages={pages}
-                          layoutMode={book?.layoutMode}
-                          pageAlign={pageAlign}
-                          standardPageHeightPx={standardPageHeightPx}
-                        />
-                      </div>
-                    ))
+                          {/* AI Assistant Box */}
+                          <div className="w-full max-w-3xl mt-8 text-left space-y-4">
+                            <ChapterChatBox
+                              inputValue={chapterChatInput}
+                              onInputChange={setChapterChatInput}
+                              bookId={bookId}
+                              chapterId={selectedChapterId}
+                              canTransfer={pages.length > 0}
+                              onTransfer={(transferMessages) => {
+                                setChatPanelSeed({
+                                  messages: transferMessages,
+                                  token: Date.now(),
+                                });
+                              }}
+                              onPageCreated={(pageData) => {
+                                console.log('🔄 Refreshing pages after page creation:', pageData);
+                                // Refresh pages for the current chapter
+                                fetchPages(selectedChapterId);
+                              }}
+                            />
+                            <GenerateChapterContent
+                              bookId={bookId}
+                              chapterId={selectedChapterId}
+                              onSuggestionSelect={setChapterChatInput}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        /* Pages View: Show all pages */
+                        pages.length > 0 ? (
+                          pages.map((p, index) => (
+                            <div
+                              key={p.id}
+                              ref={el => pageContainerRefs.current[p.id] = el}
+                              data-page-id={p.id}
+                              className={book?.layoutMode === 'standard' ? 'w-full max-w-5xl mx-auto px-6' : 'w-full pl-4 pr-6'}
+                            >
+                              {/* Page Divider (except for first page) */}
+                              {index > 0 && book?.layoutMode !== 'standard' && (
+                                <div className="w-full h-px bg-gray-100 my-10" />
+                              )}
+
+                              <PageEditor
+                                ref={el => pageRefs.current[p.id] = el}
+                                bookId={bookId}
+                                chapterId={selectedChapterId}
+                                page={p}
+                                onPageUpdate={handlePageUpdate}
+                                onAddPage={handleAddPage}
+                                onNavigate={(dir) => handlePageNavigate(p.id, dir)}
+                                pageIndex={index}
+                                totalPages={pages.length}
+                                chapterTitle={chapterTitle}
+                                draft={pageDrafts[p.id]}
+                                onDraftChange={(pageId, val) => handleDraftChange(pageId, val)}
+                                onBlocksChange={(pageId) => requestReflowDebounced(pageId)}
+                                onRequestReflow={(pageId) => requestReflow(pageId)}
+                                onNearOverflowAtEnd={handleNearOverflowAtEnd}
+                                onBackspaceAtStart={handleBackspaceAtStart}
+                                onUserInput={handleUserInput}
+                                onFocus={handlePageFocus}
+                                onReplacePageId={handleReplacePageId}
+                                onRequestPageDelete={(page, pageIndex) => openDeleteModal('page', { ...page, chapterId: selectedChapterId, pageId: page.id, pageIndex })}
+                                pages={pages}
+                                layoutMode={book?.layoutMode}
+                                pageAlign={pageAlign}
+                                standardPageHeightPx={standardPageHeightPx}
+                              />
+                            </div>
+                          ))
+                        ) : (
+                          <div className="flex flex-col justify-center items-center text-center h-full p-6">
+                            <p className="text-gray-500">No pages in this chapter yet.</p>
+                          </div>
+                        )
+                      )}
+                    </>
                   ) : (
                     <div className="flex flex-col justify-center items-center text-center h-full p-6">
                       <div className="bg-app-gray-50 rounded-full p-6 mb-4">
                         <Sparkles className="h-8 w-8 text-app-iris" />
                       </div>
-                      {selectedChapterId && (
-                        <h3 className="text-lg font-medium text-app-iris mb-1">
-                          {chapters.find(c => c.id === selectedChapterId)?.title}
-                        </h3>
-                      )}
-                      <h2 className="text-xl font-semibold text-gray-800">{selectedChapterId ? 'Ready to write?' : 'Select a chapter'}</h2>
-                      <p className="mt-2 text-gray-500 max-w-xs">{selectedChapterId ? 'Select a page or create a new one to start writing.' : 'Create a new chapter to get started.'}</p>
-                      {selectedChapterId && canEdit && <Button onClick={requestAddPage} className="mt-6"><PlusCircle className="h-4 w-4 mr-2" />Add Page</Button>}
+                      <h2 className="text-xl font-semibold text-gray-800">Select a chapter</h2>
+                      <p className="mt-2 text-gray-500 max-w-xs">Create a new chapter to get started.</p>
                     </div>
                   )}
 
@@ -1866,8 +1982,8 @@ const BookDetail = () => {
                 </div>
               </div>
 
-              {/* Sticky Footer */}
-              {pages.length > 0 && (
+              {/* Sticky Footer - Only show in pages mode */}
+              {pages.length > 0 && viewMode === 'pages' && (
                 <div className="shrink-0 border-t border-gray-100 bg-white/80 backdrop-blur-md p-4 z-30">
                   <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-4">
                     {/* Status Indicator */}
@@ -1903,7 +2019,13 @@ const BookDetail = () => {
             </div>
 
             {/* Right Sidebar: Chat */}
-            <ChatPanel onMinimizeChange={setIsChatMinimized} />
+            <ChatPanel
+              onMinimizeChange={setIsChatMinimized}
+              bookId={bookId}
+              chapterId={selectedChapterId}
+              incomingMessages={chatPanelSeed?.messages}
+              incomingMessagesToken={chatPanelSeed?.token}
+            />
           </div>
         </div>
       </DragDropContext>

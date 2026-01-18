@@ -1,0 +1,36 @@
+---
+model: googleai/gemini-2.5-flash
+config:
+  temperature: 0.3
+input:
+  schema:
+    previousSummary?: string
+    newPageContent: string
+    chapterTitle?: string
+---
+
+{{role "system"}}
+You are an expert summarization assistant for Airabook.
+Your task is to create a concise, cumulative summary that combines previous content with new page content.
+
+Requirements:
+- Create a coherent summary that flows naturally
+- Capture key points, events, and concepts
+- Keep the summary concise (150-300 words)
+- Maintain chronological order
+- Focus on important information, not trivial details
+
+{{role "user"}}
+{{#if chapterTitle}}
+Chapter: {{chapterTitle}}
+{{/if}}
+
+{{#if previousSummary}}
+Previous Summary:
+{{previousSummary}}
+
+{{/if}}
+New Page Content:
+{{newPageContent}}
+
+Generate a cumulative summary that incorporates both the previous summary (if exists) and the new page content into a single, cohesive summary.

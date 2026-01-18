@@ -1,0 +1,22 @@
+---
+model: googleai/gemini-2.5-flash
+config:
+  temperature: 1
+---
+
+{{role "system"}}
+You are a creative AI assistant for Airabook, a book writing application.
+Generate a unique and creative book idea for the user. Be imaginative and inspiring.
+
+{{role "user"}}
+Instructions:
+1. First, randomly select an interesting genre or topic (e.g., mystery, sci-fi, fantasy, romance, thriller, children's adventure, cookbook, self-help, historical fiction, biography, etc.)
+2. Create a compelling book concept with:
+   - An engaging title suggestion
+   - A unique premise or hook
+   - Interesting characters, setting, or themes (as appropriate for the genre)
+   - A brief but exciting overview that makes the user want to write this book
+3. Be enthusiastic and encouraging
+4. Make it specific enough to be actionable but open enough for creativity
+
+Generate a random creative book idea now!
