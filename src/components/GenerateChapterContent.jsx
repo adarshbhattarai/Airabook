@@ -13,9 +13,39 @@ const GenerateChapterContent = ({ bookId, chapterId, onSuggestionSelect }) => {
   const lastCompletedKeyRef = useRef('');
   const requestIdRef = useRef(0);
 
+  const cacheKey = useMemo(() => {
+    if (!bookId || !chapterId || !user?.uid) return '';
+    return `chapterSuggestions:${user.uid}:${bookId}:${chapterId}`;
+  }, [bookId, chapterId, user?.uid]);
+
   const normalizedSuggestions = useMemo(() => (
     (suggestions || []).map((item) => String(item).trim()).filter(Boolean)
   ), [suggestions]);
+
+  const readCachedSuggestions = useCallback(() => {
+    if (!cacheKey) return [];
+    try {
+      const raw = localStorage.getItem(cacheKey);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (err) {
+      return [];
+    }
+  }, [cacheKey]);
+
+  const writeCachedSuggestions = useCallback((nextSuggestions = []) => {
+    if (!cacheKey) return;
+    try {
+      if (!Array.isArray(nextSuggestions) || nextSuggestions.length === 0) {
+        localStorage.removeItem(cacheKey);
+        return;
+      }
+      localStorage.setItem(cacheKey, JSON.stringify(nextSuggestions));
+    } catch (err) {
+      // Ignore storage failures (private mode, quota, etc.)
+    }
+  }, [cacheKey]);
 
   const fetchSuggestions = useCallback(async ({ force = false } = {}) => {
     if (!bookId || !chapterId || !user?.uid) {
@@ -24,6 +54,17 @@ const GenerateChapterContent = ({ bookId, chapterId, onSuggestionSelect }) => {
     }
 
     const requestKey = `${bookId}:${chapterId}:${user.uid}`;
+
+    if (!force) {
+      const cached = readCachedSuggestions();
+      if (cached.length > 0) {
+        setError('');
+        setSuggestions(cached);
+        lastCompletedKeyRef.current = requestKey;
+        return;
+      }
+    }
+
     if (inFlightKeyRef.current === requestKey || (!force && lastCompletedKeyRef.current === requestKey)) {
       return;
     }
@@ -35,10 +76,16 @@ const GenerateChapterContent = ({ bookId, chapterId, onSuggestionSelect }) => {
     setError('');
     try {
       const getChapterSuggestions = httpsCallable(functions, 'generateChapterSuggestions');
-      const result = await getChapterSuggestions({ bookId, chapterId, userId: user.uid });
+      const result = await getChapterSuggestions({
+        bookId,
+        chapterId,
+        userId: user.uid,
+        refresh: force,
+      });
       if (requestIdRef.current !== requestId) return;
       const nextSuggestions = Array.isArray(result.data?.suggestions) ? result.data.suggestions : [];
       setSuggestions(nextSuggestions);
+      writeCachedSuggestions(nextSuggestions);
       lastCompletedKeyRef.current = requestKey;
     } catch (err) {
       console.error('Chapter suggestions fetch failed:', err);
@@ -52,7 +99,7 @@ const GenerateChapterContent = ({ bookId, chapterId, onSuggestionSelect }) => {
         inFlightKeyRef.current = null;
       }
     }
-  }, [bookId, chapterId, user?.uid]);
+  }, [bookId, chapterId, user?.uid, readCachedSuggestions, writeCachedSuggestions]);
 
   useEffect(() => {
     if (!bookId || !chapterId || !user?.uid) {
