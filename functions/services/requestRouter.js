@@ -6,9 +6,6 @@ const resolveRoute = ({ action, hasChapterContext }) => {
     return { route: 'chapter' };
   }
 
-  if(hasChapterContext){
-    return { route: 'chapter' };
-  }
   return { route: 'rag' };
 };
 
