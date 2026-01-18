@@ -869,6 +869,10 @@ const PageEditor = forwardRef(({
   const sizeMm = PAGE_SIZES_MM[layoutMode];
   const scaledWidth = pageSizePx.width ? Math.round(pageSizePx.width * pageScale) : null;
   const scaledHeight = pageSizePx.height ? Math.round(pageSizePx.height * pageScale) : null;
+  const fallbackHeightPx = 420;
+  const standardHeightStyle = pageHeightPx
+    ? { height: `${pageHeightPx}px` }
+    : { minHeight: `${fallbackHeightPx}px` };
 
   return (
     <div
@@ -887,7 +891,9 @@ const PageEditor = forwardRef(({
             height: `${sizeMm.height}mm`,
             transform: `scale(${pageScale})`,
             transformOrigin: 'top left'
-          } : (pageHeightPx ? { height: `${pageHeightPx}px` } : undefined)}
+          } : standardHeightStyle}
+          onMouseDownCapture={() => onFocus?.(page.id)}
+          onTouchStartCapture={() => onFocus?.(page.id)}
         >
           <div ref={contentMeasureRef} className="h-full overflow-hidden flex flex-col">
             <div className="flex justify-center items-center mb-6 relative">
