@@ -47,6 +47,7 @@ const defineGenerateChapterSuggestionsFlow = ({ ai, z, db, HttpsError }) => (
         bookId: z.string(),
         chapterId: z.string(),
         userId: z.string().optional(),
+        refresh: z.boolean().optional(),
       }),
     },
     async (input, { context }) => {
@@ -66,13 +67,16 @@ const defineGenerateChapterSuggestionsFlow = ({ ai, z, db, HttpsError }) => (
       }
 
       const bookRef = db.collection('books').doc(bookId);
-      const bookDoc = await bookRef.get();
+      let bookData = context?.bookData;
 
-      if (!bookDoc.exists) {
-        throw new HttpsError('not-found', 'Book not found.');
+      if (!bookData) {
+        const bookDoc = await bookRef.get();
+        if (!bookDoc.exists) {
+          throw new HttpsError('not-found', 'Book not found.');
+        }
+        bookData = bookDoc.data() || {};
       }
 
-      const bookData = bookDoc.data() || {};
       const isOwner = bookData.ownerId === authUserId;
       const isMember = bookData.members && bookData.members[authUserId];
 
@@ -80,21 +84,26 @@ const defineGenerateChapterSuggestionsFlow = ({ ai, z, db, HttpsError }) => (
         throw new HttpsError('permission-denied', 'You do not have access to this book.');
       }
 
-      const chapterRef = bookRef.collection('chapters').doc(chapterId);
-      const chapterDoc = await chapterRef.get();
-
-      if (!chapterDoc.exists) {
-        throw new HttpsError('not-found', 'Chapter not found.');
+      let chapterData = context?.chapterData;
+      if (!chapterData) {
+        const chapterRef = bookRef.collection('chapters').doc(chapterId);
+        const chapterDoc = await chapterRef.get();
+        if (!chapterDoc.exists) {
+          throw new HttpsError('not-found', 'Chapter not found.');
+        }
+        chapterData = chapterDoc.data() || {};
       }
 
-      const chapterData = chapterDoc.data() || {};
       const bookTitle = bookData.babyName || bookData.title || 'Untitled Book';
       const chapterTitle = chapterData.title || 'Untitled Chapter';
       const chapterDescription = chapterData.description || 'Untitled Chapter';
 
+      const isBabyJournal = bookData.creationType === 0;
+      const promptIntro = isBabyJournal
+        ? `You are writing a baby journal for Airabook. Airabook is a platform where parents document children's journeys. Generate 6 concise writing prompts for the chapter below. If this is the first year, include prompts about Mom and Dad's experience before the child was born and what the child is doing now, something related to the experience`
+        : 'You are an AI writing assistanton for Airabook. Generate 6 concise writing prompts for the chapter below.';
       const prompt = `
-You are an AI writing assistant for Airabook.
-Generate 6 concise writing prompts for the chapter below.
+${promptIntro}
 Each prompt should be a short, actionable idea (max 12 words).
 Return ONLY a JSON array of strings.
 
