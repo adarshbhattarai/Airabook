@@ -15,4 +15,4 @@ dist/
 .logs/
 .DS_Store
 .cursor/
-.idea
+.idea/
