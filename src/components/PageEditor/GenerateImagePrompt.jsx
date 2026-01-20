@@ -11,7 +11,8 @@ const GenerateImagePrompt = ({
   onSubmit,
   inputRef,
   useContext,
-  onUseContextChange
+  onUseContextChange,
+  isSubmitting = false
 }) => {
   if (!open) return null;
 
@@ -28,6 +29,7 @@ const GenerateImagePrompt = ({
           onChange={(event) => onPromptChange(event.target.value)}
           placeholder="Describe the image you want to generate"
           className="h-9"
+          disabled={isSubmitting}
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
               event.preventDefault();
@@ -45,6 +47,7 @@ const GenerateImagePrompt = ({
             type="checkbox"
             className="mt-0.5 h-4 w-4 rounded border-gray-300 text-app-iris focus:ring-app-iris"
             checked={useContext}
+            disabled={isSubmitting}
             onChange={(event) => onUseContextChange(event.target.checked)}
           />
           <span>
@@ -55,11 +58,11 @@ const GenerateImagePrompt = ({
           </span>
         </label>
         <div className="mt-3 flex items-center justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onCancel}>
+          <Button variant="outline" size="sm" onClick={onCancel} disabled={isSubmitting}>
             Cancel
           </Button>
-          <Button size="sm" onClick={onSubmit}>
-            Generate
+          <Button size="sm" onClick={onSubmit} disabled={isSubmitting}>
+            {isSubmitting ? 'Generating…' : 'Generate'}
           </Button>
         </div>
       </div>

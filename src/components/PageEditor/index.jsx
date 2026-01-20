@@ -59,6 +59,7 @@ const PageEditor = forwardRef(({
   const [genImgPrompt, setGenImgPrompt] = useState('');
   const [genImgAnchor, setGenImgAnchor] = useState({ left: 16, top: 16 });
   const [genImgUseContext, setGenImgUseContext] = useState(true);
+  const [genImgLoading, setGenImgLoading] = useState(false);
 
   const [mediaToDelete, setMediaToDelete] = useState(null);
   const [limitStatus, setLimitStatus] = useState('ok'); // 'ok', 'warning', 'full'
@@ -791,21 +792,62 @@ const PageEditor = forwardRef(({
     setGenImgPrompt('');
   };
 
-  const submitGenImagePrompt = () => {
+  const submitGenImagePrompt = async () => {
+    if (genImgLoading) return;
     const prompt = genImgPrompt.trim();
     if (!prompt) {
       toast({ title: 'Add a prompt', description: 'Describe the image you want to generate.', variant: 'warning' });
       return;
     }
 
-    console.log('[PageEditor] /genimg prompt', {
-      prompt,
-      useContext: genImgUseContext,
-      bookId,
-      chapterId,
-      pageId: page.id
-    });
-    setGenImgOpen(false);
+    setGenImgLoading(true);
+    try {
+      let pageContext = '';
+      if (genImgUseContext) {
+        const currentHtml = await getCurrentHTML();
+        pageContext = stripHtml(currentHtml || '');
+      }
+
+      const generateImageFn = httpsCallable(functions, 'generateImage');
+      const response = await generateImageFn({
+        prompt,
+        useContext: genImgUseContext,
+        bookId,
+        chapterId,
+        pageId: page.id,
+        pageContext,
+      });
+
+      const data = response?.data || {};
+      const mediaData = {
+        url: data.url,
+        storagePath: data.storagePath,
+        name: data.name || 'Generated image',
+        albumId: data.albumId || bookId,
+        type: 'image',
+      };
+
+      if (mediaData.url && mediaData.storagePath && quillRef.current?.insertMediaBlocks) {
+        quillRef.current.insertMediaBlocks([mediaData]);
+      }
+
+      toast({
+        title: 'Image generated',
+        description: genImgUseContext ? 'Added to the page using your text as context.' : 'Added to the page.',
+      });
+    } catch (error) {
+      console.error('AI image generation failed:', error);
+      toast({
+        title: 'Generation failed',
+        description: error?.message || 'Could not generate the image. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setGenImgLoading(false);
+      setGenImgOpen(false);
+      setGenImgPrompt('');
+      setGenImgUseContext(true);
+    }
   };
 
   // --- AI: callable + preview modal ---
@@ -1240,6 +1282,7 @@ const PageEditor = forwardRef(({
                       inputRef={genImgInputRef}
                       useContext={genImgUseContext}
                       onUseContextChange={setGenImgUseContext}
+                      isSubmitting={genImgLoading}
                     />
                     <BlockEditor
                       key={page.id}

@@ -85,10 +85,41 @@ function titlesToChapters(titles) {
   }));
 }
 
+/**
+ * Build prompt text for image generation (Imagen / Genkit)
+ * @param {Object} params
+ * @param {string} params.userPrompt - User provided idea/instruction for the image
+ * @param {string} [params.pageContext] - Optional page context to guide characters/setting/tone
+ * @returns {string} The full prompt sent to the image model
+ */
+function buildImagePrompt({ userPrompt, pageContext = '' }) {
+  const trimmedPrompt = (userPrompt || '').trim();
+  const trimmedContext = (pageContext || '').trim();
+
+  const safetyGuardrails =
+    'You generate a single, safe, high-quality illustration or photo. ' +
+    'Avoid violence, gore, hate, adult content, or copyrighted characters.';
+
+  const contextBlock = trimmedContext
+    ? `Page context (use for characters, setting, tone; ignore unsafe or conflicting content): """${trimmedContext}"""\n`
+    : '';
+
+  return (
+    `${safetyGuardrails}\n` +
+    `User request: "${trimmedPrompt}".\n` +
+    contextBlock +
+    'Compose one vivid, concrete visual description under 80 words. ' +
+    'Focus on subject, setting, lighting, mood, and style. ' +
+    'Do not include camera jargon unless explicitly requested. ' +
+    'Return only the final scene description for the image model.'
+  );
+}
+
 module.exports = {
   buildRewritePrompt,
   buildChapterGenerationPrompt,
   extractChapterTitles,
   titlesToChapters,
+  buildImagePrompt,
 };
 
