@@ -111,7 +111,7 @@ function buildImagePrompt({ userPrompt, pageContext = '' }) {
     'Compose one vivid, concrete visual description under 80 words. ' +
     'Focus on subject, setting, lighting, mood, and style. ' +
     'Do not include camera jargon unless explicitly requested. ' +
-    'Return only the final scene description for the image model.'
+    'Draw the image based on above context'
   );
 }
 

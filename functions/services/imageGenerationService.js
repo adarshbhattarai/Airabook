@@ -4,7 +4,8 @@ const { googleAI } = require('@genkit-ai/googleai');
 const { ai } = require('../genkitClient');
 const { buildImagePrompt } = require('../utils/prompts');
 
-const DEFAULT_MODEL = googleAI.model('imagen-3.0-fast-generate-001');
+// Use Gemini 2.5 Flash Image model per latest guidance
+const DEFAULT_MODEL = googleAI.model('gemini-2.5-flash-image');
 
 const isEmulator =
   process.env.FUNCTIONS_EMULATOR === 'true' ||
@@ -97,7 +98,7 @@ async function generateImageForPage({
 
   const dataUrl = response?.media?.url || response?.media?.[0]?.url;
   if (!dataUrl) {
-    throw new Error('Image generation returned no media');
+     throw new Error('Image generation returned no media');
   }
 
   const { buffer, mimeType } = dataUrlToBuffer(dataUrl);
