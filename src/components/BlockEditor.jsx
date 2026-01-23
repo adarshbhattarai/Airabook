@@ -3,10 +3,79 @@ import "@blocknote/core/fonts/inter.css";
 import { useCreateBlockNote, SuggestionMenuController, getDefaultReactSlashMenuItems } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import "@blocknote/mantine/style.css";
-import { ImageIcon, ImagePlus } from "lucide-react";
+import { ImageIcon, ImagePlus, Sparkles } from "lucide-react";
 
 // Marker URL to identify dropzone placeholder blocks
 const DROPZONE_MARKER = "data:dropzone/placeholder";
+
+const NotionSuggestionMenu = ({ items, selectedIndex, onItemClick, loadingState }) => {
+  let currentGroup = null;
+  const rows = [];
+
+  items.forEach((item, index) => {
+    const groupLabel = item.group || "Suggested";
+    if (groupLabel !== currentGroup) {
+      currentGroup = groupLabel;
+      rows.push(
+        <div
+          key={`group-${groupLabel}-${index}`}
+          className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500"
+        >
+          {groupLabel}
+        </div>
+      );
+    }
+
+    const isSelected = index === selectedIndex;
+    rows.push(
+      <button
+        key={`item-${item.title}-${index}`}
+        id={`bn-suggestion-menu-item-${index}`}
+        type="button"
+        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
+          isSelected ? "bg-gray-100" : "hover:bg-gray-100"
+        }`}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => onItemClick?.(item)}
+      >
+        <span className="h-5 w-5 text-gray-500 flex items-center justify-center">
+          {item.icon || null}
+        </span>
+        <span className="flex-1 min-w-0">
+          <span className="block text-sm font-medium text-gray-900">{item.title}</span>
+          {item.subtext && (
+            <span className="block text-xs text-gray-500 truncate">{item.subtext}</span>
+          )}
+        </span>
+      </button>
+    );
+  });
+
+  return (
+    <div
+      id="bn-suggestion-menu"
+      className="min-w-[320px] max-w-[360px] rounded-2xl border border-gray-200 bg-white/95 text-gray-900 shadow-2xl backdrop-blur"
+    >
+      <div className="px-3 pt-3 pb-2 border-b border-gray-200 text-xs text-gray-500">
+        Filter...
+      </div>
+      <div className="max-h-[280px] overflow-auto py-2">
+        {(loadingState === "loading-initial" || loadingState === "loading") && (
+          <div className="px-3 py-2 text-xs text-gray-500">Loading...</div>
+        )}
+        {rows.length > 0 ? (
+          rows
+        ) : (
+          <div className="px-3 py-2 text-xs text-gray-500">No results</div>
+        )}
+      </div>
+      <div className="flex items-center justify-between px-3 py-2 border-t border-gray-200 text-[11px] text-gray-400">
+        <span>Type '/' on the page</span>
+        <span>esc</span>
+      </div>
+    </div>
+  );
+};
 
 // Helper to reliably parse HTML into blocks
 const BlockEditor = forwardRef(
@@ -19,6 +88,7 @@ const BlockEditor = forwardRef(
       onSave,
       onFocus,
       onMediaRequest, // NEW: callback when /media command is triggered
+      onGenImageRequest, // NEW: callback when /genimg command is triggered
     },
     ref
   ) => {
@@ -35,11 +105,57 @@ const BlockEditor = forwardRef(
       onMediaRequestRef.current = onMediaRequest;
     }, [onMediaRequest]);
 
+    const onGenImageRequestRef = useRef(onGenImageRequest);
+    useEffect(() => {
+      onGenImageRequestRef.current = onGenImageRequest;
+    }, [onGenImageRequest]);
+
     // Track pending dropzone block ID
     const pendingDropzoneIdRef = useRef(null);
 
     // Track saved cursor position for external media insertion (from dropzone click)
     const savedCursorBlockIdRef = useRef(null);
+
+    const getSelectionRect = useCallback(() => {
+      if (editor?.getTextCursorPosition && editor?.domElement) {
+        const pos = editor.getTextCursorPosition();
+        const blockId = pos?.block?.id;
+        if (blockId) {
+          const blockOuter = editor.domElement.querySelector(
+            `[data-node-type="blockOuter"][data-id="${blockId}"]`
+          );
+          const blockContainer = editor.domElement.querySelector(
+            `[data-node-type="blockContainer"][data-id="${blockId}"]`
+          );
+          const blockEl = blockOuter || blockContainer;
+          if (blockEl?.getBoundingClientRect) {
+            return blockEl.getBoundingClientRect();
+          }
+        }
+      }
+
+      if (typeof window === "undefined") return null;
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return null;
+      const range = selection.getRangeAt(0);
+      if (!range) return null;
+      return range.getBoundingClientRect();
+    }, [editor]);
+
+    // Custom /genimg item - opens prompt bar for AI image generation
+    const customGenImageItem = useMemo(() => ({
+      title: "Generate Image",
+      onItemClick: () => {
+        const anchorRect = getSelectionRect();
+        if (onGenImageRequestRef.current) {
+          onGenImageRequestRef.current({ anchorRect });
+        }
+      },
+      aliases: ["genimg", "imagegen", "aiimage", "generate image"],
+      group: "AI",
+      icon: <Sparkles className="h-4 w-4" />,
+      subtext: "Open a prompt to generate an image",
+    }), [getSelectionRect]);
 
     // Custom /media item - adds to page.media[] section (for ebook review)
     const customMediaItem = useMemo(() => ({
@@ -139,11 +255,11 @@ const BlockEditor = forwardRef(
       });
 
       // Combine custom media items with filtered defaults (our items first)
-      const allItems = [customMediaItem, customImageItem, ...filteredDefaults];
+      const allItems = [customGenImageItem, customMediaItem, customImageItem, ...filteredDefaults];
 
       // Filter items based on query
       return filterItems(allItems, query);
-    }, [editor, customMediaItem, customImageItem]);
+    }, [editor, customGenImageItem, customMediaItem, customImageItem]);
     const suppressChangeRef = useRef(false);
     const pendingUnsuppressRef = useRef(null);
 
@@ -531,6 +647,7 @@ const BlockEditor = forwardRef(
           <SuggestionMenuController
             triggerCharacter="/"
             getItems={getCustomSlashMenuItems}
+            suggestionMenuComponent={NotionSuggestionMenu}
           />
         </BlockNoteView>
       </div>

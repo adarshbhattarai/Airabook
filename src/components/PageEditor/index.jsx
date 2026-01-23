@@ -16,6 +16,7 @@ import {
 import BlockEditor from '@/components/BlockEditor';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import { stripHtml, convertToEmulatorURL } from '@/lib/pageUtils';
+import GenerateImagePrompt from '@/components/PageEditor/GenerateImagePrompt';
 
 const PageEditor = forwardRef(({
   bookId,
@@ -54,6 +55,11 @@ const PageEditor = forwardRef(({
   const [aiModel, setAiModel] = useState('gpt-4o');
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [toolbarOpen, setToolbarOpen] = useState(false);
+  const [genImgOpen, setGenImgOpen] = useState(false);
+  const [genImgPrompt, setGenImgPrompt] = useState('');
+  const [genImgAnchor, setGenImgAnchor] = useState({ left: 16, top: 16 });
+  const [genImgUseContext, setGenImgUseContext] = useState(true);
+  const [genImgLoading, setGenImgLoading] = useState(false);
 
   const [mediaToDelete, setMediaToDelete] = useState(null);
   const [limitStatus, setLimitStatus] = useState('ok'); // 'ok', 'warning', 'full'
@@ -65,6 +71,8 @@ const PageEditor = forwardRef(({
   const pageRootRef = useRef(null);
   const contentMeasureRef = useRef(null);
   const toolbarRef = useRef(null);
+  const editorContainerRef = useRef(null);
+  const genImgInputRef = useRef(null);
 
   // Track last saved blocks for reconciliation (to detect deleted album images)
   const previousBlocksRef = useRef(null);
@@ -123,6 +131,14 @@ const PageEditor = forwardRef(({
       document.removeEventListener('keydown', handleKey);
     };
   }, [toolbarOpen]);
+
+  useEffect(() => {
+    if (!genImgOpen) return undefined;
+    const raf = requestAnimationFrame(() => {
+      genImgInputRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [genImgOpen]);
 
   useEffect(() => {
     if (!isResponsiveLayout) {
@@ -750,6 +766,90 @@ const PageEditor = forwardRef(({
     setMediaPickerOpen(true);
   };
 
+  const openGenImagePrompt = (payload = {}) => {
+    const anchorRect = payload?.anchorRect;
+    const container = editorContainerRef.current;
+
+    if (container && anchorRect) {
+      const containerRect = container.getBoundingClientRect();
+      const leftRaw = anchorRect.left - containerRect.left;
+      const maxLeft = Math.max(12, containerRect.width - 360);
+      const left = Math.min(Math.max(12, leftRaw), maxLeft);
+      const top = anchorRect.bottom - containerRect.top + 8;
+      setGenImgAnchor({ left, top });
+    } else {
+      setGenImgAnchor({ left: 16, top: 16 });
+    }
+
+    quillRef.current?.saveCursorPosition?.();
+    setGenImgPrompt('');
+    setGenImgUseContext(true);
+    setGenImgOpen(true);
+  };
+
+  const closeGenImagePrompt = () => {
+    setGenImgOpen(false);
+    setGenImgPrompt('');
+  };
+
+  const submitGenImagePrompt = async () => {
+    if (genImgLoading) return;
+    const prompt = genImgPrompt.trim();
+    if (!prompt) {
+      toast({ title: 'Add a prompt', description: 'Describe the image you want to generate.', variant: 'warning' });
+      return;
+    }
+
+    setGenImgLoading(true);
+    try {
+      let pageContext = '';
+      if (genImgUseContext) {
+        const currentHtml = await getCurrentHTML();
+        pageContext = stripHtml(currentHtml || '');
+      }
+
+      const generateImageFn = httpsCallable(functions, 'generateImage');
+      const response = await generateImageFn({
+        prompt,
+        useContext: genImgUseContext,
+        bookId,
+        chapterId,
+        pageId: page.id,
+        pageContext,
+      });
+
+      const data = response?.data || {};
+      const mediaData = {
+        url: data.url,
+        storagePath: data.storagePath,
+        name: data.name || 'Generated image',
+        albumId: data.albumId || bookId,
+        type: 'image',
+      };
+
+      if (mediaData.url && mediaData.storagePath && quillRef.current?.insertMediaBlocks) {
+        quillRef.current.insertMediaBlocks([mediaData]);
+      }
+
+      toast({
+        title: 'Image generated',
+        description: genImgUseContext ? 'Added to the page using your text as context.' : 'Added to the page.',
+      });
+    } catch (error) {
+      console.error('AI image generation failed:', error);
+      toast({
+        title: 'Generation failed',
+        description: error?.message || 'Could not generate the image. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setGenImgLoading(false);
+      setGenImgOpen(false);
+      setGenImgPrompt('');
+      setGenImgUseContext(true);
+    }
+  };
+
   // --- AI: callable + preview modal ---
   const callRewrite = async (styleToUse) => {
     if (aiBusy) return;
@@ -1164,6 +1264,7 @@ const PageEditor = forwardRef(({
 
                 <div className="flex-grow h-full">
                   <div
+                    ref={editorContainerRef}
                     className="h-full bg-transparent overflow-hidden relative"
                     onKeyDownCapture={handleKeyDownCapture}
                     onMouseDownCapture={() => {
@@ -1171,6 +1272,18 @@ const PageEditor = forwardRef(({
                       requestAnimationFrame(() => logContentMeasure('editor mousedown raf'));
                     }}
                   >
+                    <GenerateImagePrompt
+                      open={genImgOpen}
+                      anchor={genImgAnchor}
+                      prompt={genImgPrompt}
+                      onPromptChange={setGenImgPrompt}
+                      onCancel={closeGenImagePrompt}
+                      onSubmit={submitGenImagePrompt}
+                      inputRef={genImgInputRef}
+                      useContext={genImgUseContext}
+                      onUseContextChange={setGenImgUseContext}
+                      isSubmitting={genImgLoading}
+                    />
                     <BlockEditor
                       key={page.id}
                       ref={quillRef}
@@ -1184,6 +1297,7 @@ const PageEditor = forwardRef(({
                         onFocus?.(page.id);
                       }}
                       onMediaRequest={handleMediaRequest}
+                      onGenImageRequest={openGenImagePrompt}
                     />
                   </div>
                 </div>
