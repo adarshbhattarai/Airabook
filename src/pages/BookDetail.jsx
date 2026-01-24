@@ -35,6 +35,7 @@ import {
   isLikelyHtml,
   convertToEmulatorURL
 } from '@/lib/pageUtils';
+import { pageTemplates } from '@/constants/pageTemplates';
 
 // --- focusWithRetry: helper for reliable cursor placement on newly created pages ---
 const focusWithRetry = async (pageRefs, pageId, position = 'start', maxAttempts = 20) => {
@@ -1109,12 +1110,21 @@ const BookDetail = () => {
 
       if (!saveImmediately) {
         const tempId = `temp_${Date.now()}`;
+        const templateType = book?.templateType || pages[pages.length - 1]?.type || null;
+        const template = templateType ? pageTemplates[templateType] : null;
+        const templateContent = template?.defaults ? { ...template.defaults } : null;
         const newPage = {
           id: tempId,
           chapterId: selectedChapterId,
-          note: overflowContent, // Use overflow content if provided
+          note: template ? '' : overflowContent, // Use overflow content if provided
           media: [],
           order: newOrder,
+          ...(template ? {
+            type: template.type,
+            templateVersion: template.templateVersion,
+            content: templateContent,
+            theme: template.theme,
+          } : {}),
         };
 
         // Update local state immediately
@@ -1123,14 +1133,19 @@ const BookDetail = () => {
         setSelectedPageId(tempId);
         setPageDrafts(prev => ({
           ...prev,
-          [tempId]: { blocks: [], updatedAt: Date.now() }
+          [tempId]: template
+            ? { templateContent: templateContent || {}, updatedAt: Date.now() }
+            : { blocks: [], updatedAt: Date.now() }
         }));
 
         // Update sidebar
         const plain = stripHtml(overflowContent);
+        const templateShortNote = (templateContent?.title || '').trim() || 'Baby Journal Page';
         const newPageSummary = {
           pageId: tempId,
-          shortNote: plain ? plain.substring(0, 40) + (plain.length > 40 ? '...' : '') : 'New Page (Draft)',
+          shortNote: template
+            ? templateShortNote
+            : (plain ? plain.substring(0, 40) + (plain.length > 40 ? '...' : '') : 'New Page (Draft)'),
           order: newOrder
         };
 
@@ -1800,10 +1815,10 @@ const BookDetail = () => {
                                     // Get pages for this chapter from the pages state if this is the selected chapter
                                     const chapterPages = selectedChapterId === chapter.id
                                       ? pages.map(p => ({
-                                          pageId: p.id,
-                                          shortNote: p.shortNote || stripHtml(p.note || '').substring(0, 40) || 'Untitled Page',
-                                          order: p.order
-                                        }))
+                                        pageId: p.id,
+                                        shortNote: p.shortNote || stripHtml(p.note || '').substring(0, 40) || 'Untitled Page',
+                                        order: p.order
+                                      }))
                                       : chapter.pagesSummary || [];
 
                                     return chapterPages.length > 0 ? chapterPages.map((pageSummary, index) => (
@@ -2004,6 +2019,19 @@ const BookDetail = () => {
 
                     {/* Controls */}
                     <div className="flex items-center gap-2">
+                      <Button
+                        onClick={async () => {
+                          if (activePageId && pageRefs.current[activePageId]?.save) {
+                            await pageRefs.current[activePageId].save();
+                          }
+                        }}
+                        variant="appPrimary"
+                        size="sm"
+                        disabled={!activePageId}
+                        className="min-w-[100px]"
+                      >
+                        Save Page
+                      </Button>
                       <Button
                         onClick={handleSaveChapter}
                         variant="appSuccess"

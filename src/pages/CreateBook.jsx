@@ -154,7 +154,8 @@ const CreateBook = () => {
           createdAt: new Date().toISOString(),
           ownerId: user.uid, // Ensure isOwner check passes in BookDetail
           members: { [user.uid]: 'Owner' }, // Important for permission checks
-          layoutMode
+          layoutMode,
+          templateType: creationType === 0 && !promptMode ? 'babyJournalPage' : null
         },
         prefetchedChapters: (result.data.chapters || []).map(ch => ({
           id: ch.id,

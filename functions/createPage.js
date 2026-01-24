@@ -32,7 +32,7 @@ exports.createPage = onCall(
             throw new HttpsError('unauthenticated', 'User must be authenticated to create pages.');
         }
 
-        const { bookId, chapterId, note, media, order } = data;
+        const { bookId, chapterId, note, media, order, type, templateVersion, content, theme } = data;
         const userId = auth.uid;
 
         // Validate required fields
@@ -105,6 +105,10 @@ exports.createPage = onCall(
                 embeddingModel: embeddingModel,
                 media: media || [],
                 order: order || '',
+                ...(type ? { type } : {}),
+                ...(templateVersion ? { templateVersion } : {}),
+                ...(content ? { content } : {}),
+                ...(theme ? { theme } : {}),
                 createdAt: FieldValue.serverTimestamp(),
                 updatedAt: FieldValue.serverTimestamp(),
                 createdBy: userId,

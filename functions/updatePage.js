@@ -26,7 +26,7 @@ exports.updatePage = onCall(
             throw new HttpsError('unauthenticated', 'User must be authenticated to update pages.');
         }
 
-        const { bookId, chapterId, pageId, note, media } = data;
+        const { bookId, chapterId, pageId, note, media, type, templateVersion, content, theme } = data;
         const userId = auth.uid;
 
         if (!bookId || !chapterId || !pageId) {
@@ -97,6 +97,10 @@ exports.updatePage = onCall(
                 media: media !== undefined ? media : pageDoc.data().media,
                 updatedAt: FieldValue.serverTimestamp(),
             };
+            if (type) updateData.type = type;
+            if (templateVersion) updateData.templateVersion = templateVersion;
+            if (content !== undefined) updateData.content = content;
+            if (theme !== undefined) updateData.theme = theme;
 
             await pageRef.update(updateData);
             logger.log(`✅ Page ${pageId} updated`);
