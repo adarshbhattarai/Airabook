@@ -139,6 +139,7 @@ const { deleteMediaAsset, deleteAlbumAssets } = require("./deleteMedia");
 const { trackMediaUsage, untrackMediaUsage } = require("./mediaUsage");
 const { createUserDoc } = require("./createUserDoc");
 
+
 exports.helloWorld = onRequest({ region: "us-central1" }, (request, response) => {
   logger.info("Hello logs!", { structuredData: true });
   response.send("Hello from Firebase!");

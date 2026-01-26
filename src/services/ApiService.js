@@ -18,7 +18,7 @@ class ApiService {
      */
     getBaseURL() {
         const backendUrl = import.meta.env.VITE_BACKEND_API_URL;
-
+        console.log('VITE_BACKEND_API_URL:', backendUrl);
         if (!backendUrl) {
             console.warn('⚠️ VITE_BACKEND_API_URL not configured, using default localhost');
             return 'http://localhost:8000';
@@ -236,6 +236,18 @@ class ApiService {
             console.error(`❌ Upload failed:`, endpoint, error);
             throw error;
         }
+    }
+
+    /**
+     * Search for users by email or display name
+     * @param {string} searchTerm - The search query
+     * @returns {Promise<object>} List of matching users
+     */
+    async searchUsers(searchTerm) {
+        if (!searchTerm || searchTerm.length < 3) {
+            return { results: [] };
+        }
+        return this.get(`api/v1/users/search?q=${encodeURIComponent(searchTerm)}`);
     }
 }
 
