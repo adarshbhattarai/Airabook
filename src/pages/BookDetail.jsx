@@ -21,6 +21,7 @@ import PageEditor from '@/components/PageEditor';
 import ChatPanel from '@/components/ChatPanel';
 import GenerateChapterContent from '@/components/GenerateChapterContent';
 import ChapterChatBox from '@/components/ChapterChatBox';
+import VoiceAssistantButton from '@/components/VoiceAssistantButton';
 import HoverDeleteMenu from '@/components/ui/HoverDeleteMenu';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import { usePaginationReflow } from '@/hooks/usePaginationReflow';
@@ -1641,6 +1642,11 @@ const BookDetail = () => {
                     Publish
                   </Button>
                 </span>
+                <VoiceAssistantButton
+                  bookId={bookId}
+                  chapterId={selectedChapterId}
+                  pageId={selectedPageId}
+                />
                 <Button
                   variant="outline"
                   onClick={() => setCoAuthorModalOpen(true)}
