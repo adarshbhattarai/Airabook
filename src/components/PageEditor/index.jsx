@@ -15,8 +15,10 @@ import {
 } from '@/components/ui/dialog';
 import BlockEditor from '@/components/BlockEditor';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
-import { stripHtml, convertToEmulatorURL } from '@/lib/pageUtils';
+import { stripHtml, convertToEmulatorURL, textToHtml } from '@/lib/pageUtils';
 import GenerateImagePrompt from '@/components/PageEditor/GenerateImagePrompt';
+import TemplatePage from '@/components/PageEditor/TemplatePage';
+import { pageTemplates } from '@/constants/pageTemplates';
 
 const PageEditor = forwardRef(({
   bookId,
@@ -88,6 +90,17 @@ const PageEditor = forwardRef(({
   const mediaList = page.media || [];
   const previewItem = mediaList[previewIndex] || null;
   const isResponsiveLayout = layoutMode === 'standard';
+  const template = page?.type ? pageTemplates[page.type] : null;
+  const isTemplatePage = !!template;
+  const templateDraft = draft?.templateContent || null;
+  const templateContent = React.useMemo(() => {
+    if (!template) return null;
+    return {
+      ...(template.defaults || {}),
+      ...(page?.content || {}),
+      ...(templateDraft || {}),
+    };
+  }, [template, page?.content, templateDraft]);
 
   const logContentMeasure = React.useCallback((label) => {
     const el = contentMeasureRef.current;
@@ -204,10 +217,75 @@ const PageEditor = forwardRef(({
   };
 
   const getCurrentHTML = async () => {
+    if (isTemplatePage) {
+      return page?.note || '';
+    }
     if (quillRef.current?.getHTML) {
       return await quillRef.current.getHTML();
     }
     return page?.note || '';
+  };
+
+  const handleTemplateChange = (nextContent) => {
+    const nextDraft = { templateContent: nextContent, updatedAt: Date.now() };
+    onDraftChange?.(page.id, nextDraft);
+    onUserInput?.(page.id);
+    requestAnimationFrame(updateLimitStatusFromMeasure);
+  };
+
+  const handleTemplateImageUpload = async (file) => {
+    if (!file || !user) return null;
+    const uniqueFileName = `${Date.now()}_${file.name}`;
+    const storagePath = `${user.uid}/${bookId}/${chapterId}/${page.id}/template/${uniqueFileName}`;
+    const storageRef = firebaseRef(storage, storagePath);
+
+    const metadata = {
+      customMetadata: {
+        originalName: file.name,
+        bookId: bookId,
+        mediaType: 'image',
+      },
+    };
+
+    const uploadTask = uploadBytesResumable(storageRef, file, metadata);
+
+    return await new Promise((resolve, reject) => {
+      uploadTask.on(
+        'state_changed',
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          setUploadProgress((prev) => ({ ...prev, [file.name]: progress }));
+        },
+        (error) => {
+          setUploadProgress((prev) => {
+            const next = { ...prev };
+            delete next[file.name];
+            return next;
+          });
+          reject(error);
+        },
+        async () => {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+          setUploadProgress((prev) => {
+            const next = { ...prev };
+            delete next[file.name];
+            return next;
+          });
+          resolve(convertToEmulatorURL(downloadURL));
+        }
+      );
+    });
+  };
+
+  const buildTemplateNote = (nextContent) => {
+    if (!nextContent) return '';
+    const textParts = [
+      nextContent.title,
+      nextContent.dadNotes,
+      nextContent.momNotes,
+    ].filter(Boolean);
+    if (textParts.length === 0) return '';
+    return textToHtml(textParts.join('\n'));
   };
 
   // Initialize previousBlocksRef when content first loads
@@ -396,7 +474,67 @@ const PageEditor = forwardRef(({
     return () => window.removeEventListener('keydown', onKey);
   }, [previewOpen, mediaList.length]);
 
+  const handleTemplateSave = async () => {
+    setIsSaving(true);
+    const contentToSave = templateDraft || templateContent || template?.defaults || {};
+    const shortNote = (contentToSave.title || '').trim() || 'Baby Journal Page';
+    const note = buildTemplateNote(contentToSave) || textToHtml(shortNote);
+
+    try {
+      if (page.id.startsWith('temp_')) {
+        const createPageFn = httpsCallable(functions, 'createPage');
+        const result = await createPageFn({
+          bookId,
+          chapterId,
+          note,
+          media: page.media || [],
+          order: page.order,
+          type: template?.type,
+          templateVersion: template?.templateVersion,
+          content: contentToSave,
+          theme: template?.theme,
+        });
+        const newPage = result.data.page;
+        onReplacePageId?.(page.id, { ...newPage, shortNote });
+        toast({ title: 'Page Created', description: 'Your draft page has been saved.' });
+      } else {
+        const updatePageFn = httpsCallable(functions, 'updatePage');
+        await updatePageFn({
+          bookId,
+          chapterId,
+          pageId: page.id,
+          note,
+          media: page.media || [],
+          type: template?.type,
+          templateVersion: template?.templateVersion,
+          content: contentToSave,
+          theme: template?.theme,
+        });
+        onPageUpdate({
+          ...page,
+          note,
+          shortNote,
+          content: contentToSave,
+          type: template?.type,
+          templateVersion: template?.templateVersion,
+          theme: template?.theme,
+        });
+        toast({ title: 'Success', description: 'Page saved.' });
+      }
+
+      onDraftChange?.(page.id, null);
+    } catch (error) {
+      console.error('Save error detailed:', error);
+      toast({ title: 'Save Failed', description: error.message || 'Unknown save error', variant: 'destructive' });
+    }
+    setIsSaving(false);
+  };
+
   const handleSave = async () => {
+    if (isTemplatePage) {
+      await handleTemplateSave();
+      return;
+    }
     setIsSaving(true);
     const htmlToSave = await getCurrentHTML();
     const plain = stripHtml(htmlToSave);
@@ -1272,33 +1410,44 @@ const PageEditor = forwardRef(({
                       requestAnimationFrame(() => logContentMeasure('editor mousedown raf'));
                     }}
                   >
-                    <GenerateImagePrompt
-                      open={genImgOpen}
-                      anchor={genImgAnchor}
-                      prompt={genImgPrompt}
-                      onPromptChange={setGenImgPrompt}
-                      onCancel={closeGenImagePrompt}
-                      onSubmit={submitGenImagePrompt}
-                      inputRef={genImgInputRef}
-                      useContext={genImgUseContext}
-                      onUseContextChange={setGenImgUseContext}
-                      isSubmitting={genImgLoading}
-                    />
-                    <BlockEditor
-                      key={page.id}
-                      ref={quillRef}
-                      initialBlocks={draft?.blocks}
-                      initialContent={page.note || ""}
-                      onBlocksChange={handleBlocksChange}
-                      onSave={handleSave}
-                      onFocus={() => {
-                        logContentMeasure('editor focus');
-                        requestAnimationFrame(() => logContentMeasure('editor focus raf'));
-                        onFocus?.(page.id);
-                      }}
-                      onMediaRequest={handleMediaRequest}
-                      onGenImageRequest={openGenImagePrompt}
-                    />
+                    {isTemplatePage ? (
+                      <TemplatePage
+                        template={template}
+                        content={templateContent}
+                        onChange={handleTemplateChange}
+                        onImageUpload={handleTemplateImageUpload}
+                      />
+                    ) : (
+                      <>
+                        <GenerateImagePrompt
+                          open={genImgOpen}
+                          anchor={genImgAnchor}
+                          prompt={genImgPrompt}
+                          onPromptChange={setGenImgPrompt}
+                          onCancel={closeGenImagePrompt}
+                          onSubmit={submitGenImagePrompt}
+                          inputRef={genImgInputRef}
+                          useContext={genImgUseContext}
+                          onUseContextChange={setGenImgUseContext}
+                          isSubmitting={genImgLoading}
+                        />
+                        <BlockEditor
+                          key={page.id}
+                          ref={quillRef}
+                          initialBlocks={draft?.blocks}
+                          initialContent={page.note || ""}
+                          onBlocksChange={handleBlocksChange}
+                          onSave={handleSave}
+                          onFocus={() => {
+                            logContentMeasure('editor focus');
+                            requestAnimationFrame(() => logContentMeasure('editor focus raf'));
+                            onFocus?.(page.id);
+                          }}
+                          onMediaRequest={handleMediaRequest}
+                          onGenImageRequest={openGenImagePrompt}
+                        />
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1359,94 +1508,97 @@ const PageEditor = forwardRef(({
               description="Are you sure you want to remove this media from the page? This cannot be undone."
             />
 
-            {/* Page actions */}
+            {/* Page actions - Static Footer at bottom of page content */}
             {isResponsiveLayout ? (
-              <div ref={toolbarRef} className="absolute bottom-0 left-0 right-0 z-20 mb-2">
+              <div ref={toolbarRef} className="mt-8 pb-8 w-full relative z-20">
                 <div
-                  className={`mx-auto rounded-full border border-gray-200 bg-white/95 px-4 py-2 shadow-sm transition-all duration-200 w-[calc(100%-2rem)] ${toolbarOpen ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-2 pointer-events-none'
-                    }`}
+                  className="w-full flex flex-wrap items-center justify-between gap-3 px-2 py-3 rounded-2xl bg-gray-50/50 border border-gray-100"
                 >
-                  <div className="flex items-center gap-2 w-full">
-                    <div className="relative flex items-center gap-2 min-w-0 flex-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-50"
-                        onClick={() => onRequestPageDelete?.(page, pageIndex)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                      <div className="relative flex items-center">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setShowModelDropdown(!showModelDropdown)}
-                          className="h-8 px-2 text-xs"
-                        >
-                          {aiModel}
-                          <ChevronDown className="h-3 w-3 ml-1" />
-                        </Button>
-                        {showModelDropdown && (
-                          <div className="absolute bottom-full left-0 mb-2 w-36 bg-white border rounded-md shadow-lg py-1 z-30">
-                            {['gpt-4o'].map(model => (
-                              <button
-                                key={model}
-                                onClick={() => {
-                                  setAiModel(model);
-                                  setShowModelDropdown(false);
-                                }}
-                                className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
-                              >
-                                {model}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <Input
-                        value={aiStyle}
-                        onChange={(e) => setAiStyle(e.target.value)}
-                        placeholder="AI instruction..."
-                        className="h-8 w-28 sm:w-40 md:w-56 text-xs"
-                      />
+                  <div className="flex items-center gap-2 flex-wrap flex-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-50"
+                      onClick={() => onRequestPageDelete?.(page, pageIndex)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                    <div className="h-4 w-px bg-gray-200 mx-1" />
+
+                    <div className="relative flex items-center">
                       <Button
                         type="button"
-                        variant="outline"
+                        variant="ghost"
                         size="sm"
-                        onClick={() => setShowAiStyleDropdown(!showAiStyleDropdown)}
-                        className="ml-1 h-8 px-2"
+                        onClick={() => setShowModelDropdown(!showModelDropdown)}
+                        className="h-8 px-2 text-xs font-medium text-gray-600"
                       >
-                        <ChevronDown className="h-4 w-4" />
+                        {aiModel}
+                        <ChevronDown className="h-3 w-3 ml-1" />
                       </Button>
-
-                      {showAiStyleDropdown && (
-                        <div className="absolute bottom-full right-0 mb-2 w-48 bg-white border rounded-md shadow-lg py-1 z-30">
-                          {['Improve clarity', 'Make it concise', 'Fix grammar', 'Expand this'].map(style => (
+                      {showModelDropdown && (
+                        <div className="absolute bottom-full left-0 mb-2 w-36 bg-white border rounded-md shadow-lg py-1 z-30">
+                          {['gpt-4o'].map(model => (
                             <button
-                              key={style}
+                              key={model}
                               onClick={() => {
-                                setAiStyle(style);
-                                setShowAiStyleDropdown(false);
+                                setAiModel(model);
+                                setShowModelDropdown(false);
                               }}
                               className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
                             >
-                              {style}
+                              {model}
                             </button>
                           ))}
                         </div>
                       )}
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="h-8 whitespace-nowrap"
-                        onClick={() => callRewrite(aiStyle)}
-                        disabled={aiBusy}
-                      >
-                        <Sparkles className="h-4 w-4 mr-1" />
-                        Rewrite
-                      </Button>
                     </div>
+
+                    <Input
+                      value={aiStyle}
+                      onChange={(e) => setAiStyle(e.target.value)}
+                      placeholder="AI instruction..."
+                      className="h-8 w-28 sm:w-40 text-xs bg-white"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowAiStyleDropdown(!showAiStyleDropdown)}
+                      className="ml-1 h-8 px-2"
+                    >
+                      <ChevronDown className="h-4 w-4" />
+                    </Button>
+
+                    {showAiStyleDropdown && (
+                      <div className="absolute bottom-full left-0 mb-2 w-48 bg-white border rounded-md shadow-lg py-1 z-30">
+                        {['Improve clarity', 'Make it concise', 'Fix grammar', 'Expand this'].map(style => (
+                          <button
+                            key={style}
+                            onClick={() => {
+                              setAiStyle(style);
+                              setShowAiStyleDropdown(false);
+                            }}
+                            className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
+                          >
+                            {style}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="h-8 whitespace-nowrap bg-white shadow-sm border border-gray-100"
+                      onClick={() => callRewrite(aiStyle)}
+                      disabled={aiBusy}
+                    >
+                      <Sparkles className="h-4 w-4 mr-1 text-app-iris" />
+                      Rewrite
+                    </Button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
                     {pageIndex < totalPages - 1 ? (
                       <Button
                         variant="appSuccess"
@@ -1471,16 +1623,6 @@ const PageEditor = forwardRef(({
                     )}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setToolbarOpen(true)}
-                  className={`absolute bottom-0 right-0 mr-2 mb-2 flex items-center gap-2 rounded-full border border-gray-200 bg-white/95 px-3 py-2 shadow-sm transition-all duration-200 ${toolbarOpen ? 'opacity-0 pointer-events-none translate-y-1' : 'opacity-100'
-                    }`}
-                  aria-label="Open page tools"
-                >
-                  <Sparkles className="h-4 w-4 text-violet-600" />
-                  <Save className="h-4 w-4 text-emerald-600" />
-                </button>
               </div>
             ) : (
               <div className="absolute bottom-0 left-0 right-0 mx-auto rounded-full border border-gray-200 bg-white/95 px-4 py-2 shadow-sm opacity-0 translate-y-3 transition-all duration-200 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto z-20 w-[calc(100%-2rem)] mb-2">
