@@ -21,6 +21,7 @@ import PageEditor from '@/components/PageEditor';
 import ChatPanel from '@/components/ChatPanel';
 import GenerateChapterContent from '@/components/GenerateChapterContent';
 import ChapterChatBox from '@/components/ChapterChatBox';
+import VoiceAssistantButton from '@/components/VoiceAssistantButton';
 import HoverDeleteMenu from '@/components/ui/HoverDeleteMenu';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import { usePaginationReflow } from '@/hooks/usePaginationReflow';
@@ -35,6 +36,8 @@ import {
   isLikelyHtml,
   convertToEmulatorURL
 } from '@/lib/pageUtils';
+import { apiService } from '@/services/ApiService';
+import { pageTemplates } from '@/constants/pageTemplates';
 
 // --- focusWithRetry: helper for reliable cursor placement on newly created pages ---
 const focusWithRetry = async (pageRefs, pageId, position = 'start', maxAttempts = 20) => {
@@ -661,6 +664,7 @@ const BookDetail = () => {
 
   // User search function
   const searchUsers = useCallback(async (searchTerm) => {
+    console.log("Here Searching")
     if (!searchTerm || searchTerm.length < 2) {
       setSearchResults([]);
       return;
@@ -668,52 +672,12 @@ const BookDetail = () => {
 
     setIsSearching(true);
     try {
-      const searchLower = searchTerm.toLowerCase();
-      const usersRef = collection(firestore, 'users');
-      let results = [];
+      const result = await apiService.searchUsers(searchTerm);
 
-      // Check if search term looks like an email
-      if (searchTerm.includes('@')) {
-        // Search by email
-        const emailQuery = query(
-          usersRef,
-          where('email', '==', searchTerm.toLowerCase()),
-          limit(1)
-        );
-        const emailSnapshot = await getDocs(emailQuery);
-        results = emailSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      } else {
-        // Search by displayNameLower
-        // Note: Firestore requires a composite index for orderBy + where
-        // If index doesn't exist, catch error and try without orderBy
-        try {
-          const q = query(
-            usersRef,
-            orderBy('displayNameLower'),
-            where('displayNameLower', '>=', searchLower),
-            where('displayNameLower', '<=', searchLower + '\uf8ff'),
-            limit(10)
-          );
-          const snapshot = await getDocs(q);
-          results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        } catch (indexError) {
-          // If index doesn't exist, fetch all and filter client-side (less efficient but works)
-          console.warn('Firestore index not found, fetching all users:', indexError);
-          const allUsersSnapshot = await getDocs(usersRef);
-          results = allUsersSnapshot.docs
-            .map(doc => ({ id: doc.id, ...doc.data() }))
-            .filter(u => {
-              const nameLower = (u.displayNameLower || '').toLowerCase();
-              return nameLower.includes(searchLower);
-            })
-            .slice(0, 10);
-        }
-      }
+      let results = result.results || [];
 
-      // Filter results
+      // Additional filtering for co-authors already in the book
       results = results.filter(u => {
-        // Filter out current user
-        if (u.id === user?.uid) return false;
         // Filter out already added co-authors
         if (book?.members?.[u.id]) return false;
         return true;
@@ -725,7 +689,7 @@ const BookDetail = () => {
       toast({
         title: 'Search Error',
         description: 'Failed to search users. Please try again.',
-        variant: 'destructive',
+        variant: 'destruc tive',
       });
     } finally {
       setIsSearching(false);
@@ -1109,12 +1073,21 @@ const BookDetail = () => {
 
       if (!saveImmediately) {
         const tempId = `temp_${Date.now()}`;
+        const templateType = book?.templateType || pages[pages.length - 1]?.type || null;
+        const template = templateType ? pageTemplates[templateType] : null;
+        const templateContent = template?.defaults ? { ...template.defaults } : null;
         const newPage = {
           id: tempId,
           chapterId: selectedChapterId,
-          note: overflowContent, // Use overflow content if provided
+          note: template ? '' : overflowContent, // Use overflow content if provided
           media: [],
           order: newOrder,
+          ...(template ? {
+            type: template.type,
+            templateVersion: template.templateVersion,
+            content: templateContent,
+            theme: template.theme,
+          } : {}),
         };
 
         // Update local state immediately
@@ -1123,14 +1096,19 @@ const BookDetail = () => {
         setSelectedPageId(tempId);
         setPageDrafts(prev => ({
           ...prev,
-          [tempId]: { blocks: [], updatedAt: Date.now() }
+          [tempId]: template
+            ? { templateContent: templateContent || {}, updatedAt: Date.now() }
+            : { blocks: [], updatedAt: Date.now() }
         }));
 
         // Update sidebar
         const plain = stripHtml(overflowContent);
+        const templateShortNote = (templateContent?.title || '').trim() || 'Baby Journal Page';
         const newPageSummary = {
           pageId: tempId,
-          shortNote: plain ? plain.substring(0, 40) + (plain.length > 40 ? '...' : '') : 'New Page (Draft)',
+          shortNote: template
+            ? templateShortNote
+            : (plain ? plain.substring(0, 40) + (plain.length > 40 ? '...' : '') : 'New Page (Draft)'),
           order: newOrder
         };
 
@@ -1664,16 +1642,19 @@ const BookDetail = () => {
                     Publish
                   </Button>
                 </span>
-                <span title="Currently Disabled, Coming Soon">
-                  <Button
-                    variant="outline"
-                    disabled
-                    className="flex items-center gap-2 h-8 text-xs pointer-events-none"
-                  >
-                    <Users className="h-3 w-3" />
-                    Co-Authors
-                  </Button>
-                </span>
+                <VoiceAssistantButton
+                  bookId={bookId}
+                  chapterId={selectedChapterId}
+                  pageId={selectedPageId}
+                />
+                <Button
+                  variant="outline"
+                  onClick={() => setCoAuthorModalOpen(true)}
+                  className="flex items-center gap-2 h-8 text-xs"
+                >
+                  <Users className="h-3 w-3" />
+                  Co-Authors
+                </Button>
               </div>
             )}
           </div>
@@ -1800,10 +1781,10 @@ const BookDetail = () => {
                                     // Get pages for this chapter from the pages state if this is the selected chapter
                                     const chapterPages = selectedChapterId === chapter.id
                                       ? pages.map(p => ({
-                                          pageId: p.id,
-                                          shortNote: p.shortNote || stripHtml(p.note || '').substring(0, 40) || 'Untitled Page',
-                                          order: p.order
-                                        }))
+                                        pageId: p.id,
+                                        shortNote: p.shortNote || stripHtml(p.note || '').substring(0, 40) || 'Untitled Page',
+                                        order: p.order
+                                      }))
                                       : chapter.pagesSummary || [];
 
                                     return chapterPages.length > 0 ? chapterPages.map((pageSummary, index) => (
@@ -2004,6 +1985,19 @@ const BookDetail = () => {
 
                     {/* Controls */}
                     <div className="flex items-center gap-2">
+                      <Button
+                        onClick={async () => {
+                          if (activePageId && pageRefs.current[activePageId]?.save) {
+                            await pageRefs.current[activePageId].save();
+                          }
+                        }}
+                        variant="appPrimary"
+                        size="sm"
+                        disabled={!activePageId}
+                        className="min-w-[100px]"
+                      >
+                        Save Page
+                      </Button>
                       <Button
                         onClick={handleSaveChapter}
                         variant="appSuccess"
