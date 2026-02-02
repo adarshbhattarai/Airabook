@@ -32,6 +32,7 @@ export const useVoiceAssistant = ({
   const sessionActiveRef = useRef(false);
   const vadSpeakingRef = useRef(false);
   const vadHangoverTimerRef = useRef(null);
+  const flowPausedRef = useRef(false);
 
   const lastRmsAtRef = useRef(0);
   const statusRef = useRef('idle');
@@ -65,6 +66,16 @@ export const useVoiceAssistant = ({
       setStatus((s) => (s === 'connecting' ? 'idle' : s));
       return;
     }
+    if (msg.type === 'flow') {
+      const action = msg.action;
+      console.log('[FLOW] Server flow control:', action);
+      if (action === 'pause') {
+        flowPausedRef.current = true;
+      } else if (action === 'resume') {
+        flowPausedRef.current = false;
+      }
+      return;
+    }
     if (msg.type === 'partialTranscript') {
       setPartialTranscript(msg.text || '');
       return;
@@ -79,7 +90,14 @@ export const useVoiceAssistant = ({
       return;
     }
     if (msg.type === 'error') {
-      setLastError({ code: msg.code, message: msg.message || 'Voice error.' });
+      const code = msg.code || 'unknown';
+      const message = msg.message || 'Voice error.';
+      // OVERLOAD is flow-control/backpressure; don’t hard-fail the UI state machine.
+      if (code === 'OVERLOAD') {
+        setLastError({ code, message });
+        return;
+      }
+      setLastError({ code, message });
       setStatus('error');
     }
   }, []);
@@ -110,12 +128,22 @@ export const useVoiceAssistant = ({
 
         if (!sessionActiveRef.current) return;
 
+        // Don't start new speech detection while backend is processing or assistant is speaking.
+        const currentStatus = statusRef.current;
+        const canDetectSpeech = currentStatus === 'listening' || currentStatus === 'user_speaking';
+
         // VAD
         if (!vadSpeakingRef.current) {
           if ((rms || 0) >= vadStartThreshold) {
+            if (!canDetectSpeech) {
+              // Block speech detection while thinking/assistant_speaking to avoid backend rejection
+              console.log('[VAD] ⛔ Blocked speechStart - status is:', currentStatus);
+              return;
+            }
             vadSpeakingRef.current = true;
             setVadSpeaking(true);
             setStatus('user_speaking');
+            console.log('[VAD] 🎤 SPEECH STARTED - rms:', rms.toFixed(4), '>=', vadStartThreshold);
             clientRef.current?.sendJson({ type: 'speechStart' });
           }
         } else {
@@ -123,11 +151,13 @@ export const useVoiceAssistant = ({
             if (vadHangoverTimerRef.current) clearTimeout(vadHangoverTimerRef.current);
             vadHangoverTimerRef.current = null;
           } else if (!vadHangoverTimerRef.current) {
+            console.log('[VAD] 🔇 Speech ending in', hangoverMs, 'ms (hangover)');
             vadHangoverTimerRef.current = setTimeout(() => {
               vadHangoverTimerRef.current = null;
               if (!vadSpeakingRef.current) return;
               vadSpeakingRef.current = false;
               setVadSpeaking(false);
+              console.log('[VAD] 🛑 SPEECH ENDED - sending speechEnd');
               clientRef.current?.sendJson({ type: 'speechEnd' });
               // Pause mic while thinking / assistant speaks.
               micStopRef.current?.();
@@ -137,10 +167,12 @@ export const useVoiceAssistant = ({
           }
         }
 
-        // Stream audio only while actively listening / user speaking.
-        const s = statusRef.current;
-        if (s === 'listening' || s === 'user_speaking') {
+        // Stream audio only while user is speaking (client-side VAD).
+        if (vadSpeakingRef.current && !flowPausedRef.current) {
+          console.log('[VAD] 📤 Sending audio:', pcmBuffer.byteLength, 'bytes | rms:', rms.toFixed(4));
           clientRef.current?.sendBinary(pcmBuffer);
+        } else if (vadSpeakingRef.current && flowPausedRef.current) {
+          console.log('[VAD] ⏸️ Audio paused by server flow control');
         }
       },
     });
