@@ -15,6 +15,7 @@ import Books from '@/pages/Books';
 import AssetRegistry from '@/pages/Media';
 import Notes from '@/pages/Notes';
 import CreateBook from '@/pages/CreateBook';
+import BabyJournalPreview from '@/pages/BabyJournalPreview';
 import Donate from '@/pages/Donate';
 import DonateSuccess from '@/pages/DonateSuccess';
 import BookDetail from '@/pages/BookDetail';
@@ -118,6 +119,16 @@ function App() {
                 <PrivateRoute>
                   <ThemedAppShell>
                     <CreateBook />
+                  </ThemedAppShell>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/baby-journal-preview"
+              element={
+                <PrivateRoute>
+                  <ThemedAppShell>
+                    <BabyJournalPreview />
                   </ThemedAppShell>
                 </PrivateRoute>
               }
