@@ -46,6 +46,8 @@ const useTalkDemoState = ({
   const {
     status,
     canStart,
+    hasBookContext,
+    voiceUnavailableReason,
     wsConnected,
     lastError,
     startListening,
@@ -99,10 +101,16 @@ const useTalkDemoState = ({
   const isListening = status === 'listening' || status === 'user_speaking';
 
   const statusCopy = useMemo(() => {
-    if (!canStart) {
+    if (!hasBookContext) {
       return {
         label: 'No book context',
         helper: 'Open a book or select context before using talk mode.',
+      };
+    }
+    if (!canStart) {
+      return {
+        label: 'Voice unavailable',
+        helper: voiceUnavailableReason || 'Voice backend is not connected.',
       };
     }
     if (status === 'error') {
@@ -112,7 +120,7 @@ const useTalkDemoState = ({
       };
     }
     return TALK_STATUS_COPY[status] || TALK_STATUS_COPY.idle;
-  }, [canStart, lastError?.message, status]);
+  }, [canStart, hasBookContext, lastError?.message, status, voiceUnavailableReason]);
 
   return {
     status: canStart ? status : 'idle',

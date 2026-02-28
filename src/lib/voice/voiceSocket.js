@@ -45,23 +45,74 @@ const parseJson = (text) => {
   }
 };
 
-export const getVoiceWsUrl = () => {
-  const explicit = import.meta.env.VITE_VOICE_WS_URL;
-  if (explicit) return explicit;
+const VOICE_WS_DEFAULT_PATH = '/ws/voice';
+
+const normalizeWsUrl = (value) => {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  if (!raw) return null;
+
+  if (/^wss?:\/\//i.test(raw)) {
+    return raw;
+  }
+
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const url = new URL(raw);
+      url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+      url.pathname = VOICE_WS_DEFAULT_PATH;
+      url.search = '';
+      url.hash = '';
+      return url.toString();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  return null;
+};
+
+export const resolveVoiceWsConfig = () => {
+  const explicit = normalizeWsUrl(import.meta.env.VITE_VOICE_WS_URL);
+  if (explicit) {
+    return {
+      url: explicit,
+      reason: null,
+    };
+  }
+
+  const backendBase = normalizeWsUrl(import.meta.env.VITE_VOICE_BACKEND_URL)
+    || normalizeWsUrl(import.meta.env.VITE_SPRING_API_URL)
+    || normalizeWsUrl(import.meta.env.VITE_BACKEND_API_URL);
+  if (backendBase) {
+    return {
+      url: backendBase,
+      reason: null,
+    };
+  }
 
   // Sensible local fallback if env var is missing.
   // This keeps dev ergonomics decent while still encouraging explicit config.
   const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
   if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('localhost')) {
-    return 'ws://localhost:8000/ws/voice';
+    return {
+      url: 'ws://localhost:8000/ws/voice',
+      reason: null,
+    };
   }
 
-  throw new Error('Missing VITE_VOICE_WS_URL (e.g. wss://your-spring-host/ws/voice).');
+  return {
+    url: null,
+    reason:
+      'Voice backend is not configured. Set VITE_VOICE_WS_URL or VITE_SPRING_API_URL/VITE_BACKEND_API_URL.',
+  };
 };
+
+export const getVoiceWsUrl = () => resolveVoiceWsConfig().url;
+export const getVoiceWsUnavailableReason = () => resolveVoiceWsConfig().reason;
 
 export class VoiceSocketClient {
   constructor({
-    url = getVoiceWsUrl(),
+    url = getVoiceWsUrl() || '',
     connectTimeoutMs = 6000,
     onJson,
     onBinary,
@@ -84,6 +135,10 @@ export class VoiceSocketClient {
   }
 
   async connect({ signal } = {}) {
+    if (!this.url) {
+      throw new Error('Voice backend is unavailable. Configure VITE_VOICE_WS_URL or backend API URL.');
+    }
+
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       return;
     }
