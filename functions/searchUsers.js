@@ -1,88 +1,116 @@
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
-const admin = require("firebase-admin");
+const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const admin = require('firebase-admin');
 
-// Initialize Admin SDK safely
 if (!admin.apps.length) {
-    admin.initializeApp();
+  admin.initializeApp();
 }
 
-// Get default Firestore instance
 const db = admin.firestore();
+const SEARCH_RESULTS_LIMIT = 10;
 
-/**
- * Search for users by email or display name.
- * Returns only public profile fields: id, displayName, email, photoURL.
- *
- * Request data:
- * - searchTerm: string (required)
- */
-exports.searchUsers = onCall({ region: "us-central1", cors: true }, async (request) => {
-    console.log("Here Searching from searchUsersJS")
-    const { data, auth } = request;
+async function resolveVerifiedUser(docSnap) {
+  const data = docSnap.data() || {};
+  const uid = docSnap.id;
 
-    // Authentication required
-    if (!auth) {
-        throw new HttpsError(
-            "unauthenticated",
-            "You must be signed in to search users."
-        );
+  try {
+    const authUser = await admin.auth().getUser(uid);
+    if (authUser?.emailVerified) {
+      const mergedData = {
+        ...data,
+        email: data.email || authUser.email || '',
+        displayName: data.displayName || authUser.displayName || '',
+        photoURL: data.photoURL || authUser.photoURL || null,
+        emailVerified: true,
+      };
+
+      await docSnap.ref.set({
+        email: mergedData.email,
+        displayName: mergedData.displayName,
+        displayNameLower: (mergedData.displayName || '').toLowerCase(),
+        photoURL: mergedData.photoURL,
+        emailVerified: true,
+      }, { merge: true });
+
+      return { uid, data: mergedData, isVerified: true };
+    }
+  } catch (error) {
+    console.warn(`searchUsers verify lookup failed for ${uid}:`, error?.message || error);
+  }
+
+  return { uid, data, isVerified: false };
+}
+
+exports.searchUsers = onCall({ region: 'us-central1', cors: true }, async (request) => {
+  const { data, auth } = request;
+  if (!auth?.uid) {
+    throw new HttpsError('unauthenticated', 'You must be signed in to search users.');
+  }
+
+  const searchTerm = String(data?.searchTerm || '').trim();
+  if (searchTerm.length < 2) {
+    return { results: [] };
+  }
+
+  const searchLower = searchTerm.toLowerCase();
+  const usersRef = db.collection('users');
+  const candidatesById = new Map();
+
+  try {
+    if (searchTerm.includes('@')) {
+      // Exact/prefix email search (works for partial email too, e.g. "adarsh.bhat")
+      const byEmailPrefix = await usersRef
+        .where('email', '>=', searchLower)
+        .where('email', '<=', `${searchLower}\uf8ff`)
+        .limit(SEARCH_RESULTS_LIMIT)
+        .get();
+      for (const docSnap of byEmailPrefix.docs) {
+        candidatesById.set(docSnap.id, docSnap);
+      }
+    } else {
+      const byName = await usersRef
+        .orderBy('displayNameLower')
+        .where('displayNameLower', '>=', searchLower)
+        .where('displayNameLower', '<=', `${searchLower}\uf8ff`)
+        .limit(SEARCH_RESULTS_LIMIT)
+        .get();
+      for (const docSnap of byName.docs) {
+        candidatesById.set(docSnap.id, docSnap);
+      }
+
+      // Also match users by email prefix when user types partial local-part.
+      const byEmailPrefix = await usersRef
+        .where('email', '>=', searchLower)
+        .where('email', '<=', `${searchLower}\uf8ff`)
+        .limit(SEARCH_RESULTS_LIMIT)
+        .get();
+      for (const docSnap of byEmailPrefix.docs) {
+        candidatesById.set(docSnap.id, docSnap);
+      }
     }
 
-    const { searchTerm } = data || {};
+    const candidateDocs = Array.from(candidatesById.values()).slice(0, SEARCH_RESULTS_LIMIT * 2);
+    const results = [];
+    for (const docSnap of candidateDocs) {
+      const uid = docSnap.id;
+      if (uid === auth.uid) continue; // keep no-self-invite behavior
 
-    if (!searchTerm || searchTerm.length < 2) {
-        return { results: [] };
+      // eslint-disable-next-line no-await-in-loop
+      const resolved = await resolveVerifiedUser(docSnap);
+      if (!resolved.isVerified) continue;
+
+      results.push({
+        id: uid,
+        displayName: resolved.data.displayName || 'Unknown User',
+        email: resolved.data.email || '',
+        photoURL: resolved.data.photoURL || null,
+        emailVerified: true,
+      });
+      if (results.length >= SEARCH_RESULTS_LIMIT) break;
     }
 
-    try {
-        const searchLower = searchTerm.toLowerCase();
-        const usersRef = db.collection("users");
-        let searchResults = [];
-
-        // 1️⃣ Check if search term looks like an email
-        if (searchTerm.includes("@")) {
-            const snapshot = await usersRef
-                .where("email", "==", searchLower)
-                .limit(1)
-                .get();
-
-            searchResults = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-        } else {
-            // 2️⃣ Search by displayNameLower
-            const snapshot = await usersRef
-                .orderBy("displayNameLower")
-                .where("displayNameLower", ">=", searchLower)
-                .where("displayNameLower", "<=", searchLower + "\uf8ff")
-                .limit(20)
-                .get();
-
-            searchResults = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-        }
-
-        // 3️⃣ Filter and format results
-        // Filter out current user and map only allowed fields
-        const formattedResults = searchResults
-            .filter(user => user.id !== auth.uid)
-            .map(user => ({
-                id: user.id,
-                displayName: user.displayName || "Unknown User",
-                email: user.email || "",
-                photoURL: user.photoURL || null,
-            }));
-
-        return { results: formattedResults };
-    } catch (error) {
-        console.error("Error searching users:", error);
-        throw new HttpsError(
-            "internal",
-            "Failed to search users. Please try again.",
-            error.message
-        );
-    }
+    return { results };
+  } catch (error) {
+    console.error('Error searching users:', error);
+    throw new HttpsError('internal', 'Failed to search users. Please try again.');
+  }
 });

@@ -62,6 +62,19 @@ function parseStoragePath(storagePath) {
   };
 }
 
+async function resolveStorageBillingUserId(bookId, fallbackUserId) {
+  if (!bookId) return fallbackUserId;
+  try {
+    const bookSnap = await db.collection('books').doc(bookId).get();
+    if (!bookSnap.exists) return fallbackUserId;
+    const bookData = bookSnap.data() || {};
+    return bookData.ownerId || fallbackUserId;
+  } catch (error) {
+    console.warn(`⚠️ Failed to resolve billing owner for book ${bookId}:`, error?.message || error);
+    return fallbackUserId;
+  }
+}
+
 /**
  * Get or create album for a book
  */
@@ -419,10 +432,11 @@ exports.onMediaUpload = onObjectFinalized(
     try {
       // Parse storage path to extract metadata
       const metadata = parseStoragePath(storagePath);
+      const billingUserId = await resolveStorageBillingUserId(metadata.bookId, metadata.userId);
       console.log(`📋 Parsed metadata:`, metadata);
 
       // Get or create album (metadata.bookId is the album ID)
-      await getOrCreateAlbum(metadata.bookId, metadata.userId);
+      await getOrCreateAlbum(metadata.bookId, billingUserId);
       const albumId = metadata.bookId;
 
       // Generate download URL
@@ -448,7 +462,7 @@ exports.onMediaUpload = onObjectFinalized(
       // Add storage usage - if limit is reached, rollback the upload
       if (!quotaCounted && metaSize > 0) {
         try {
-          const usage = await addStorageUsage(db, metadata.userId, metaSize);
+          const usage = await addStorageUsage(db, billingUserId, metaSize);
           // Update user's accessibleAlbums
           await updateUserAccessibleAlbums(
             metadata.userId,
@@ -460,7 +474,7 @@ exports.onMediaUpload = onObjectFinalized(
 
           console.log(
             `📈 [onMediaUpload] Storage usage updated: ` +
-            `delta=+${metaSize}B before=${usage.before}B after=${usage.after}B user=${metadata.userId} ` +
+            `delta=+${metaSize}B before=${usage.before}B after=${usage.after}B billedUser=${billingUserId} uploader=${metadata.userId} ` +
             `albumId=${albumId} storagePath=${storagePath}`
           );
         } catch (usageErr) {
@@ -500,12 +514,12 @@ exports.onMediaUpload = onObjectFinalized(
       if (quotaCounted) {
         console.log(
           `ℹ️  [onMediaUpload] Skipping storage increment (quotaCounted=true): ` +
-          `size=${metaSize}B user=${metadata.userId} albumId=${albumId} storagePath=${storagePath}`
+          `size=${metaSize}B billedUser=${billingUserId} uploader=${metadata.userId} albumId=${albumId} storagePath=${storagePath}`
         );
       } else if (metaSize <= 0) {
         console.warn(
           `⚠️ [onMediaUpload] Missing/zero size on upload event; skipping storage increment. ` +
-          `rawSize=${event.data?.size} user=${metadata.userId} albumId=${albumId} storagePath=${storagePath}`
+          `rawSize=${event.data?.size} billedUser=${billingUserId} uploader=${metadata.userId} albumId=${albumId} storagePath=${storagePath}`
         );
       }
 
@@ -540,6 +554,7 @@ exports.onMediaDelete = onObjectDeleted(
     try {
       // Parse storage path to extract metadata
       const metadata = parseStoragePath(storagePath);
+      const billingUserId = await resolveStorageBillingUserId(metadata.bookId, metadata.userId);
 
       console.log(`🔔 [onMediaDelete] Parsed metadata:`, JSON.stringify(metadata, null, 2));
 
@@ -639,10 +654,10 @@ exports.onMediaDelete = onObjectDeleted(
           );
         } else {
           try {
-            const usage = await addStorageUsage(db, metadata.userId, -sizeBytes);
+            const usage = await addStorageUsage(db, billingUserId, -sizeBytes);
             console.log(
               `✅ [onMediaDelete] Storage usage updated (orphaned cleanup): ` +
-              `delta=-${sizeBytes}B before=${usage.before}B after=${usage.after}B user=${metadata.userId}`
+              `delta=-${sizeBytes}B before=${usage.before}B after=${usage.after}B billedUser=${billingUserId} uploader=${metadata.userId}`
             );
           } catch (usageErr) {
             console.error("❌ [onMediaDelete] Failed to update storage usage:", usageErr);
@@ -715,10 +730,10 @@ exports.onMediaDelete = onObjectDeleted(
         );
       } else {
         try {
-          const usage = await addStorageUsage(db, metadata.userId, -sizeBytes);
+          const usage = await addStorageUsage(db, billingUserId, -sizeBytes);
           console.log(
             `✅ [onMediaDelete] Storage usage updated: ` +
-            `delta=-${sizeBytes}B before=${usage.before}B after=${usage.after}B user=${metadata.userId}`
+            `delta=-${sizeBytes}B before=${usage.before}B after=${usage.after}B billedUser=${billingUserId} uploader=${metadata.userId}`
           );
         } catch (usageErr) {
           console.error("❌ [onMediaDelete] Failed to update storage usage:", usageErr);

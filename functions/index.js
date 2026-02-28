@@ -3,6 +3,10 @@ const storageEmulatorBucket = "demo-project.appspot.com";
 const isEmulator = process.env.FUNCTIONS_EMULATOR === "true" || process.env.FIRESTORE_EMULATOR_HOST;
 if (isEmulator) {
   process.env.GOOGLE_CLOUD_DISABLE_GCP_RESIDENCY_CHECK = "true";
+  if (!process.env.FIREBASE_AUTH_EMULATOR_HOST) {
+    process.env.FIREBASE_AUTH_EMULATOR_HOST = '127.0.0.1:9099';
+    console.log('🧪 FIREBASE_AUTH_EMULATOR_HOST not set. Defaulting to 127.0.0.1:9099');
+  }
 }
 
 // // Guard against accidental calls to functions.config() (removed in v7) by stubbing it
@@ -126,6 +130,14 @@ const { updateBook } = require("./updateBook");
 const { createAlbum } = require("./createAlbum");
 const { onMediaUpload, onMediaDelete } = require("./mediaProcessor");
 const { inviteCoAuthor } = require("./inviteCoAuthor");
+const { respondCoAuthorInvite } = require("./respondCoAuthorInvite");
+const { manageCoAuthorInvite } = require("./manageCoAuthorInvite");
+const { removeCoAuthor } = require("./removeCoAuthor");
+const { setCoAuthorPermissions } = require("./setCoAuthorPermissions");
+const { listNotifications } = require("./listNotifications");
+const { listPendingCoAuthorInvites } = require("./listPendingCoAuthorInvites");
+const { syncUserAuthFlags } = require("./syncUserAuthFlags");
+const { searchUsers } = require("./searchUsers");
 const { createCheckoutSession } = require("./payments/createCheckoutSession");
 const { stripeWebhook } = require("./payments/stripeWebhook");
 const { createPage } = require("./createPage");
@@ -138,6 +150,7 @@ const { onBookDeleted, onPageDeleted, onChapterDeleted } = require("./usageTrigg
 const { deleteMediaAsset, deleteAlbumAssets } = require("./deleteMedia");
 const { trackMediaUsage, untrackMediaUsage } = require("./mediaUsage");
 const { createUserDoc } = require("./createUserDoc");
+const { resolveUserPlanLimits } = require("./utils/limits");
 
 
 exports.helloWorld = onRequest({ region: "us-central1" }, (request, response) => {
@@ -153,6 +166,14 @@ exports.createAlbum = createAlbum;
 exports.onMediaUpload = onMediaUpload;
 exports.onMediaDelete = onMediaDelete;
 exports.inviteCoAuthor = inviteCoAuthor;
+exports.respondCoAuthorInvite = respondCoAuthorInvite;
+exports.manageCoAuthorInvite = manageCoAuthorInvite;
+exports.removeCoAuthor = removeCoAuthor;
+exports.setCoAuthorPermissions = setCoAuthorPermissions;
+exports.listNotifications = listNotifications;
+exports.listPendingCoAuthorInvites = listPendingCoAuthorInvites;
+exports.syncUserAuthFlags = syncUserAuthFlags;
+exports.searchUsers = searchUsers;
 exports.createCheckoutSession = createCheckoutSession;
 exports.stripeWebhook = stripeWebhook;
 
@@ -292,6 +313,14 @@ exports.addChapter = onCall({ region: "us-central1", cors: true }, async (reques
       .get();
 
     const existingChapters = chaptersSnapshot.docs.map(doc => doc.data());
+    const { tier, limits } = await resolveUserPlanLimits(db, userId);
+    const chapterPerBookLimit = Number(limits?.chaptersPerBook);
+    if (Number.isFinite(chapterPerBookLimit) && chapterPerBookLimit > 0 && tier !== "god" && chaptersSnapshot.size >= chapterPerBookLimit) {
+      throw new HttpsError(
+        'resource-exhausted',
+        `You can create up to ${chapterPerBookLimit} chapters per book on your current plan.`
+      );
+    }
     const lastChapter = existingChapters[existingChapters.length - 1];
     const newOrder = order || getNewOrderBetween(lastChapter?.order || '', '');
 
@@ -433,4 +462,3 @@ exports.addPageSummary = onCall({ region: "us-central1", cors: true }, async (re
     throw new HttpsError('internal', 'Failed to add page summary. Please try again.');
   }
 });
-

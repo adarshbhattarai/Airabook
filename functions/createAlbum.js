@@ -2,6 +2,9 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
 const FieldValue = require("firebase-admin/firestore").FieldValue;
+const { resolveUserPlanLimits } = require("./utils/limits");
+
+const FREE_TIER_CUSTOM_ALBUM_LIMIT = 10;
 
 exports.createAlbum = onCall(
     { region: "us-central1", cors: true },
@@ -35,6 +38,25 @@ exports.createAlbum = onCall(
         const nameNormalized = name.trim();
 
         try {
+            const { tier } = await resolveUserPlanLimits(db, userId);
+
+            if (tier === "free") {
+                const ownedCustomAlbumsCountSnap = await db
+                    .collection("albums")
+                    .where("accessPermission.ownerId", "==", userId)
+                    .where("type", "==", "custom")
+                    .count()
+                    .get();
+
+                const ownedCustomAlbumsCount = Number(ownedCustomAlbumsCountSnap.data()?.count || 0);
+                if (ownedCustomAlbumsCount >= FREE_TIER_CUSTOM_ALBUM_LIMIT) {
+                    throw new HttpsError(
+                        "resource-exhausted",
+                        `Free tier allows up to ${FREE_TIER_CUSTOM_ALBUM_LIMIT} asset albums. Delete an existing album or upgrade your plan.`
+                    );
+                }
+            }
+
             // Create album document
             const albumData = {
                 name: nameNormalized,
@@ -86,6 +108,9 @@ exports.createAlbum = onCall(
 
         } catch (error) {
             logger.error("Error creating album:", error);
+            if (error instanceof HttpsError || error?.code === "resource-exhausted") {
+                throw error;
+            }
             throw new HttpsError("internal", "Failed to create album. Please try again.");
         }
     }

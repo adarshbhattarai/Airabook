@@ -3,7 +3,7 @@ const logger = require("firebase-functions/logger");
 
 const admin = require("firebase-admin");
 const FieldValue = require("firebase-admin/firestore").FieldValue;
-const { assertAndIncrementCounter } = require("./utils/limits");
+const { assertAndIncrementCounter, loadConfig, tierForUser } = require("./utils/limits");
 
 // Firebase Admin should be initialized by index.js
 // If not initialized, initialize with default settings (with console.log since logger might not be ready)
@@ -350,6 +350,16 @@ exports.createBook = onCall(
       } else {
         chapters = [];
         bookDescription = `A blank baby book for ${title} - start writing your own story!`;
+      }
+
+      const cfg = loadConfig();
+      const tier = tierForUser(userData, userId, cfg);
+      const chapterPerBookLimit = Number(cfg?.plans?.[tier]?.chaptersPerBook);
+      if (Number.isFinite(chapterPerBookLimit) && chapterPerBookLimit > 0 && tier !== "god" && chapters.length > chapterPerBookLimit) {
+        throw new HttpsError(
+          "resource-exhausted",
+          `You can create up to ${chapterPerBookLimit} chapters per book on your current plan.`
+        );
       }
 
       // Create book document

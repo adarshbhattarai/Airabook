@@ -55,9 +55,8 @@ exports.deleteMediaAsset = onCall({ region: "us-central1", cors: true }, async (
     }
     const bookData = bookSnap.data();
     const isOwner = bookData.ownerId === auth.uid;
-    const isMember = !!(bookData.members && bookData.members[auth.uid]);
-    if (!isOwner && !isMember) {
-      throw new HttpsError("permission-denied", "You do not have access to this book.");
+    if (!isOwner) {
+      throw new HttpsError("permission-denied", "Only the book owner can delete book media files.");
     }
     console.log(`✅ [deleteMediaAsset] Book access verified`);
   }

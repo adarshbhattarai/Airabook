@@ -43,8 +43,9 @@ async function generateCumulativeSummary(previousSummary, newPageContent, chapte
  * @param {string} plainText - The plain text content of the page
  * @param {string} order - The order string (required for new pages)
  * @param {boolean} isNew - Whether this is a new page being created
+ * @param {string} pageName - Optional user-defined page name
  */
-async function updateChapterPageSummary(db, bookId, chapterId, pageId, plainText, order, isNew = false) {
+async function updateChapterPageSummary(db, bookId, chapterId, pageId, plainText, order, isNew = false, pageName = undefined) {
     console.log(`📝 updateChapterPageSummary: ${isNew ? 'Creating' : 'Updating'} summary for page ${pageId}`);
 
     try {
@@ -65,6 +66,7 @@ async function updateChapterPageSummary(db, bookId, chapterId, pageId, plainText
         const shortNote = plainText
             ? plainText.substring(0, 40) + (plainText.length > 40 ? '...' : '')
             : 'New Page';
+        const normalizedPageName = pageName === undefined ? undefined : String(pageName || '').trim();
 
         console.log(`📝 Short note generated: "${shortNote}"`);
 
@@ -79,6 +81,7 @@ async function updateChapterPageSummary(db, bookId, chapterId, pageId, plainText
             // Append new page summary
             const newPageSummary = {
                 pageId,
+                pageName: normalizedPageName || '',
                 shortNote,
                 order: order || '',
             };
@@ -93,7 +96,11 @@ async function updateChapterPageSummary(db, bookId, chapterId, pageId, plainText
             // Update existing page summary
             const updatedPagesSummary = pagesSummary.map(ps =>
                 ps.pageId === pageId
-                    ? { ...ps, shortNote } // Update shortNote, keep other fields (like order)
+                    ? {
+                        ...ps,
+                        shortNote,
+                        ...(normalizedPageName !== undefined ? { pageName: normalizedPageName } : {})
+                    }
                     : ps
             );
 

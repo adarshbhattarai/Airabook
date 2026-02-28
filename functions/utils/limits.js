@@ -16,9 +16,30 @@ class HttpsError extends Error {
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 const defaultPlans = {
-  free: { apiCalls: 50, storageMb: 50, books: 3, pages: 150 },
-  early: { apiCalls: 70, storageMb: 70, books: 4, pages: 200 },
-  god: { apiCalls: 1_000_000_000, storageMb: 1_000_000_000, books: 1_000_000, pages: 1_000_000_000 },
+  free: {
+    apiCalls: 50,
+    storageMb: 50,
+    books: 3,
+    pages: 150,
+    chaptersPerBook: 15,
+    pagesPerChapter: 5,
+  },
+  early: {
+    apiCalls: 70,
+    storageMb: 70,
+    books: 4,
+    pages: 200,
+    chaptersPerBook: 200,
+    pagesPerChapter: 500,
+  },
+  god: {
+    apiCalls: 1_000_000_000,
+    storageMb: 1_000_000_000,
+    books: 1_000_000,
+    pages: 1_000_000_000,
+    chaptersPerBook: 1_000_000,
+    pagesPerChapter: 1_000_000,
+  },
 };
 
 const parseNumber = (value, fallback) => {
@@ -46,18 +67,24 @@ function loadConfig() {
       storageMb: parseNumber(process.env.PLAN_FREE_STORAGE_MB, defaultPlans.free.storageMb),
       books: parseNumber(process.env.PLAN_FREE_BOOKS, defaultPlans.free.books),
       pages: parseNumber(process.env.PLAN_FREE_PAGES, defaultPlans.free.pages),
+      chaptersPerBook: parseNumber(process.env.PLAN_FREE_CHAPTERS_PER_BOOK, defaultPlans.free.chaptersPerBook),
+      pagesPerChapter: parseNumber(process.env.PLAN_FREE_PAGES_PER_CHAPTER, defaultPlans.free.pagesPerChapter),
     },
     early: {
       apiCalls: parseNumber(process.env.PLAN_EARLY_API_CALLS, defaultPlans.early.apiCalls),
       storageMb: parseNumber(process.env.PLAN_EARLY_STORAGE_MB, defaultPlans.early.storageMb),
       books: parseNumber(process.env.PLAN_EARLY_BOOKS, defaultPlans.early.books),
       pages: parseNumber(process.env.PLAN_EARLY_PAGES, defaultPlans.early.pages),
+      chaptersPerBook: parseNumber(process.env.PLAN_EARLY_CHAPTERS_PER_BOOK, defaultPlans.early.chaptersPerBook),
+      pagesPerChapter: parseNumber(process.env.PLAN_EARLY_PAGES_PER_CHAPTER, defaultPlans.early.pagesPerChapter),
     },
     god: {
       apiCalls: parseNumber(process.env.PLAN_GOD_API_CALLS, defaultPlans.god.apiCalls),
       storageMb: parseNumber(process.env.PLAN_GOD_STORAGE_MB, defaultPlans.god.storageMb),
       books: parseNumber(process.env.PLAN_GOD_BOOKS, defaultPlans.god.books),
       pages: parseNumber(process.env.PLAN_GOD_PAGES, defaultPlans.god.pages),
+      chaptersPerBook: parseNumber(process.env.PLAN_GOD_CHAPTERS_PER_BOOK, defaultPlans.god.chaptersPerBook),
+      pagesPerChapter: parseNumber(process.env.PLAN_GOD_PAGES_PER_CHAPTER, defaultPlans.god.pagesPerChapter),
     },
   };
 
@@ -74,6 +101,16 @@ function tierForUser(userData, uid, cfg = loadConfig()) {
   const tier = userData?.billing?.planTier;
   if (tier === "god" || tier === "early" || tier === "free") return tier;
   return "free";
+}
+
+async function resolveUserPlanLimits(db, uid) {
+  const cfg = loadConfig();
+  const userRef = db.collection("users").doc(uid);
+  const snap = await userRef.get();
+  const userData = snap.exists ? (snap.data() || {}) : {};
+  const tier = tierForUser(userData, uid, cfg);
+  const limits = cfg.plans[tier] || defaultPlans.free;
+  return { tier, limits, userData, userExists: snap.exists };
 }
 
 function toMillis(ts) {
@@ -187,6 +224,7 @@ async function assertStorageAllowance(db, uid, incomingBytes) {
 module.exports = {
   loadConfig,
   tierForUser,
+  resolveUserPlanLimits,
   buildInitialQuotaCounters,
   consumeApiCallQuota,
   assertAndIncrementCounter,

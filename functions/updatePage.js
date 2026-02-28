@@ -26,7 +26,7 @@ exports.updatePage = onCall(
             throw new HttpsError('unauthenticated', 'User must be authenticated to update pages.');
         }
 
-        const { bookId, chapterId, pageId, note, media, type, templateVersion, content, theme } = data;
+        const { bookId, chapterId, pageId, note, media, type, templateVersion, content, theme, pageName } = data;
         const userId = auth.uid;
 
         if (!bookId || !chapterId || !pageId) {
@@ -101,6 +101,7 @@ exports.updatePage = onCall(
             if (templateVersion) updateData.templateVersion = templateVersion;
             if (content !== undefined) updateData.content = content;
             if (theme !== undefined) updateData.theme = theme;
+            if (pageName !== undefined) updateData.pageName = String(pageName || '').trim();
 
             await pageRef.update(updateData);
             logger.log(`✅ Page ${pageId} updated`);
@@ -108,7 +109,7 @@ exports.updatePage = onCall(
             logger.log(`📝 About to update chapter summary. plainText: "${plainText}"`);
 
             // Update chapter's pagesSummary using helper
-            await updateChapterPageSummary(db, bookId, chapterId, pageId, plainText, null, false);
+            await updateChapterPageSummary(db, bookId, chapterId, pageId, plainText, null, false, pageName);
 
             logger.log(`✅ Chapter summary update completed`);
 

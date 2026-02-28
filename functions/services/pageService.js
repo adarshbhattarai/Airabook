@@ -1,7 +1,7 @@
 const { FieldValue } = require('firebase-admin/firestore');
 const { extractTextFromHtml, generateEmbeddings } = require('../utils/embeddingsClient');
 const { updateChapterPageSummary } = require('../utils/chapterUtils');
-const { assertAndIncrementCounter } = require('../utils/limits');
+const { assertAndIncrementCounter, resolveUserPlanLimits } = require('../utils/limits');
 
 const escapeHtml = (value = '') =>
   String(value)
@@ -88,16 +88,6 @@ const getNewOrderBetween = (prevOrder = '', nextOrder = '') =>
 const createChapterPage = async ({ db, userId, bookId, chapterId, markdown }) => {
   let reservedPageSlot = false;
 
-  await assertAndIncrementCounter(
-    db,
-    userId,
-    'pages',
-    1,
-    undefined,
-    'You have reached your page limit for this plan.'
-  );
-  reservedPageSlot = true;
-
   try {
     const bookRef = db.collection('books').doc(bookId);
     const bookDoc = await bookRef.get();
@@ -117,6 +107,28 @@ const createChapterPage = async ({ db, userId, bookId, chapterId, markdown }) =>
     if (!chapterDoc.exists) {
       throw new Error('Chapter not found.');
     }
+
+    const { tier, limits } = await resolveUserPlanLimits(db, userId);
+    const pagePerChapterLimit = Number(limits?.pagesPerChapter);
+    if (Number.isFinite(pagePerChapterLimit) && pagePerChapterLimit > 0 && tier !== 'god') {
+      const existingPagesSnap = await chapterRef
+        .collection('pages')
+        .limit(pagePerChapterLimit)
+        .get();
+      if (existingPagesSnap.size >= pagePerChapterLimit) {
+        throw new Error(`You can create up to ${pagePerChapterLimit} pages per chapter on your current plan.`);
+      }
+    }
+
+    await assertAndIncrementCounter(
+      db,
+      userId,
+      'pages',
+      1,
+      undefined,
+      'You have reached your page limit for this plan.'
+    );
+    reservedPageSlot = true;
 
     const lastPageSnap = await chapterRef
       .collection('pages')

@@ -5,7 +5,7 @@ const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
 const admin = require('firebase-admin');
 const FieldValue = require('firebase-admin/firestore').FieldValue;
-const { assertAndIncrementCounter } = require('./utils/limits');
+const { assertAndIncrementCounter, resolveUserPlanLimits } = require('./utils/limits');
 
 const { extractTextFromHtml, generateEmbeddings } = require('./utils/embeddingsClient');
 const { updateChapterPageSummary } = require('./utils/chapterUtils');
@@ -32,7 +32,7 @@ exports.createPage = onCall(
             throw new HttpsError('unauthenticated', 'User must be authenticated to create pages.');
         }
 
-        const { bookId, chapterId, note, media, order, type, templateVersion, content, theme } = data;
+        const { bookId, chapterId, note, media, order, type, templateVersion, content, theme, pageName } = data;
         const userId = auth.uid;
 
         // Validate required fields
@@ -63,6 +63,21 @@ exports.createPage = onCall(
 
             if (!chapterDoc.exists) {
                 throw new HttpsError('not-found', 'Chapter not found.');
+            }
+
+            const { tier, limits } = await resolveUserPlanLimits(db, userId);
+            const pagePerChapterLimit = Number(limits?.pagesPerChapter);
+            if (Number.isFinite(pagePerChapterLimit) && pagePerChapterLimit > 0 && tier !== 'god') {
+                const existingPagesSnap = await chapterRef
+                    .collection('pages')
+                    .limit(pagePerChapterLimit)
+                    .get();
+                if (existingPagesSnap.size >= pagePerChapterLimit) {
+                    throw new HttpsError(
+                        'resource-exhausted',
+                        `You can create up to ${pagePerChapterLimit} pages per chapter on your current plan.`
+                    );
+                }
             }
 
             await assertAndIncrementCounter(
@@ -104,6 +119,7 @@ exports.createPage = onCall(
                 embeddings: (embeddings && embeddings.length > 0) ? FieldValue.vector(embeddings) : null,
                 embeddingModel: embeddingModel,
                 media: media || [],
+                pageName: String(pageName || '').trim(),
                 order: order || '',
                 ...(type ? { type } : {}),
                 ...(templateVersion ? { templateVersion } : {}),
@@ -125,7 +141,7 @@ exports.createPage = onCall(
             logger.log(`📄 Page created with ID: ${pageRef.id}`);
 
             // Update chapter's pagesSummary using helper
-            await updateChapterPageSummary(db, bookId, chapterId, pageRef.id, plainText, order, true);
+            await updateChapterPageSummary(db, bookId, chapterId, pageRef.id, plainText, order, true, pageName);
 
             logger.log(`✅ Chapter pagesSummary updated`);
 
