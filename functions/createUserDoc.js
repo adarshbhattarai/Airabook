@@ -2,9 +2,10 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const { FieldValue } = require("firebase-admin/firestore");
 const logger = require("firebase-functions/logger");
-const { buildInitialQuotaCounters, loadConfig } = require("./utils/limits");
+const { buildInitialQuotaCounters } = require("./utils/limits");
 
 // Admin is initialized in index.js
+const DISPLAY_NAME_MAX_LENGTH = 50;
 
 /**
  * Callable function to create a user document in Firestore.
@@ -23,7 +24,8 @@ exports.createUserDoc = onCall(
         }
 
         const { uid, token } = request.auth;
-        const { email, name, picture } = token; // Basic info from auth token
+        const { email, name, picture, email_verified: emailVerifiedClaim } = token; // Basic info from auth token
+        const normalizedDisplayName = (name || "").trim().slice(0, DISPLAY_NAME_MAX_LENGTH);
 
         console.log(`👤 createUserDoc called for user: ${uid}`);
 
@@ -43,7 +45,6 @@ exports.createUserDoc = onCall(
 
             // 3. Prepare User Data (Logic from onUserCreate)
             const emailLower = (email || "").toLowerCase();
-            const cfg = loadConfig();
 
             const defaultEntitlements = {
                 canReadBooks: true,
@@ -54,9 +55,14 @@ exports.createUserDoc = onCall(
             const userData = {
                 uid,
                 email: emailLower,
-                displayName: name || "",
+                emailVerified: !!emailVerifiedClaim,
+                displayName: normalizedDisplayName,
+                displayNameLower: normalizedDisplayName.toLowerCase(),
                 photoURL: picture || null,
                 createdAt: FieldValue.serverTimestamp(),
+                notificationCounters: {
+                    pendingInvites: 0,
+                },
                 billing: {
                     planId: "free",
                     planLabel: "Free Plan",

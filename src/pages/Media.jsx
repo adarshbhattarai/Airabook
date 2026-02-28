@@ -57,6 +57,8 @@ const convertToEmulatorURL = (url) => {
   return url;
 };
 
+const FREE_TIER_CUSTOM_ALBUM_LIMIT = 10;
+
 const AssetRegistry = () => {
   const [albums, setAlbums] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -74,6 +76,18 @@ const AssetRegistry = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const storage = getStorage(); // Initialize Firebase Storage
+  const planTier = appUser?.billing?.planTier || 'free';
+  const isFreeTier = planTier === 'free';
+  const customAlbumCount = albums.filter((album) => album?.type === 'custom').length;
+  const freeTierAlbumLimitReached = isFreeTier && customAlbumCount >= FREE_TIER_CUSTOM_ALBUM_LIMIT;
+
+  const showFreeTierAlbumLimitToast = () => {
+    toast({
+      title: 'Asset limit reached',
+      description: `Free tier allows up to ${FREE_TIER_CUSTOM_ALBUM_LIMIT} custom asset albums. Delete one or upgrade your plan.`,
+      variant: 'destructive',
+    });
+  };
 
   useEffect(() => {
     const fetchAlbums = async () => {
@@ -145,6 +159,10 @@ const AssetRegistry = () => {
   const handleCreateAlbum = async (e) => {
     e.preventDefault();
     if (!newAlbumName.trim()) return;
+    if (freeTierAlbumLimitReached) {
+      showFreeTierAlbumLimitToast();
+      return;
+    }
 
     setIsCreating(true);
     try {
@@ -183,9 +201,14 @@ const AssetRegistry = () => {
       setNewCoverPreview(null);
     } catch (error) {
       console.error('Error creating album:', error);
+      const isQuotaError = error?.code === 'functions/resource-exhausted'
+        || error?.code === 'resource-exhausted'
+        || error?.message?.toLowerCase()?.includes('resource-exhausted');
       toast({
-        title: 'Error',
-        description: error.message || 'Failed to create asset.',
+        title: isQuotaError ? 'Asset limit reached' : 'Error',
+        description: isQuotaError
+          ? `Free tier allows up to ${FREE_TIER_CUSTOM_ALBUM_LIMIT} custom asset albums. Delete one or upgrade your plan.`
+          : (error.message || 'Failed to create asset.'),
         variant: 'destructive',
       });
     } finally {
@@ -234,7 +257,13 @@ const AssetRegistry = () => {
           </div>
           <div className="flex justify-start sm:justify-end">
             <Button
-              onClick={() => setCreateModalOpen(true)}
+              onClick={() => {
+                if (freeTierAlbumLimitReached) {
+                  showFreeTierAlbumLimitToast();
+                  return;
+                }
+                setCreateModalOpen(true);
+              }}
               variant="appPrimary"
               className="inline-flex items-center gap-2 text-sm"
             >
@@ -243,6 +272,11 @@ const AssetRegistry = () => {
             </Button>
           </div>
         </motion.div>
+        {isFreeTier && (
+          <p className="mb-6 text-xs text-app-gray-600">
+            Free tier custom asset albums: {customAlbumCount}/{FREE_TIER_CUSTOM_ALBUM_LIMIT}
+          </p>
+        )}
 
         {/* Albums Grid */}
         {
@@ -395,6 +429,11 @@ const AssetRegistry = () => {
             <DialogDescription className="text-sm text-app-gray-600">
               Create a folder to organize your photos and videos.
             </DialogDescription>
+            {isFreeTier && (
+              <p className="text-xs text-app-gray-500">
+                Free tier limit: {customAlbumCount}/{FREE_TIER_CUSTOM_ALBUM_LIMIT} custom asset albums.
+              </p>
+            )}
           </DialogHeader>
 
           <form onSubmit={handleCreateAlbum} className="mt-4">

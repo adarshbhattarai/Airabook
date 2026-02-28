@@ -18,7 +18,7 @@ const buttonVariants = cva(
 				ghost: 'hover:bg-accent hover:text-accent-foreground',
 				link: 'text-primary underline-offset-4 hover:underline',
         appPrimary:
-          'bg-app-iris text-white hover:bg-app-iris-hover shadow-appCard rounded-pill',
+          'app-primary-btn bg-[var(--app-action)] text-[var(--app-action-text)] hover:bg-[var(--app-action-hover)] border border-[var(--app-action-border)] shadow-appCard rounded-pill',
         appOutline:
           'border border-app-iris text-app-iris bg-transparent hover:bg-app-iris hover:text-white',
         appGhost:

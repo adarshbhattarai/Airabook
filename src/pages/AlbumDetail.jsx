@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Image as ImageIcon, Video, Loader2, Trash2, UploadCloud, PlusCircle, Pencil, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Image as ImageIcon, Video, Loader2, Trash2, UploadCloud, Edit, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Helmet } from 'react-helmet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -520,85 +520,86 @@ const AlbumDetail = () => {
   }
 
   return (
-    <div className="py-6 px-4 sm:px-6 lg:px-8">
+    <div className="py-0 px-4 sm:px-6 lg:px-8">
       <Helmet>
         <title>{album.name || 'Assets'} - Media Gallery</title>
       </Helmet>
 
-      <div className="max-w-7xl mx-auto">
+      <div className="w-full">
         {/* Header */}
-        <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <Button
-              variant="appGhost"
-              onClick={() => navigate('/media')}
-              className="mb-3 inline-flex items-center gap-2 text-xs"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Back to assets
-            </Button>
-            <div className="flex items-center gap-3">
-              <h1 className="text-[28px] font-semibold text-app-gray-900 leading-tight">
+        <div className="asset-detail-header -mx-4 mb-8 border-y border-border bg-card px-4 py-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,video/*"
+            multiple
+            className="hidden"
+            onChange={handleFileSelect}
+          />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0 flex items-center gap-3">
+              <Button
+                variant="appGhost"
+                onClick={() => navigate('/media')}
+                className="asset-header-btn asset-top-action-btn inline-flex items-center gap-2 h-8 rounded-pill px-4 text-xs font-semibold"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to assets
+              </Button>
+              <h1 className="truncate max-w-[420px] text-lg font-semibold text-app-gray-900">
                 {album.name || 'Asset'}
               </h1>
               <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-gray-500 hover:text-gray-900"
+                variant="appGhost"
+                className="asset-header-btn asset-top-action-btn inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-pill p-0 text-xs font-semibold"
                 onClick={() => {
                   setEditingName(album.name || '');
                   setCoverPreview(convertToEmulatorURL(album.coverImage));
                   setEditingCover(null);
                   setEditModalOpen(true);
                 }}
+                title="Edit asset details"
+                aria-label="Edit asset details"
               >
-                <Pencil className="h-4 w-4" />
+                <Edit className="h-3.5 w-3.5" />
               </Button>
             </div>
-            <p className="mt-1 text-xs text-app-gray-600">
-              {(album.mediaCount || 0) === 0
-                ? 'No media yet'
-                : `${album.mediaCount || 0} ${(album.mediaCount || 0) === 1 ? 'item' : 'items'}`}
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*,video/*"
-              multiple
-              className="hidden"
-              onChange={handleFileSelect}
-            />
-            <Button
-              variant="appPrimary"
-              size="sm"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="gap-2"
-            >
-              {uploading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <UploadCloud className="h-4 w-4" />
-              )}
-              {uploading ? 'Uploading...' : 'Upload media'}
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={requestAlbumDelete}
-              disabled={deletingAlbum}
-            >
-              {deletingAlbum ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Deleting...
-                </>
-              ) : (
-                'Delete assets'
-              )}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              <span className="mr-1 text-xs text-app-gray-600">
+                {(album.mediaCount || 0) === 0
+                  ? 'No media yet'
+                  : `${album.mediaCount || 0} ${(album.mediaCount || 0) === 1 ? 'item' : 'items'}`}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="asset-header-btn asset-top-action-btn h-8 rounded-pill px-4 text-xs font-semibold"
+              >
+                {uploading ? (
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <UploadCloud className="mr-2 h-3.5 w-3.5" />
+                )}
+                {uploading ? 'Uploading...' : 'Upload media'}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={requestAlbumDelete}
+                disabled={deletingAlbum}
+                className="asset-header-btn asset-top-action-btn asset-header-btn-danger h-8 rounded-pill px-4 text-xs font-semibold"
+              >
+                {deletingAlbum ? (
+                  <>
+                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  'Delete assets'
+                )}
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -611,12 +612,12 @@ const AlbumDetail = () => {
               Upload media to see it here.
             </p>
             <Button
-              variant="outline"
+              variant="appPrimary"
               onClick={() => fileInputRef.current?.click()}
-              className="gap-2"
+              className="gap-2 h-10 rounded-xl px-5 text-sm font-semibold"
             >
-              <PlusCircle className="h-4 w-4" />
-              Upload now
+              <UploadCloud className="h-4 w-4" />
+              Upload media
             </Button>
           </div>
         ) : (

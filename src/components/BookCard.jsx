@@ -169,7 +169,7 @@ const BookCard = ({ bookId, bookTitle, coverImage, onBookDeleted }) => {
 
     return (
         <>
-            <div className={`group relative bg-white/70 backdrop-blur rounded-2xl shadow-appSoft border border-white/50 p-4 transition-all duration-300 hover:shadow-appCard hover:-translate-y-1 overflow-hidden ${isDeleting ? 'pointer-events-none opacity-50' : ''}`}>
+            <div className={`group relative bg-white/70 backdrop-blur rounded-2xl shadow-appSoft border border-white/50 p-4 transition-all duration-300 hover:shadow-appCard hover:-translate-y-1 overflow-hidden matrix-surface ${isDeleting ? 'pointer-events-none opacity-50' : ''}`}>
 
                 {/* Vibrant gradient background layers (like Preview) */}
                 <div className="absolute inset-0 opacity-40 group-hover:opacity-60 transition-opacity duration-500 pointer-events-none">
@@ -183,7 +183,7 @@ const BookCard = ({ bookId, bookTitle, coverImage, onBookDeleted }) => {
                     {/* Header: Title & Menu */}
                     <div className="flex items-start justify-between gap-3 mb-4">
                         <div className="flex items-center gap-3 min-w-0">
-                            <div className="h-8 w-8 shrink-0 rounded-xl bg-app-mint text-app-navy flex items-center justify-center text-sm font-semibold shadow-sm">
+                            <div className="book-card-initial h-8 w-8 shrink-0 rounded-xl bg-app-mint text-app-navy flex items-center justify-center text-sm font-semibold shadow-sm">
                                 {initial}
                             </div>
                             <div className="flex flex-col min-w-0">
@@ -224,8 +224,8 @@ const BookCard = ({ bookId, bookTitle, coverImage, onBookDeleted }) => {
                     </div>
 
                     {/* Cover Image Area */}
-                    <Link to={`/book/${bookId}`} className="block flex-1 relative group/image">
-                        <div className="aspect-[3/4] w-full rounded-xl bg-gradient-to-br from-purple-50 via-white to-blue-50 border border-white/60 shadow-inner overflow-hidden relative">
+                    <Link to={`/book/${bookId}/view`} className="block flex-1 relative group/image">
+                        <div className="aspect-[3/4] w-full rounded-xl bg-gradient-to-br from-purple-50 via-white to-blue-50 border border-white/60 shadow-inner overflow-hidden relative matrix-surface-soft">
                             {book.coverImage ? (
                                 <img
                                     src={convertToEmulatorURL(book.coverImage)}
@@ -243,7 +243,7 @@ const BookCard = ({ bookId, bookTitle, coverImage, onBookDeleted }) => {
 
                             {/* Hover Overlay */}
                             <div className="absolute inset-0 bg-black/0 group-hover/image:bg-black/10 transition-colors duration-300 flex items-center justify-center opacity-0 group-hover/image:opacity-100">
-                                <div className="bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm text-xs font-medium text-app-gray-900 transform translate-y-2 group-hover/image:translate-y-0 transition-transform duration-300">
+                                <div className="book-open-cta bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm text-xs font-medium text-app-gray-900 transform translate-y-2 group-hover/image:translate-y-0 transition-transform duration-300">
                                     Open Book
                                 </div>
                             </div>

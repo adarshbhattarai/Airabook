@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sparkles, Send } from 'lucide-react';
+import { ArrowRight, ImagePlus, Sparkles } from 'lucide-react';
 import { streamAirabookAI } from '@/lib/aiStream';
 
 const ChapterChatBox = ({
@@ -12,6 +12,7 @@ const ChapterChatBox = ({
   canTransfer,
   onTransfer,
   onPageCreated,
+  onOpenPhotoPlanner,
 }) => {
   const [messages, setMessages] = useState([
     { role: 'assistant', content: 'Hello! I can help you plan this chapter, brainstorm ideas, or outline key moments. What should we start with?' }
@@ -25,7 +26,6 @@ const ChapterChatBox = ({
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
-    debugger;
     const userQuery = input.trim();
     const assistantId = typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID()
@@ -163,17 +163,34 @@ const ChapterChatBox = ({
           <Sparkles className="h-4 w-4 text-app-iris" />
           <h3 className="text-sm font-semibold text-foreground">AI Assistant</h3>
         </div>
-        {canTransfer && (
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="h-7 px-2 text-xs"
-            onClick={() => onTransfer?.(messages)}
-          >
-            Transfer &lt;-&gt;
-          </Button>
-        )}
+        <div className="flex items-center gap-1">
+          {onOpenPhotoPlanner && (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-xs"
+              onClick={() => onOpenPhotoPlanner({
+                source: 'chapter_assistant',
+                initialPrompt: input.trim(),
+              })}
+            >
+              <ImagePlus className="h-3.5 w-3.5 mr-1 text-app-iris" />
+              Plan media
+            </Button>
+          )}
+          {canTransfer && (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-xs"
+              onClick={() => onTransfer?.(messages)}
+            >
+              Transfer <ArrowRight className="h-3.5 w-3.5 ml-1" />
+            </Button>
+          )}
+        </div>
       </div>
       <div className="mt-3 max-h-56 space-y-3 overflow-y-auto">
         {messages.map((msg, i) => (

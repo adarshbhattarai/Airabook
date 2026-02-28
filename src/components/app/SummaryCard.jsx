@@ -14,7 +14,7 @@ const SummaryCard = ({ title, rows = [], className }) => {
   return (
     <div
       className={cn(
-        'mt-6 bg-white rounded-2xl border border-app-gray-100 shadow-appSoft p-5 space-y-4',
+        'mt-6 bg-white rounded-2xl border border-app-gray-100 shadow-appSoft p-5 space-y-4 matrix-surface',
         className,
       )}
     >

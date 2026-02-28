@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import {
   LayoutDashboard,
@@ -33,6 +33,7 @@ const sections = [
 
 const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile }) => {
   const { user, logout } = useAuth();
+  const { pathname } = useLocation();
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
@@ -64,12 +65,22 @@ const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile }) => 
         className={`flex items-center gap-2 px-4 pt-4 pb-6 cursor-pointer ${collapsed ? 'justify-center px-0' : ''}`}
         onClick={() => { if (!collapsed) window.location.href = '/dashboard'; }}
       >
-        <div className="h-9 w-9 min-w-[36px] rounded-2xl bg-app-iris text-white flex items-center justify-center text-lg font-semibold shadow-appCard">
-          A
+        <div className="sidebar-brand-mark h-9 w-9 min-w-[36px] rounded-2xl bg-app-iris text-white flex items-center justify-center text-lg font-semibold shadow-appCard overflow-hidden">
+          <img
+            src="/brand/airabook-mark.svg"
+            alt="Airabook logo"
+            className="sidebar-brand-logo h-6 w-6 object-contain"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+              const fallback = e.currentTarget.nextElementSibling;
+              if (fallback) fallback.classList.remove('hidden');
+            }}
+          />
+          <span className="sidebar-brand-fallback hidden">A</span>
         </div>
         {!collapsed && (
           <div className="flex flex-col overflow-hidden">
-            <span className="text-sm font-semibold text-app-gray-900 truncate">Airäbook</span>
+            <span className="text-sm font-semibold text-app-gray-900 truncate">Airabook</span>
             <span className="text-xs text-app-gray-600 truncate">Creative studio</span>
           </div>
         )}
@@ -90,15 +101,18 @@ const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile }) => 
                   <NavLink
                     key={item.name}
                     to={item.to}
-                    className={({ isActive }) =>
-                      [
+                    className={({ isActive }) => {
+                      const isBookDetailRoute = item.to === '/books' && pathname.startsWith('/book/');
+                      const isActiveRoute = isActive || isBookDetailRoute;
+
+                      return [
                         'flex items-center gap-3 px-3 py-2 text-sm rounded-xl border-l-4 transition-colors',
                         collapsed ? 'justify-center px-0' : '',
-                        isActive
+                        isActiveRoute
                           ? 'bg-app-iris/10 border-app-iris text-app-iris font-medium'
                           : 'border-transparent text-app-gray-600 hover:bg-app-gray-50 hover:text-app-gray-900',
-                      ].join(' ')
-                    }
+                      ].join(' ');
+                    }}
                     onClick={onNavigate}
                     title={collapsed ? item.name : ''}
                   >
@@ -162,7 +176,7 @@ const Sidebar = ({ open, onClose }) => {
       {/* Desktop sidebar */}
       <aside
         className={`hidden md:flex flex-col bg-white border-r border-app-gray-300 shadow-sm transition-all duration-300 ${collapsed ? 'w-20' : 'w-64'
-          }`}
+          } matrix-surface-soft`}
       >
         <SidebarContent collapsed={collapsed} toggleCollapse={toggleCollapse} isMobile={false} />
       </aside>
@@ -174,7 +188,7 @@ const Sidebar = ({ open, onClose }) => {
             className="fixed inset-0 bg-black/30"
             onClick={onClose}
           />
-          <div className="relative z-50 h-full w-72 bg-white border-r border-app-gray-300 shadow-appCard">
+          <div className="relative z-50 h-full w-72 bg-white border-r border-app-gray-300 shadow-appCard matrix-surface-soft">
             <SidebarContent onNavigate={onClose} collapsed={false} isMobile={true} />
           </div>
         </div>

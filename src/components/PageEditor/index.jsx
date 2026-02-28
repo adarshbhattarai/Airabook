@@ -15,8 +15,14 @@ import {
 } from '@/components/ui/dialog';
 import BlockEditor from '@/components/BlockEditor';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
-import { stripHtml, convertToEmulatorURL } from '@/lib/pageUtils';
+import { stripHtml, convertToEmulatorURL, textToHtml } from '@/lib/pageUtils';
 import GenerateImagePrompt from '@/components/PageEditor/GenerateImagePrompt';
+import TemplatePage from '@/components/PageEditor/TemplatePage';
+import { pageTemplates } from '@/constants/pageTemplates';
+import { pageBlockApiService } from '@/services/pageBlockApiService';
+
+const MEDIA_PICKER_CONTEXT_EDITOR = 'editor';
+const MEDIA_PICKER_CONTEXT_TEMPLATE = 'template';
 
 const PageEditor = forwardRef(({
   bookId,
@@ -39,7 +45,8 @@ const PageEditor = forwardRef(({
   onReplacePageId,
   onRequestPageDelete,
   layoutMode = 'standard',
-  standardPageHeightPx
+  standardPageHeightPx,
+  readOnly = false
 }, ref) => {
   const [isSaving, setIsSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({});
@@ -60,6 +67,17 @@ const PageEditor = forwardRef(({
   const [genImgAnchor, setGenImgAnchor] = useState({ left: 16, top: 16 });
   const [genImgUseContext, setGenImgUseContext] = useState(true);
   const [genImgLoading, setGenImgLoading] = useState(false);
+  const [reflectionRewritePrompts, setReflectionRewritePrompts] = useState({
+    dadNotes: 'Improve clarity',
+    momNotes: 'Improve clarity',
+  });
+  const [rewriteBusyField, setRewriteBusyField] = useState('');
+  const [saveBusyField, setSaveBusyField] = useState('');
+  const [blockRewritePreviewOpen, setBlockRewritePreviewOpen] = useState(false);
+  const [blockRewritePreviewText, setBlockRewritePreviewText] = useState('');
+  const [blockRewriteTargetField, setBlockRewriteTargetField] = useState('');
+  const [blockRewriteTargetBlockId, setBlockRewriteTargetBlockId] = useState('');
+  const [blockRewriteActions, setBlockRewriteActions] = useState(['insert', 'replace', 'discard']);
 
   const [mediaToDelete, setMediaToDelete] = useState(null);
   const [limitStatus, setLimitStatus] = useState('ok'); // 'ok', 'warning', 'full'
@@ -84,10 +102,97 @@ const PageEditor = forwardRef(({
   const [albumMedia, setAlbumMedia] = useState([]);
   const [loadingAlbums, setLoadingAlbums] = useState(false);
   const [selectedAssets, setSelectedAssets] = useState([]);
+  const [mediaPickerContext, setMediaPickerContext] = useState(MEDIA_PICKER_CONTEXT_EDITOR);
 
-  const mediaList = page.media || [];
-  const previewItem = mediaList[previewIndex] || null;
+  const template = page?.type ? pageTemplates[page.type] : null;
+  const isTemplatePage = !!template;
+  const isBabyTemplatePage = template?.type === 'babyJournalPage';
+  const BABY_REFLECTION_MAX_CHARS = 500;
   const isResponsiveLayout = layoutMode === 'standard';
+  const templateDraft = draft?.templateContent || null;
+  const templateMediaDraft = draft?.templateMedia;
+  const latestDraftRef = useRef(draft);
+  useEffect(() => {
+    latestDraftRef.current = draft;
+  }, [draft]);
+  const templateContent = React.useMemo(() => {
+    if (!template) return null;
+    const mergedContent = {
+      ...(template.defaults || {}),
+      ...(page?.content || {}),
+      ...(templateDraft || {}),
+    };
+
+    // Keep title aligned with existing page name when template title is still unset.
+    if (isBabyTemplatePage && !templateDraft) {
+      const normalizedTitle = (mergedContent.title || '').trim();
+      const normalizedPageName = (page?.pageName || '').trim();
+      if (!normalizedTitle && normalizedPageName) {
+        mergedContent.title = normalizedPageName;
+      }
+    }
+
+    return mergedContent;
+  }, [template, page?.content, page?.pageName, templateDraft, isBabyTemplatePage]);
+  const countPlainTextChars = React.useCallback(
+    (rawValue) => stripHtml(String(rawValue || '')).length,
+    []
+  );
+  const babyReflectionLimits = React.useMemo(() => {
+    if (!isBabyTemplatePage) {
+      return {
+        dadCount: 0,
+        momCount: 0,
+        overLimitFields: [],
+        hasOverLimit: false,
+      };
+    }
+    const source = templateDraft || templateContent || template?.defaults || {};
+    const dadCount = countPlainTextChars(source?.dadNotes || '');
+    const momCount = countPlainTextChars(source?.momNotes || '');
+    const overLimitFields = [];
+    if (dadCount > BABY_REFLECTION_MAX_CHARS) overLimitFields.push('Dad reflection');
+    if (momCount > BABY_REFLECTION_MAX_CHARS) overLimitFields.push('Mom reflection');
+    return {
+      dadCount,
+      momCount,
+      overLimitFields,
+      hasOverLimit: overLimitFields.length > 0,
+    };
+  }, [isBabyTemplatePage, templateDraft, templateContent, template?.defaults, countPlainTextChars]);
+  const templateMedia = React.useMemo(() => {
+    if (!isTemplatePage) return [];
+
+    const sourceMedia = Array.isArray(templateMediaDraft)
+      ? templateMediaDraft
+      : (Array.isArray(page?.media) ? page.media : []);
+
+    const validMedia = sourceMedia
+      .filter((item) => {
+        if (!item?.url) return false;
+        const mediaType = item?.type || 'image';
+        return mediaType === 'image' || mediaType === 'video';
+      })
+      .slice(0, 5);
+
+    if (validMedia.length > 0) {
+      return validMedia;
+    }
+
+    if (templateContent?.imageUrl) {
+      return [{
+        url: templateContent.imageUrl,
+        storagePath: templateContent.imageUrl,
+        name: 'Legacy image',
+        type: 'image',
+        isLegacyFallback: true,
+      }];
+    }
+
+    return [];
+  }, [isTemplatePage, page?.media, templateMediaDraft, templateContent?.imageUrl]);
+  const mediaList = (isTemplatePage && isBabyTemplatePage) ? templateMedia : (page.media || []);
+  const previewItem = mediaList[previewIndex] || null;
 
   const logContentMeasure = React.useCallback((label) => {
     const el = contentMeasureRef.current;
@@ -204,10 +309,410 @@ const PageEditor = forwardRef(({
   };
 
   const getCurrentHTML = async () => {
+    if (isTemplatePage) {
+      return page?.note || '';
+    }
     if (quillRef.current?.getHTML) {
       return await quillRef.current.getHTML();
     }
     return page?.note || '';
+  };
+
+  const persistTemplateDraft = (partial = {}) => {
+    const nextDraft = {
+      templateContent: templateDraft || templateContent || template?.defaults || {},
+      ...(Array.isArray(templateMediaDraft) ? { templateMedia: templateMediaDraft } : {}),
+      ...partial,
+      updatedAt: Date.now(),
+    };
+    onDraftChange?.(page.id, nextDraft);
+  };
+
+  const handleTemplateChange = (nextContent) => {
+    if (readOnly) return;
+    persistTemplateDraft({ templateContent: nextContent });
+    onUserInput?.(page.id);
+    requestAnimationFrame(updateLimitStatusFromMeasure);
+  };
+
+  const handleReflectionRewritePromptChange = (field, value) => {
+    if (!field) return;
+    setReflectionRewritePrompts((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const normalizeSuggestedHtml = (content) => {
+    const raw = String(content || '').trim();
+    if (!raw) return '';
+    if (/<[a-z][\s\S]*>/i.test(raw)) {
+      return raw;
+    }
+    return textToHtml(raw);
+  };
+
+  const getReflectionFieldLabel = (field) => {
+    if (field === 'dadNotes') return 'Dad reflection';
+    if (field === 'momNotes') return 'Mom reflection';
+    return 'Reflection';
+  };
+
+  const getReflectionBlockId = (field) => `legacy-${field}`;
+
+  const buildSectionPayload = (field, options = {}) => {
+    const {
+      blockId = getReflectionBlockId(field),
+      html = '',
+      text = '',
+      rewritePrompt = '',
+      action = 'replace',
+    } = options;
+    const plainText = String(text || stripHtml(html || '')).trim();
+    const sectionItem = {
+      blockId,
+      section: field,
+      field,
+      name: field,
+      type: 'text',
+      content: html || plainText,
+      value: plainText,
+      text: plainText,
+      ...(rewritePrompt ? { prompt: rewritePrompt } : {}),
+    };
+    return {
+      bookId,
+      chapterId,
+      pageId: page.id,
+      action,
+      pageText: plainText,
+      ...(rewritePrompt ? { rewritePrompt } : {}),
+      section: [field],
+      sections: [sectionItem],
+    };
+  };
+
+  const extractRewriteResult = (responseData, field) => {
+    const payload = responseData?.data || responseData || {};
+    const blocks = Array.isArray(payload?.blocks) ? payload.blocks : [];
+    const matchedBlock = blocks.find((item) => {
+      const key = item?.section || item?.field || item?.name;
+      return key === field;
+    }) || blocks[0];
+
+    const rewritten = String(
+      matchedBlock?.rewrittenText
+      || payload?.rewrittenText
+      || ''
+    ).trim();
+    const actions = Array.isArray(matchedBlock?.actions)
+      ? matchedBlock.actions
+      : (Array.isArray(payload?.actions) ? payload.actions : ['insert', 'replace', 'discard']);
+    const blockId = String(matchedBlock?.blockId || getReflectionBlockId(field)).trim();
+
+    return { rewritten, actions, blockId };
+  };
+
+  const closeBlockRewritePreview = () => {
+    setBlockRewritePreviewOpen(false);
+    setBlockRewritePreviewText('');
+    setBlockRewriteTargetField('');
+    setBlockRewriteTargetBlockId('');
+    setBlockRewriteActions(['insert', 'replace', 'discard']);
+  };
+
+  const applyBlockRewrite = async (mode = 'discard') => {
+    const targetField = blockRewriteTargetField;
+    if (!targetField) {
+      closeBlockRewritePreview();
+      return;
+    }
+    if (mode === 'discard') {
+      closeBlockRewritePreview();
+      toast({
+        title: 'Rewrite discarded',
+        description: 'No changes were saved.',
+      });
+      return;
+    }
+    if (saveBusyField || rewriteBusyField) return;
+
+    const contentSource = templateDraft || templateContent || template?.defaults || {};
+    const existingHtml = String(contentSource?.[targetField] || '');
+    const nextSuggestionHtml = normalizeSuggestedHtml(blockRewritePreviewText);
+    const nextSuggestionText = stripHtml(nextSuggestionHtml || '');
+    if (mode !== 'discard' && !nextSuggestionText) {
+      closeBlockRewritePreview();
+      return;
+    }
+
+    const fieldLabel = getReflectionFieldLabel(targetField);
+    try {
+      setSaveBusyField(targetField);
+      const payload = buildSectionPayload(targetField, {
+        blockId: blockRewriteTargetBlockId || getReflectionBlockId(targetField),
+        html: nextSuggestionHtml,
+        text: nextSuggestionText,
+        action: mode,
+      });
+      const response = await pageBlockApiService.savePageBlocks(payload);
+
+      if (mode === 'replace' || mode === 'insert') {
+        let mergedHtml = nextSuggestionHtml;
+        if (mode === 'insert') {
+          mergedHtml = stripHtml(existingHtml)
+            ? `${existingHtml}<p><br></p>${nextSuggestionHtml}`
+            : nextSuggestionHtml;
+        }
+        handleTemplateChange({
+          ...contentSource,
+          [targetField]: mergedHtml,
+        });
+      }
+
+      const backendMessage = response?.data?.message || response?.message || '';
+      toast({
+        title: mode === 'discard' ? 'Rewrite discarded' : (mode === 'insert' ? 'Rewrite inserted' : 'Rewrite replaced'),
+        description: backendMessage || `${fieldLabel} updated.`,
+      });
+      closeBlockRewritePreview();
+    } catch (error) {
+      console.error('Reflection apply failed:', error);
+      toast({
+        title: 'Save failed',
+        description: error?.message || `Could not apply rewrite to ${fieldLabel.toLowerCase()}.`,
+        variant: 'destructive',
+      });
+    } finally {
+      setSaveBusyField('');
+    }
+  };
+
+  const rewriteReflectionField = async (field, promptText = '') => {
+    if (!field || readOnly) return;
+    if (rewriteBusyField || saveBusyField) return;
+    if (page.id.startsWith('temp_')) {
+      toast({
+        title: 'Save page first',
+        description: 'Please save this page first so block rewrite can be linked to a page id.',
+        variant: 'warning',
+      });
+      return;
+    }
+
+    const contentSource = templateDraft || templateContent || template?.defaults || {};
+    const originalHtml = String(contentSource?.[field] || '').trim();
+    const originalText = stripHtml(originalHtml || '');
+    if (!originalText) {
+      toast({
+        title: 'Nothing to rewrite',
+        description: 'Please write some reflection text first.',
+        variant: 'warning',
+      });
+      return;
+    }
+
+    const basePrompt = String(promptText || '').trim() || 'Improve clarity';
+    const fieldLabel = getReflectionFieldLabel(field);
+    const scopedPrompt = `Rewrite this ${fieldLabel}. Keep voice and intent unless asked otherwise. ${basePrompt}`;
+
+    setRewriteBusyField(field);
+    try {
+      const payload = buildSectionPayload(field, {
+        blockId: getReflectionBlockId(field),
+        html: originalHtml,
+        text: originalText,
+        rewritePrompt: scopedPrompt,
+      });
+      const response = await pageBlockApiService.rewritePageBlock(payload);
+      const { rewritten, actions, blockId } = extractRewriteResult(response, field);
+      if (!rewritten) {
+        throw new Error('No rewritten text was returned.');
+      }
+
+      setBlockRewriteTargetField(field);
+      setBlockRewritePreviewText(rewritten);
+      setBlockRewriteTargetBlockId(blockId || getReflectionBlockId(field));
+      setBlockRewriteActions(Array.isArray(actions) && actions.length > 0 ? actions : ['insert', 'replace', 'discard']);
+      setBlockRewritePreviewOpen(true);
+    } catch (error) {
+      console.error('Reflection rewrite failed:', error);
+      toast({
+        title: 'Rewrite failed',
+        description: error?.message || 'Could not rewrite reflection.',
+        variant: 'destructive',
+      });
+    } finally {
+      setRewriteBusyField('');
+    }
+  };
+
+  const saveReflectionField = async (field) => {
+    if (!field || readOnly || !isTemplatePage) return false;
+    if (saveBusyField || rewriteBusyField) return false;
+    if (page.id.startsWith('temp_')) {
+      toast({
+        title: 'Save page first',
+        description: 'Please save this page first so block save can be linked to a page id.',
+        variant: 'warning',
+      });
+      return false;
+    }
+
+    const fieldLabel = getReflectionFieldLabel(field);
+    const contentSource = templateDraft || templateContent || template?.defaults || {};
+    const fieldHtml = String(contentSource?.[field] || '');
+    const fieldText = stripHtml(fieldHtml || '');
+    const isReflectionField = field === 'dadNotes' || field === 'momNotes';
+    if (isReflectionField && countPlainTextChars(fieldHtml) > BABY_REFLECTION_MAX_CHARS) {
+      toast({
+        title: 'Character limit exceeded',
+        description: `${fieldLabel} must be ${BABY_REFLECTION_MAX_CHARS} characters or fewer before saving.`,
+        variant: 'destructive',
+      });
+      return false;
+    }
+    try {
+      setSaveBusyField(field);
+      const payload = buildSectionPayload(field, {
+        blockId: getReflectionBlockId(field),
+        html: fieldHtml,
+        text: fieldText,
+        action: 'replace',
+      });
+      await pageBlockApiService.savePageBlocks(payload);
+      toast({
+        title: 'Reflection saved',
+        description: `${fieldLabel} saved.`,
+      });
+      return true;
+    } catch (error) {
+      console.error('Reflection save failed:', error);
+      toast({
+        title: 'Save failed',
+        description: error?.message || `Could not save ${fieldLabel.toLowerCase()}.`,
+        variant: 'destructive',
+      });
+      return false;
+    } finally {
+      setSaveBusyField('');
+    }
+  };
+
+  const uploadTemplateMediaItem = async (file) => {
+    if (!file || !user) return null;
+    const isVideo = file.type.startsWith('video');
+    const isImage = file.type.startsWith('image');
+    if (!isVideo && !isImage) {
+      toast({
+        title: 'Unsupported file type',
+        description: 'Only images and videos are supported.',
+        variant: 'destructive',
+      });
+      return null;
+    }
+    const mediaType = isVideo ? 'video' : 'image';
+    const uniqueFileName = `${Date.now()}_${file.name}`;
+    const storagePath = `${user.uid}/${bookId}/${chapterId}/${page.id}/media/${mediaType}/${uniqueFileName}`;
+    const storageRef = firebaseRef(storage, storagePath);
+
+    const metadata = {
+      customMetadata: {
+        originalName: file.name,
+        bookId: bookId,
+        mediaType: mediaType,
+      },
+    };
+
+    const uploadTask = uploadBytesResumable(storageRef, file, metadata);
+
+    return await new Promise((resolve, reject) => {
+      uploadTask.on(
+        'state_changed',
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          setUploadProgress((prev) => ({ ...prev, [file.name]: progress }));
+        },
+        (error) => {
+          setUploadProgress((prev) => {
+            const next = { ...prev };
+            delete next[file.name];
+            return next;
+          });
+          reject(error);
+        },
+        async () => {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+          setUploadProgress((prev) => {
+            const next = { ...prev };
+            delete next[file.name];
+            return next;
+          });
+          resolve({
+            url: convertToEmulatorURL(downloadURL),
+            storagePath,
+            name: file.name,
+            type: mediaType,
+          });
+        }
+      );
+    });
+  };
+
+  const handleTemplateImageUpload = async (file) => {
+    const mediaItem = await uploadTemplateMediaItem(file);
+    return mediaItem?.url || null;
+  };
+
+  const handleTemplateAddImages = async (files = []) => {
+    if (readOnly) return;
+    if (!Array.isArray(files) || files.length === 0) return;
+    const editableExisting = templateMedia.filter((item) => !item.isLegacyFallback);
+    const remainingSlots = Math.max(0, 5 - editableExisting.length);
+    const nextFiles = files.slice(0, remainingSlots);
+    if (nextFiles.length === 0) {
+      toast({
+        title: 'Media limit reached',
+        description: 'You can add up to 5 photos or videos per baby journal page.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const uploadedItems = [];
+    for (const file of nextFiles) {
+      const uploaded = await uploadTemplateMediaItem(file);
+      if (uploaded) {
+        uploadedItems.push(uploaded);
+      }
+    }
+    if (uploadedItems.length === 0) return;
+
+    persistTemplateDraft({ templateMedia: [...editableExisting, ...uploadedItems].slice(0, 5) });
+    onUserInput?.(page.id);
+  };
+
+  const handleTemplateRemoveImage = (mediaItemToRemove) => {
+    if (readOnly) return;
+    const editableExisting = templateMedia.filter((item) => !item.isLegacyFallback);
+    const removeKey = mediaItemToRemove?.storagePath || mediaItemToRemove?.url;
+    const nextMedia = editableExisting.filter((item) => {
+      const itemKey = item?.storagePath || item?.url;
+      return itemKey !== removeKey;
+    });
+    persistTemplateDraft({ templateMedia: nextMedia });
+    onUserInput?.(page.id);
+  };
+
+  const buildTemplateNote = (nextContent) => {
+    if (!nextContent) return '';
+    const textParts = [
+      nextContent.title,
+      nextContent.dadNotes,
+      nextContent.momNotes,
+    ].filter(Boolean);
+    if (textParts.length === 0) return '';
+    return textToHtml(textParts.join('\n'));
   };
 
   // Initialize previousBlocksRef when content first loads
@@ -289,8 +794,8 @@ const PageEditor = forwardRef(({
 
   // Expose methods to parent via ref (including NEW cursor APIs)
   useImperativeHandle(ref, () => ({
-    save: async () => {
-      return handleSave();
+    save: async (options = {}) => {
+      return handleSave(options);
     },
     insertAI: async (style) => {
       return callRewrite(style);
@@ -396,7 +901,129 @@ const PageEditor = forwardRef(({
     return () => window.removeEventListener('keydown', onKey);
   }, [previewOpen, mediaList.length]);
 
-  const handleSave = async () => {
+  const handleTemplateSave = async (options = {}) => {
+    if (readOnly) return true;
+    const { silent = false } = options;
+    const draftVersion = latestDraftRef.current?.updatedAt ?? null;
+    setIsSaving(true);
+    const contentToSave = templateDraft || templateContent || template?.defaults || {};
+    const mediaToSave = (isBabyTemplatePage ? templateMedia : (page.media || []))
+      .filter((item) => item?.url)
+      .map((item) => ({
+        url: item.url,
+        storagePath: item.storagePath || item.url,
+        name: item.name || 'Image',
+        type: item.type || 'image',
+        ...(item.albumId ? { albumId: item.albumId } : {}),
+      }));
+    const normalizedContent = { ...contentToSave };
+
+    if (isBabyTemplatePage) {
+      const firstImage = mediaToSave.find((item) => item?.url && (item?.type || 'image') === 'image');
+      normalizedContent.imageUrl = firstImage?.url || '';
+      const overLimitFields = [];
+      if (countPlainTextChars(normalizedContent?.dadNotes || '') > BABY_REFLECTION_MAX_CHARS) {
+        overLimitFields.push('Dad reflection');
+      }
+      if (countPlainTextChars(normalizedContent?.momNotes || '') > BABY_REFLECTION_MAX_CHARS) {
+        overLimitFields.push('Mom reflection');
+      }
+      if (overLimitFields.length > 0) {
+        if (!silent) {
+          toast({
+            title: 'Character limit exceeded',
+            description: `${overLimitFields.join(' and ')} must be ${BABY_REFLECTION_MAX_CHARS} characters or fewer before saving.`,
+            variant: 'destructive',
+          });
+        }
+        setIsSaving(false);
+        return false;
+      }
+    }
+
+    const templatePageName = (normalizedContent.title || '').trim() || 'Untitled Page';
+    const shortNote = templatePageName;
+    const note = buildTemplateNote(normalizedContent) || textToHtml(shortNote);
+
+    try {
+      if (page.id.startsWith('temp_')) {
+        const createPageFn = httpsCallable(functions, 'createPage');
+        const result = await createPageFn({
+          bookId,
+          chapterId,
+          note,
+          media: mediaToSave,
+          pageName: templatePageName,
+          order: page.order,
+          type: template?.type,
+          templateVersion: template?.templateVersion,
+          content: normalizedContent,
+          theme: template?.theme,
+        });
+        const newPage = result.data.page;
+        onReplacePageId?.(page.id, {
+          ...newPage,
+          pageName: newPage.pageName ?? templatePageName,
+          shortNote,
+          media: mediaToSave,
+          content: normalizedContent
+        });
+        if (!silent) {
+          toast({ title: 'Page Created', description: 'Your draft page has been saved.' });
+        }
+      } else {
+        const updatePageFn = httpsCallable(functions, 'updatePage');
+        await updatePageFn({
+          bookId,
+          chapterId,
+          pageId: page.id,
+          note,
+          media: mediaToSave,
+          pageName: templatePageName,
+          type: template?.type,
+          templateVersion: template?.templateVersion,
+          content: normalizedContent,
+          theme: template?.theme,
+        });
+        onPageUpdate({
+          ...page,
+          note,
+          pageName: templatePageName,
+          shortNote,
+          media: mediaToSave,
+          content: normalizedContent,
+          type: template?.type,
+          templateVersion: template?.templateVersion,
+          theme: template?.theme,
+        });
+        if (!silent) {
+          toast({ title: 'Success', description: 'Page saved.' });
+        }
+      }
+
+      const latestDraft = latestDraftRef.current;
+      if (!latestDraft || latestDraft.updatedAt === draftVersion) {
+        onDraftChange?.(page.id, null);
+      }
+      return true;
+    } catch (error) {
+      console.error('Save error detailed:', error);
+      if (!silent) {
+        toast({ title: 'Save Failed', description: error.message || 'Unknown save error', variant: 'destructive' });
+      }
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSave = async (options = {}) => {
+    if (readOnly) return true;
+    const { silent = false } = options;
+    const draftVersion = latestDraftRef.current?.updatedAt ?? null;
+    if (isTemplatePage) {
+      return await handleTemplateSave({ silent });
+    }
     setIsSaving(true);
     const htmlToSave = await getCurrentHTML();
     const plain = stripHtml(htmlToSave);
@@ -413,11 +1040,14 @@ const PageEditor = forwardRef(({
           chapterId,
           note: htmlToSave,
           media: page.media || [],
+          ...(page.pageName !== undefined ? { pageName: page.pageName } : {}),
           order: page.order
         });
         const newPage = result.data.page;
         onReplacePageId?.(page.id, newPage);
-        toast({ title: 'Page Created', description: 'Your draft page has been saved.' });
+        if (!silent) {
+          toast({ title: 'Page Created', description: 'Your draft page has been saved.' });
+        }
       } else {
         const updatePageFn = httpsCallable(functions, 'updatePage');
         await updatePageFn({
@@ -425,10 +1055,13 @@ const PageEditor = forwardRef(({
           chapterId,
           pageId: page.id,
           note: htmlToSave,
-          media: page.media || []
+          media: page.media || [],
+          ...(page.pageName !== undefined ? { pageName: page.pageName } : {})
         });
-        onPageUpdate({ ...page, note: htmlToSave, shortNote });
-        toast({ title: 'Success', description: 'Page saved.' });
+        onPageUpdate({ ...page, note: htmlToSave, pageName: page.pageName ?? '', shortNote });
+        if (!silent) {
+          toast({ title: 'Success', description: 'Page saved.' });
+        }
       }
 
       // Reconciliation: Untrack deleted album media (images and videos)
@@ -443,12 +1076,20 @@ const PageEditor = forwardRef(({
       // Update previousBlocksRef for next save comparison
       previousBlocksRef.current = [...currentBlocks];
 
-      onDraftChange?.(page.id, null);
+      const latestDraft = latestDraftRef.current;
+      if (!latestDraft || latestDraft.updatedAt === draftVersion) {
+        onDraftChange?.(page.id, null);
+      }
+      return true;
     } catch (error) {
       console.error('Save error detailed:', error);
-      toast({ title: 'Save Failed', description: error.message || 'Unknown save error', variant: 'destructive' });
+      if (!silent) {
+        toast({ title: 'Save Failed', description: error.message || 'Unknown save error', variant: 'destructive' });
+      }
+      return false;
+    } finally {
+      setIsSaving(false);
     }
-    setIsSaving(false);
   };
 
   const updateLimitStatusFromMeasure = () => {
@@ -462,6 +1103,7 @@ const PageEditor = forwardRef(({
   };
 
   const handleBlocksChange = (blocks) => {
+    if (readOnly) return;
     const nextDraft = { blocks, updatedAt: Date.now() };
     onDraftChange?.(page.id, nextDraft);
     onBlocksChange?.(page.id, blocks);
@@ -471,6 +1113,7 @@ const PageEditor = forwardRef(({
 
   // Fast-path: detect typing at end of page when near overflow
   const handleKeyDownCapture = (e) => {
+    if (readOnly) return;
     // Track user input timestamp
     onUserInput?.(page.id);
 
@@ -497,7 +1140,8 @@ const PageEditor = forwardRef(({
     }
   };
 
-  const handleFileSelect = (event) => {
+  const handleFileSelect = async (event) => {
+    if (readOnly) return;
     const files = Array.from(event.target.files || []);
     if (files.length === 0) return;
 
@@ -517,11 +1161,17 @@ const PageEditor = forwardRef(({
       fileInputRef.current.value = '';
     }
 
+    if (mediaPickerContext === MEDIA_PICKER_CONTEXT_TEMPLATE) {
+      await handleTemplateAddImages(files);
+      return;
+    }
+
     // Upload each file, collect results, then insert as blocks
     files.forEach(file => handleUpload(file));
   };
 
   const openFileDialog = () => {
+    if (readOnly) return;
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
       fileInputRef.current.click();
@@ -529,6 +1179,7 @@ const PageEditor = forwardRef(({
   };
 
   const handleUpload = (file) => {
+    if (readOnly) return;
     if (!file || !user) return;
 
     // Determine media type from file
@@ -599,6 +1250,7 @@ const PageEditor = forwardRef(({
   };
 
   const handleAttachFromAlbum = async (asset) => {
+    if (readOnly) return;
     try {
       // Determine media type
       const mediaType = asset.type === 'video' ? 'video' : 'image';
@@ -639,6 +1291,7 @@ const PageEditor = forwardRef(({
   };
 
   const toggleAssetSelection = (asset) => {
+    if (readOnly) return;
     setSelectedAssets(prev => {
       const isSelected = prev.some(a => (a.storagePath || a.url) === (asset.storagePath || asset.url));
       if (isSelected) {
@@ -650,6 +1303,7 @@ const PageEditor = forwardRef(({
   };
 
   const handleSaveSelectedAssets = async () => {
+    if (readOnly) return;
     if (selectedAssets.length === 0) return;
 
     // Option C: Limit to 5 media items per /media insertion
@@ -659,6 +1313,40 @@ const PageEditor = forwardRef(({
         description: 'You can select up to 5 media items at a time. Please select fewer items.',
         variant: 'destructive',
       });
+      return;
+    }
+
+    if (mediaPickerContext === MEDIA_PICKER_CONTEXT_TEMPLATE) {
+      const editableExisting = templateMedia.filter((item) => !item.isLegacyFallback);
+      const remainingSlots = Math.max(0, 5 - editableExisting.length);
+      if (remainingSlots === 0) {
+        toast({
+          title: 'Media limit reached',
+          description: 'You can add up to 5 photos or videos per baby journal page.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const mediaToInsert = selectedAssets
+        .slice(0, remainingSlots)
+        .map((asset) => ({
+          url: asset.url,
+          storagePath: asset.storagePath || asset.url,
+          name: asset.name || 'Asset',
+          type: asset.type === 'video' ? 'video' : 'image',
+          ...(selectedAlbumId || asset.albumId ? { albumId: selectedAlbumId || asset.albumId } : {}),
+        }));
+
+      persistTemplateDraft({ templateMedia: [...editableExisting, ...mediaToInsert].slice(0, 5) });
+      onUserInput?.(page.id);
+      toast({
+        title: 'Media added',
+        description: `${mediaToInsert.length} media item(s) added from asset registry.`,
+      });
+
+      setSelectedAssets([]);
+      setMediaPickerOpen(false);
       return;
     }
 
@@ -702,10 +1390,12 @@ const PageEditor = forwardRef(({
   };
 
   const handleMediaDelete = (mediaItemToDelete) => {
+    if (readOnly) return;
     setMediaToDelete(mediaItemToDelete);
   };
 
   const confirmMediaDelete = async () => {
+    if (readOnly) return;
     if (!mediaToDelete) return;
 
     const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', page.id);
@@ -759,14 +1449,21 @@ const PageEditor = forwardRef(({
     setPreviewIndex((i) => (i + 1) % mediaList.length);
   };
 
-  // NEW: Handle /media command from editor - opens media picker dialog
-  const handleMediaRequest = () => {
-    setMediaPickerTab('upload');
+  const openMediaPicker = (context = MEDIA_PICKER_CONTEXT_EDITOR, tab = 'upload') => {
+    if (readOnly) return;
+    setMediaPickerContext(context);
+    setMediaPickerTab(tab);
     setSelectedAssets([]);
     setMediaPickerOpen(true);
   };
 
+  // NEW: Handle /media command from editor - opens media picker dialog
+  const handleMediaRequest = () => {
+    openMediaPicker(MEDIA_PICKER_CONTEXT_EDITOR);
+  };
+
   const openGenImagePrompt = (payload = {}) => {
+    if (readOnly) return;
     const anchorRect = payload?.anchorRect;
     const container = editorContainerRef.current;
 
@@ -793,6 +1490,7 @@ const PageEditor = forwardRef(({
   };
 
   const submitGenImagePrompt = async () => {
+    if (readOnly) return;
     if (genImgLoading) return;
     const prompt = genImgPrompt.trim();
     if (!prompt) {
@@ -971,8 +1669,18 @@ const PageEditor = forwardRef(({
   const scaledHeight = pageSizePx.height ? Math.round(pageSizePx.height * pageScale) : null;
   const fallbackHeightPx = 420;
   const standardHeightStyle = pageHeightPx
-    ? { height: `${pageHeightPx}px` }
+    ? (isTemplatePage ? { minHeight: `${pageHeightPx}px` } : { height: `${pageHeightPx}px` })
     : { minHeight: `${fallbackHeightPx}px` };
+  const saveButtonLabel = pageIndex < totalPages - 1 ? 'Save Page' : 'Save + New';
+  const showSidePageNav = !readOnly && isBabyTemplatePage && totalPages > 1 && typeof onNavigate === 'function';
+  const handlePrimarySaveAction = async () => {
+    if (pageIndex < totalPages - 1) {
+      await handleSave();
+      return;
+    }
+    await handleSave();
+    onAddPage?.(true, '', page.id);
+  };
 
   return (
     <div
@@ -985,7 +1693,7 @@ const PageEditor = forwardRef(({
       >
         <div
           ref={pageRootRef}
-          className={`${layoutStyles[layoutMode] || layoutStyles.standard} overflow-visible relative`}
+          className={`page-editor-surface ${layoutStyles[layoutMode] || layoutStyles.standard} overflow-visible relative`}
           style={fixedLayout && sizeMm ? {
             width: `${sizeMm.width}mm`,
             height: `${sizeMm.height}mm`,
@@ -995,10 +1703,33 @@ const PageEditor = forwardRef(({
           onMouseDownCapture={() => onFocus?.(page.id)}
           onTouchStartCapture={() => onFocus?.(page.id)}
         >
-          <div ref={contentMeasureRef} className="h-full overflow-hidden flex flex-col">
-            <div className="flex justify-center items-center mb-6 relative">
-              {pageIndex === 0 && chapterTitle && (
-                <div className="text-xs font-semibold text-violet-600 uppercase tracking-wider mb-1">
+          {showSidePageNav && (
+            <>
+              <button
+                type="button"
+                aria-label="Previous page"
+                className={`page-nav-btn absolute left-2 top-1/2 z-30 -translate-y-1/2 rounded-full border bg-white/95 p-2 shadow-md transition ${pageIndex > 0 ? 'border-app-gray-200 text-app-gray-700 hover:bg-white hover:shadow-lg' : 'page-nav-btn-disabled border-app-gray-100 text-app-gray-300 cursor-not-allowed'}`}
+                disabled={pageIndex <= 0}
+                onClick={() => onNavigate?.('prev')}
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                aria-label="Next page"
+                className={`page-nav-btn absolute right-2 top-1/2 z-30 -translate-y-1/2 rounded-full border bg-white/95 p-2 shadow-md transition ${pageIndex < totalPages - 1 ? 'border-app-gray-200 text-app-gray-700 hover:bg-white hover:shadow-lg' : 'page-nav-btn-disabled border-app-gray-100 text-app-gray-300 cursor-not-allowed'}`}
+                disabled={pageIndex >= totalPages - 1}
+                onClick={() => onNavigate?.('next')}
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </>
+          )}
+
+          <div ref={contentMeasureRef} className={isTemplatePage ? 'min-h-full overflow-visible flex flex-col' : 'h-full overflow-hidden flex flex-col'}>
+                <div className="flex justify-center items-center mb-6 relative">
+                  {chapterTitle && (
+                <div className="page-editor-chapter-title text-xs font-semibold text-violet-600 uppercase tracking-wider mb-1">
                   {chapterTitle}
                 </div>
               )}
@@ -1017,9 +1748,12 @@ const PageEditor = forwardRef(({
             {/* Media Picker Dialog */}
             <Dialog open={mediaPickerOpen} onOpenChange={(open) => {
               setMediaPickerOpen(open);
-              if (!open) setSelectedAssets([]);
+              if (!open) {
+                setSelectedAssets([]);
+                setMediaPickerContext(MEDIA_PICKER_CONTEXT_EDITOR);
+              }
             }}>
-              <DialogContent className="max-w-4xl bg-white rounded-2xl shadow-2xl border border-gray-100 p-6">
+              <DialogContent className="media-picker-dialog max-w-4xl bg-white rounded-2xl shadow-2xl border border-gray-100 p-6">
                 <DialogHeader>
                   <DialogTitle>Insert Media</DialogTitle>
                   <DialogDescription>
@@ -1031,14 +1765,14 @@ const PageEditor = forwardRef(({
                   <Button
                     variant={mediaPickerTab === 'upload' ? 'appPrimary' : 'outline'}
                     onClick={() => setMediaPickerTab('upload')}
-                    className="flex-1"
+                    className="media-picker-tab-btn flex-1"
                   >
                     Upload from computer
                   </Button>
                   <Button
                     variant={mediaPickerTab === 'library' ? 'appPrimary' : 'outline'}
                     onClick={() => setMediaPickerTab('library')}
-                    className="flex-1"
+                    className="media-picker-tab-btn flex-1"
                   >
                     Choose from asset registry
                   </Button>
@@ -1046,14 +1780,14 @@ const PageEditor = forwardRef(({
 
                 {mediaPickerTab === 'upload' ? (
                   <div
-                    className="p-6 border-2 border-dashed rounded-lg bg-gray-50 text-center text-sm text-app-gray-700"
+                    className="media-picker-upload-dropzone p-6 border-2 border-dashed rounded-lg bg-gray-50 text-center text-sm text-app-gray-700"
                     onClick={openFileDialog}
                   >
                     <UploadCloud className="h-10 w-10 mx-auto mb-3 text-app-iris" />
                     <p className="font-semibold">Select files to upload</p>
                     <p className="text-xs text-app-gray-500">Select up to 5 images or videos at a time</p>
                     <div className="mt-4">
-                      <Button variant="appPrimary" onClick={(e) => {
+                      <Button className="media-picker-upload-btn" variant="appPrimary" onClick={(e) => {
                         e.stopPropagation();
                         openFileDialog();
                       }}>
@@ -1063,7 +1797,7 @@ const PageEditor = forwardRef(({
                   </div>
                 ) : (
                   <div className="grid gap-4 lg:grid-cols-[220px,1fr]">
-                    <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                    <div className="media-picker-album-list space-y-2 max-h-[420px] overflow-y-auto pr-1">
                       {albums.length === 0 ? (
                         <div className="text-sm text-app-gray-600 bg-app-gray-50 border border-app-gray-100 rounded-md p-3">
                           No asset albums yet. Create one from the Asset Registry page.
@@ -1085,7 +1819,7 @@ const PageEditor = forwardRef(({
                       )}
                     </div>
 
-                    <div className="border border-app-gray-100 rounded-lg p-4 min-h-[260px] max-h-[400px] overflow-y-auto bg-white">
+                    <div className="media-picker-library-pane border border-app-gray-100 rounded-lg p-4 min-h-[260px] max-h-[400px] overflow-y-auto bg-white">
                       {loadingAlbums ? (
                         <div className="flex items-center justify-center h-full text-sm text-app-gray-600">Loading assets...</div>
                       ) : !selectedAlbumId ? (
@@ -1189,6 +1923,52 @@ const PageEditor = forwardRef(({
               </DialogContent>
             </Dialog>
 
+            {/* Reflection Rewrite Preview Dialog */}
+            <Dialog open={blockRewritePreviewOpen} onOpenChange={(open) => (open ? setBlockRewritePreviewOpen(true) : closeBlockRewritePreview())}>
+              <DialogContent className="max-w-2xl bg-white rounded-2xl shadow-2xl border border-gray-100 p-6">
+                <DialogHeader>
+                  <DialogTitle>Reflection Rewrite Suggestion</DialogTitle>
+                  <DialogDescription>
+                    Apply this rewrite only to the selected reflection block.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="bg-gray-50 p-4 rounded-md text-sm text-gray-800 max-h-[60vh] overflow-y-auto whitespace-pre-wrap">
+                  {blockRewritePreviewText}
+                </div>
+
+                <div className="flex justify-end gap-2 mt-4">
+                  {blockRewriteActions.includes('discard') && (
+                    <Button
+                      variant="outline"
+                      onClick={() => applyBlockRewrite('discard')}
+                      disabled={!!saveBusyField}
+                    >
+                      Discard
+                    </Button>
+                  )}
+                  {blockRewriteActions.includes('insert') && (
+                    <Button
+                      variant="secondary"
+                      onClick={() => applyBlockRewrite('insert')}
+                      disabled={!!saveBusyField}
+                    >
+                      Insert
+                    </Button>
+                  )}
+                  {blockRewriteActions.includes('replace') && (
+                    <Button
+                      variant="appPrimary"
+                      onClick={() => applyBlockRewrite('replace')}
+                      disabled={!!saveBusyField}
+                    >
+                      Replace
+                    </Button>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
+
             {/* Upload Progress Indicator (shown only when uploading) */}
             {Object.keys(uploadProgress).length > 0 && (
               <div className="mb-4 p-3 bg-violet-50 border border-violet-200 rounded-lg">
@@ -1214,7 +1994,7 @@ const PageEditor = forwardRef(({
             )}
 
             {/* Legacy Media Grid - Shows media from page.media[] (old format) */}
-            {mediaList.length > 0 && (
+            {mediaList.length > 0 && !(isTemplatePage && isBabyTemplatePage) && (
               <div className="mb-4 p-3 border border-gray-200 rounded-lg bg-gray-50">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-medium text-gray-600">Attached Media</span>
@@ -1237,20 +2017,22 @@ const PageEditor = forwardRef(({
                         <span>Click to view</span>
                       </div>
 
-                      <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button
-                          variant="destructive"
-                          size="icon"
-                          className="h-6 w-6"
-                          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleMediaDelete(media);
-                          }}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
+                      {!readOnly && (
+                        <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button
+                            variant="destructive"
+                            size="icon"
+                            className="h-6 w-6"
+                            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleMediaDelete(media);
+                            }}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1258,47 +2040,76 @@ const PageEditor = forwardRef(({
             )}
 
             {/* Notes + controls */}
-            <div className="space-y-4 flex-grow flex flex-col h-full">
-              <div className="flex-grow flex flex-col h-full">
+            <div className={`space-y-4 flex-grow flex flex-col ${isTemplatePage ? '' : 'h-full'}`}>
+              <div className={`flex-grow flex flex-col ${isTemplatePage ? '' : 'h-full'}`}>
                 <div className="flex items-center justify-between mb-1"></div>
 
-                <div className="flex-grow h-full">
+                <div className={isTemplatePage ? '' : 'flex-grow h-full'}>
                   <div
                     ref={editorContainerRef}
-                    className="h-full bg-transparent overflow-hidden relative"
+                    className={isTemplatePage ? 'bg-transparent relative' : 'h-full bg-transparent overflow-hidden relative'}
                     onKeyDownCapture={handleKeyDownCapture}
                     onMouseDownCapture={() => {
                       logContentMeasure('editor mousedown');
                       requestAnimationFrame(() => logContentMeasure('editor mousedown raf'));
                     }}
                   >
-                    <GenerateImagePrompt
-                      open={genImgOpen}
-                      anchor={genImgAnchor}
-                      prompt={genImgPrompt}
-                      onPromptChange={setGenImgPrompt}
-                      onCancel={closeGenImagePrompt}
-                      onSubmit={submitGenImagePrompt}
-                      inputRef={genImgInputRef}
-                      useContext={genImgUseContext}
-                      onUseContextChange={setGenImgUseContext}
-                      isSubmitting={genImgLoading}
-                    />
-                    <BlockEditor
-                      key={page.id}
-                      ref={quillRef}
-                      initialBlocks={draft?.blocks}
-                      initialContent={page.note || ""}
-                      onBlocksChange={handleBlocksChange}
-                      onSave={handleSave}
-                      onFocus={() => {
-                        logContentMeasure('editor focus');
-                        requestAnimationFrame(() => logContentMeasure('editor focus raf'));
-                        onFocus?.(page.id);
-                      }}
-                      onMediaRequest={handleMediaRequest}
-                      onGenImageRequest={openGenImagePrompt}
-                    />
+                    {isTemplatePage ? (
+                      <div className="flex flex-col relative">
+                        <TemplatePage
+                          template={template}
+                          content={templateContent}
+                          mediaItems={templateMedia}
+                          onChange={handleTemplateChange}
+                          onRewriteField={rewriteReflectionField}
+                          onSaveField={saveReflectionField}
+                          rewritePrompts={reflectionRewritePrompts}
+                          onRewritePromptChange={handleReflectionRewritePromptChange}
+                          rewriteBusyField={rewriteBusyField}
+                          saveBusyField={saveBusyField}
+                          pageSaving={isSaving}
+                          onImageUpload={handleTemplateImageUpload}
+                          onAddImages={handleTemplateAddImages}
+                          onRemoveImage={handleTemplateRemoveImage}
+                          onOpenMediaPicker={() => openMediaPicker(MEDIA_PICKER_CONTEXT_TEMPLATE)}
+                          onOpenPreview={openPreview}
+                          readOnly={readOnly}
+                        />
+                      </div>
+                    ) : (
+                      <>
+                        {!readOnly && (
+                          <GenerateImagePrompt
+                            open={genImgOpen}
+                            anchor={genImgAnchor}
+                            prompt={genImgPrompt}
+                            onPromptChange={setGenImgPrompt}
+                            onCancel={closeGenImagePrompt}
+                            onSubmit={submitGenImagePrompt}
+                            inputRef={genImgInputRef}
+                            useContext={genImgUseContext}
+                            onUseContextChange={setGenImgUseContext}
+                            isSubmitting={genImgLoading}
+                          />
+                        )}
+                        <BlockEditor
+                          key={page.id}
+                          ref={quillRef}
+                          initialBlocks={draft?.blocks}
+                          initialContent={page.note || ""}
+                          onBlocksChange={handleBlocksChange}
+                          onSave={handleSave}
+                          onFocus={() => {
+                            logContentMeasure('editor focus');
+                            requestAnimationFrame(() => logContentMeasure('editor focus raf'));
+                            onFocus?.(page.id);
+                          }}
+                          onMediaRequest={handleMediaRequest}
+                          onGenImageRequest={openGenImagePrompt}
+                          readOnly={readOnly}
+                        />
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1351,107 +2162,131 @@ const PageEditor = forwardRef(({
             )}
 
             {/* Delete Confirmation Modal */}
-            <ConfirmationModal
-              isOpen={!!mediaToDelete}
-              onClose={() => setMediaToDelete(null)}
-              onConfirm={confirmMediaDelete}
-              title="Delete Media"
-              description="Are you sure you want to remove this media from the page? This cannot be undone."
-            />
+            {!readOnly && (
+              <ConfirmationModal
+                isOpen={!!mediaToDelete}
+                onClose={() => setMediaToDelete(null)}
+                onConfirm={confirmMediaDelete}
+                title="Delete Media"
+                description="Are you sure you want to remove this media from the page? This cannot be undone."
+              />
+            )}
 
-            {/* Page actions */}
-            {isResponsiveLayout ? (
-              <div ref={toolbarRef} className="absolute bottom-0 left-0 right-0 z-20 mb-2">
-                <div
-                  className={`mx-auto rounded-full border border-gray-200 bg-white/95 px-4 py-2 shadow-sm transition-all duration-200 w-[calc(100%-2rem)] ${toolbarOpen ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-2 pointer-events-none'
-                    }`}
-                >
-                  <div className="flex items-center gap-2 w-full">
-                    <div className="relative flex items-center gap-2 min-w-0 flex-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-50"
-                        onClick={() => onRequestPageDelete?.(page, pageIndex)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                      <div className="relative flex items-center">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setShowModelDropdown(!showModelDropdown)}
-                          className="h-8 px-2 text-xs"
-                        >
-                          {aiModel}
-                          <ChevronDown className="h-3 w-3 ml-1" />
-                        </Button>
-                        {showModelDropdown && (
-                          <div className="absolute bottom-full left-0 mb-2 w-36 bg-white border rounded-md shadow-lg py-1 z-30">
-                            {['gpt-4o'].map(model => (
-                              <button
-                                key={model}
-                                onClick={() => {
-                                  setAiModel(model);
-                                  setShowModelDropdown(false);
-                                }}
-                                className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
-                              >
-                                {model}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <Input
-                        value={aiStyle}
-                        onChange={(e) => setAiStyle(e.target.value)}
-                        placeholder="AI instruction..."
-                        className="h-8 w-28 sm:w-40 md:w-56 text-xs"
-                      />
+            {/* Page actions - Static Footer at bottom of page content */}
+            {!readOnly && isBabyTemplatePage ? (
+              <div className="mt-6 pb-8 w-full">
+                <div className="template-save-pill mx-auto w-fit rounded-full border border-app-gray-200 bg-white/95 px-3 py-2 shadow-appSoft backdrop-blur">
+                  {babyReflectionLimits.hasOverLimit && (
+                    <div className="mb-2 text-center text-xs font-medium text-red-600">
+                      Character limit exceeded for {babyReflectionLimits.overLimitFields.join(' and ')}.
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="appSuccess"
+                      size="sm"
+                      className="h-9 whitespace-nowrap min-w-[140px] rounded-full px-5"
+                      onClick={handlePrimarySaveAction}
+                      disabled={isSaving || babyReflectionLimits.hasOverLimit}
+                    >
+                      {saveButtonLabel}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : !readOnly && isResponsiveLayout ? (
+              <div ref={toolbarRef} className="mt-8 pb-8 w-full relative z-20">
+                <div className="editor-action-bar w-full flex flex-wrap items-center justify-between gap-3 px-2 py-3 rounded-2xl bg-gray-50/50 border border-gray-100">
+                  <div className="flex items-center gap-2 flex-wrap flex-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-50"
+                      onClick={() => onRequestPageDelete?.(page, pageIndex)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                    <div className="h-4 w-px bg-gray-200 mx-1" />
+
+                    <div className="relative flex items-center">
                       <Button
                         type="button"
-                        variant="outline"
+                        variant="ghost"
                         size="sm"
-                        onClick={() => setShowAiStyleDropdown(!showAiStyleDropdown)}
-                        className="ml-1 h-8 px-2"
+                        onClick={() => setShowModelDropdown(!showModelDropdown)}
+                        className="h-8 px-2 text-xs font-medium text-gray-600"
                       >
-                        <ChevronDown className="h-4 w-4" />
+                        {aiModel}
+                        <ChevronDown className="h-3 w-3 ml-1" />
                       </Button>
-
-                      {showAiStyleDropdown && (
-                        <div className="absolute bottom-full right-0 mb-2 w-48 bg-white border rounded-md shadow-lg py-1 z-30">
-                          {['Improve clarity', 'Make it concise', 'Fix grammar', 'Expand this'].map(style => (
+                      {showModelDropdown && (
+                        <div className="editor-menu-popover absolute bottom-full left-0 mb-2 w-36 bg-white border rounded-md shadow-lg py-1 z-30">
+                          {['gpt-4o'].map(model => (
                             <button
-                              key={style}
+                              key={model}
                               onClick={() => {
-                                setAiStyle(style);
-                                setShowAiStyleDropdown(false);
+                                setAiModel(model);
+                                setShowModelDropdown(false);
                               }}
                               className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
                             >
-                              {style}
+                              {model}
                             </button>
                           ))}
                         </div>
                       )}
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="h-8 whitespace-nowrap"
-                        onClick={() => callRewrite(aiStyle)}
-                        disabled={aiBusy}
-                      >
-                        <Sparkles className="h-4 w-4 mr-1" />
-                        Rewrite
-                      </Button>
                     </div>
+
+                    <Input
+                      value={aiStyle}
+                      onChange={(e) => setAiStyle(e.target.value)}
+                      placeholder="AI instruction..."
+                      className="editor-ai-input h-8 w-28 sm:w-40 text-xs bg-white"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowAiStyleDropdown(!showAiStyleDropdown)}
+                      className="ml-1 h-8 px-2"
+                    >
+                      <ChevronDown className="h-4 w-4" />
+                    </Button>
+
+                    {showAiStyleDropdown && (
+                      <div className="editor-menu-popover absolute bottom-full left-0 mb-2 w-48 bg-white border rounded-md shadow-lg py-1 z-30">
+                        {['Improve clarity', 'Make it concise', 'Fix grammar', 'Expand this'].map(style => (
+                          <button
+                            key={style}
+                            onClick={() => {
+                              setAiStyle(style);
+                              setShowAiStyleDropdown(false);
+                            }}
+                            className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
+                          >
+                            {style}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="editor-rewrite-btn h-8 whitespace-nowrap bg-white shadow-sm border border-gray-100"
+                      onClick={() => callRewrite(aiStyle)}
+                      disabled={aiBusy}
+                    >
+                      <Sparkles className="h-4 w-4 mr-1 text-app-iris" />
+                      Rewrite
+                    </Button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
                     {pageIndex < totalPages - 1 ? (
                       <Button
                         variant="appSuccess"
                         size="sm"
-                        className="h-8 whitespace-nowrap min-w-[110px]"
+                        className="editor-save-btn h-8 whitespace-nowrap min-w-[110px]"
                         onClick={handleSave}
                       >
                         Save Page
@@ -1460,10 +2295,10 @@ const PageEditor = forwardRef(({
                       <Button
                         variant="appSuccess"
                         size="sm"
-                        className="h-8 whitespace-nowrap min-w-[110px]"
+                        className="editor-save-btn h-8 whitespace-nowrap min-w-[110px]"
                         onClick={async () => {
                           await handleSave();
-                          onAddPage?.(false);
+                          onAddPage?.(true, '', page.id);
                         }}
                       >
                         Save + New
@@ -1471,19 +2306,9 @@ const PageEditor = forwardRef(({
                     )}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setToolbarOpen(true)}
-                  className={`absolute bottom-0 right-0 mr-2 mb-2 flex items-center gap-2 rounded-full border border-gray-200 bg-white/95 px-3 py-2 shadow-sm transition-all duration-200 ${toolbarOpen ? 'opacity-0 pointer-events-none translate-y-1' : 'opacity-100'
-                    }`}
-                  aria-label="Open page tools"
-                >
-                  <Sparkles className="h-4 w-4 text-violet-600" />
-                  <Save className="h-4 w-4 text-emerald-600" />
-                </button>
               </div>
-            ) : (
-              <div className="absolute bottom-0 left-0 right-0 mx-auto rounded-full border border-gray-200 bg-white/95 px-4 py-2 shadow-sm opacity-0 translate-y-3 transition-all duration-200 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto z-20 w-[calc(100%-2rem)] mb-2">
+            ) : !readOnly ? (
+              <div className="editor-action-bar editor-action-bar-floating absolute bottom-0 left-0 right-0 mx-auto rounded-full border border-gray-200 bg-white/95 px-4 py-2 shadow-sm opacity-0 translate-y-3 transition-all duration-200 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto z-20 w-[calc(100%-2rem)] mb-2">
                 <div className="flex items-center gap-2 w-full">
                   <div className="relative flex items-center gap-2 min-w-0 flex-1">
                     <Button
@@ -1506,7 +2331,7 @@ const PageEditor = forwardRef(({
                         <ChevronDown className="h-3 w-3 ml-1" />
                       </Button>
                       {showModelDropdown && (
-                        <div className="absolute bottom-full left-0 mb-2 w-36 bg-white border rounded-md shadow-lg py-1 z-30">
+                        <div className="editor-menu-popover absolute bottom-full left-0 mb-2 w-36 bg-white border rounded-md shadow-lg py-1 z-30">
                           {['gpt-4o'].map(model => (
                             <button
                               key={model}
@@ -1526,7 +2351,7 @@ const PageEditor = forwardRef(({
                       value={aiStyle}
                       onChange={(e) => setAiStyle(e.target.value)}
                       placeholder="AI instruction..."
-                      className="h-8 w-28 sm:w-40 md:w-56 text-xs"
+                      className="editor-ai-input h-8 w-28 sm:w-40 md:w-56 text-xs"
                     />
                     <Button
                       type="button"
@@ -1539,7 +2364,7 @@ const PageEditor = forwardRef(({
                     </Button>
 
                     {showAiStyleDropdown && (
-                      <div className="absolute bottom-full right-0 mb-2 w-48 bg-white border rounded-md shadow-lg py-1 z-30">
+                      <div className="editor-menu-popover absolute bottom-full right-0 mb-2 w-48 bg-white border rounded-md shadow-lg py-1 z-30">
                         {['Improve clarity', 'Make it concise', 'Fix grammar', 'Expand this'].map(style => (
                           <button
                             key={style}
@@ -1557,7 +2382,7 @@ const PageEditor = forwardRef(({
                     <Button
                       variant="secondary"
                       size="sm"
-                      className="h-8 whitespace-nowrap"
+                      className="editor-rewrite-btn h-8 whitespace-nowrap"
                       onClick={() => callRewrite(aiStyle)}
                       disabled={aiBusy}
                     >
@@ -1587,7 +2412,7 @@ const PageEditor = forwardRef(({
                     <Button
                       variant="appSuccess"
                       size="sm"
-                      className="h-8 whitespace-nowrap min-w-[110px]"
+                      className="editor-save-btn h-8 whitespace-nowrap min-w-[110px]"
                       onClick={handleSave}
                     >
                       Save Page
@@ -1596,10 +2421,10 @@ const PageEditor = forwardRef(({
                     <Button
                       variant="appSuccess"
                       size="sm"
-                      className="h-8 whitespace-nowrap min-w-[110px]"
+                      className="editor-save-btn h-8 whitespace-nowrap min-w-[110px]"
                       onClick={async () => {
                         await handleSave();
-                        onAddPage?.(false);
+                        onAddPage?.(true, '', page.id);
                       }}
                     >
                       Save + New
@@ -1607,7 +2432,7 @@ const PageEditor = forwardRef(({
                   )}
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       </div>

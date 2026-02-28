@@ -1,0 +1,11 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="airaMarkGlow" x1="10" y1="10" x2="54" y2="54" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8FF7CA"/>
+      <stop offset="1" stop-color="#3AD89C"/>
+    </linearGradient>
+  </defs>
+  <path d="M20.5 17.5H31.5C34.7 17.5 37.3 20.1 37.3 23.3V44.5C35.5 42.9 33.3 42.1 30.9 42.1H20.5C18.3 42.1 16.5 43.9 16.5 46.1V21.5C16.5 19.3 18.3 17.5 20.5 17.5Z" stroke="url(#airaMarkGlow)" stroke-width="2.8" stroke-linejoin="round"/>
+  <path d="M43.5 17.5H32.5C29.3 17.5 26.7 20.1 26.7 23.3V44.5C28.5 42.9 30.7 42.1 33.1 42.1H43.5C45.7 42.1 47.5 43.9 47.5 46.1V21.5C47.5 19.3 45.7 17.5 43.5 17.5Z" stroke="url(#airaMarkGlow)" stroke-width="2.8" stroke-linejoin="round"/>
+  <path d="M26.8 26.5L32 21.3L37.2 26.5" stroke="url(#airaMarkGlow)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
