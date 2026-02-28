@@ -143,8 +143,6 @@ const { stripeWebhook } = require("./payments/stripeWebhook");
 const { createPage } = require("./createPage");
 const { updatePage } = require("./updatePage");
 const { updateAlbum } = require("./updateAlbum");
-const { generateImage } = require("./generateImage");
-const { queryBookFlow, generateChapterSuggestions } = require("./genkit");
 const { airabookaiStream } = require("./airabookaiStream");
 const { onBookDeleted, onPageDeleted, onChapterDeleted } = require("./usageTriggers");
 const { deleteMediaAsset, deleteAlbumAssets } = require("./deleteMedia");
@@ -158,9 +156,9 @@ const createGenkitDisabledCallable = (name) =>
     throw new HttpsError("failed-precondition", `${name} is disabled. ${GENKIT_DISABLED_MESSAGE}`);
   });
 
-const generateImage = createGenkitDisabledCallable("generateImage");
-const queryBookFlow = createGenkitDisabledCallable("queryBookFlow");
-const generateChapterSuggestions = createGenkitDisabledCallable("generateChapterSuggestions");
+const generateImageDisabled = createGenkitDisabledCallable("generateImage");
+const queryBookFlowDisabled = createGenkitDisabledCallable("queryBookFlow");
+const generateChapterSuggestionsDisabled = createGenkitDisabledCallable("generateChapterSuggestions");
 
 
 exports.helloWorld = onRequest({ region: "us-central1" }, (request, response) => {
@@ -189,9 +187,9 @@ exports.stripeWebhook = stripeWebhook;
 
 exports.createPage = createPage;
 exports.updatePage = updatePage;
-exports.generateImage = generateImage;
-exports.queryBookFlow = queryBookFlow;
-exports.generateChapterSuggestions = generateChapterSuggestions;
+exports.generateImage = generateImageDisabled;
+exports.queryBookFlow = queryBookFlowDisabled;
+exports.generateChapterSuggestions = generateChapterSuggestionsDisabled;
 exports.airabookaiStream = airabookaiStream;
 exports.createUserDoc = createUserDoc;
 exports.onBookDeleted = onBookDeleted;
@@ -472,4 +470,3 @@ exports.addPageSummary = onCall({ region: "us-central1", cors: true }, async (re
     throw new HttpsError('internal', 'Failed to add page summary. Please try again.');
   }
 });
-
