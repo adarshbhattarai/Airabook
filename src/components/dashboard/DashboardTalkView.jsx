@@ -60,6 +60,9 @@ const DashboardTalkView = ({
   initialVisualMode = 'face',
   faceImage = '/avatars/girl2.png',
   faceName = 'Aira',
+  bookId,
+  chapterId,
+  pageId,
 }) => {
   const [visualMode] = useState(initialVisualMode);
   const {
@@ -69,7 +72,8 @@ const DashboardTalkView = ({
     isActive,
     isListening,
     isSpeaking,
-  } = useTalkDemoState();
+    canStart,
+  } = useTalkDemoState({ bookId, chapterId, pageId });
 
   const MicIcon = useMemo(() => {
     if (status === 'connecting') return Loader2;
@@ -94,10 +98,12 @@ const DashboardTalkView = ({
             'dashboard-talk-mic-btn',
             isActive && 'dashboard-talk-mic-btn-active',
             isSpeaking && 'dashboard-talk-mic-btn-speaking',
+            !canStart && 'opacity-60 cursor-not-allowed',
           )}
+          disabled={!canStart || status === 'connecting'}
           aria-pressed={isActive}
           aria-label={isActive ? 'Stop talk mode' : 'Start talk mode'}
-          title={isActive ? 'Stop talk mode' : 'Start talk mode'}
+          title={!canStart ? 'Open a book to enable talk mode' : (isActive ? 'Stop talk mode' : 'Start talk mode')}
           onClick={toggleMic}
         >
           <MicIcon className={cn('h-7 w-7', status === 'connecting' && 'animate-spin')} />
