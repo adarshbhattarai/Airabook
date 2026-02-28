@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { VoiceSocketClient, getFirebaseIdToken, getVoiceWsUrl } from '@/lib/voice/voiceSocket';
+import { VoiceSocketClient, getFirebaseIdToken, resolveVoiceWsConfig } from '@/lib/voice/voiceSocket';
 import { startMicCapture } from '@/lib/voice/micCapture';
 import { PcmPlayer } from '@/lib/voice/pcmPlayer';
 
@@ -21,7 +21,7 @@ export const useVoiceAssistant = ({
   voice = { provider: 'google', voiceId: 'default' },
   inputAudio = { format: 'pcm_s16le', sampleRate: 16000, channels: 1 },
   outputAudio = { format: 'pcm_s16le', sampleRate: 24000, channels: 1 },
-  url = getVoiceWsUrl(),
+  url = null,
 } = {}) => {
   const clientRef = useRef(null);
   const abortRef = useRef(null);
@@ -46,6 +46,18 @@ export const useVoiceAssistant = ({
   const [finalTranscript, setFinalTranscript] = useState('');
   const [assistantText, setAssistantText] = useState('');
   const [lastError, setLastError] = useState(null);
+
+  const resolvedWsConfig = useMemo(() => {
+    if (typeof url === 'string' && url.trim()) {
+      return { url: url.trim(), reason: null };
+    }
+    return resolveVoiceWsConfig();
+  }, [url]);
+
+  const voiceWsUrl = resolvedWsConfig.url;
+  const voiceUnavailableReason = resolvedWsConfig.reason;
+  const hasBookContext = Boolean(bookId);
+  const canStart = useMemo(() => Boolean(hasBookContext && voiceWsUrl), [hasBookContext, voiceWsUrl]);
 
   useEffect(() => {
     statusRef.current = status;
@@ -218,6 +230,9 @@ export const useVoiceAssistant = ({
   const connect = useCallback(async () => {
     if (status === 'connecting' || wsConnected) return;
     if (!bookId) throw new Error('Missing bookId for voice session.');
+    if (!voiceWsUrl) {
+      throw new Error(voiceUnavailableReason || 'Voice backend is unavailable.');
+    }
 
     resetMessages();
     setStatus('connecting');
@@ -226,7 +241,7 @@ export const useVoiceAssistant = ({
 
     const token = await getFirebaseIdToken();
     const client = new VoiceSocketClient({
-      url,
+      url: voiceWsUrl,
       onJson: handleJson,
       onBinary: handleBinary,
       onClose: (evt) => {
@@ -256,7 +271,18 @@ export const useVoiceAssistant = ({
       pageId: pageId || null,
     });
     // Backend should reply with {type:'ready'}
-  }, [bookId, chapterId, pageId, handleBinary, handleJson, resetMessages, status, url, wsConnected]);
+  }, [
+    bookId,
+    chapterId,
+    pageId,
+    handleBinary,
+    handleJson,
+    resetMessages,
+    status,
+    voiceUnavailableReason,
+    voiceWsUrl,
+    wsConnected,
+  ]);
 
   const disconnect = useCallback(() => {
     abortRef.current?.abort?.();
@@ -333,11 +359,12 @@ export const useVoiceAssistant = ({
     };
   }, []);
 
-  const canStart = useMemo(() => Boolean(bookId), [bookId]);
-
   return {
     status,
     canStart,
+    hasBookContext,
+    voiceWsUrl,
+    voiceUnavailableReason,
     wsConnected,
     level,
     vadSpeaking,

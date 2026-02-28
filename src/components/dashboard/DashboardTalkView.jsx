@@ -103,7 +103,7 @@ const DashboardTalkView = ({
           disabled={!canStart || status === 'connecting'}
           aria-pressed={isActive}
           aria-label={isActive ? 'Stop talk mode' : 'Start talk mode'}
-          title={!canStart ? 'Open a book to enable talk mode' : (isActive ? 'Stop talk mode' : 'Start talk mode')}
+          title={!canStart ? statusCopy.helper : (isActive ? 'Stop talk mode' : 'Start talk mode')}
           onClick={toggleMic}
         >
           <MicIcon className={cn('h-7 w-7', status === 'connecting' && 'animate-spin')} />

@@ -162,7 +162,7 @@ const DashboardTalk3DView = ({ bookId, chapterId, pageId }) => {
           onClick={toggleMic}
           aria-label={isActive ? 'Stop talk mode' : 'Start talk mode'}
           aria-pressed={isActive}
-          title={!canStart ? 'Open a book to enable talk mode' : (isActive ? 'Stop talk mode' : 'Start talk mode')}
+          title={!canStart ? statusCopy.helper : (isActive ? 'Stop talk mode' : 'Start talk mode')}
         >
           <MicIcon className={cn('h-6 w-6', status === 'connecting' && 'animate-spin')} />
         </button>
