@@ -1,15 +1,56 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    match /{userId}/{allPaths=**} {
-      
+    function isSignedIn() {
+      return request.auth != null;
+    }
 
-      
-      // READ Rules: Publicly accessible (relying on token or just public)
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+
+    function canWriteBookMedia(bookId) {
+      return exists(/databases/(default)/documents/books/$(bookId)) &&
+        (
+          get(/databases/(default)/documents/books/$(bookId)).data.ownerId == request.auth.uid ||
+          (
+            get(/databases/(default)/documents/books/$(bookId)).data.members[request.auth.uid] == 'Co-author' &&
+            get(/databases/(default)/documents/books/$(bookId)).data.memberPermissions[request.auth.uid] != null &&
+            get(/databases/(default)/documents/books/$(bookId)).data.memberPermissions[request.auth.uid].canManageMedia == true
+          )
+        );
+    }
+
+    function canWriteStandaloneAlbumMedia(bookId) {
+      return !exists(/databases/(default)/documents/books/$(bookId)) &&
+        exists(/databases/(default)/documents/albums/$(bookId)) &&
+        get(/databases/(default)/documents/albums/$(bookId)).data.accessPermission.ownerId == request.auth.uid;
+    }
+
+    function isMediaPath(path) {
+      return path.matches('^[^/]+/[^/]+/[^/]+/media/(image|video)/.*$');
+    }
+
+    match /{userId}/{bookId}/{chapterId}/{pageId}/media/{mediaType}/{fileName=**} {
       allow read: if true;
-      
-      // WRITE Rules
-      allow write: if request.auth != null && (request.auth.uid == userId || request.auth.token.admin == true);
+      // Clients can upload/update only; delete is server-only via callable/Admin SDK.
+      allow write: if isAdmin() || (
+        isSignedIn() &&
+        request.resource != null &&
+        request.auth.uid == userId &&
+        (canWriteBookMedia(bookId) || canWriteStandaloneAlbumMedia(bookId))
+      );
+    }
+
+    match /{userId}/{allPaths=**} {
+      allow read: if true;
+      // All non-media paths remain user-writable for create/update only.
+      allow write: if isAdmin() || (
+        isSignedIn() &&
+        request.resource != null &&
+        request.auth.uid == userId &&
+        !isMediaPath(allPaths)
+      );
     }
   }
 }

@@ -8,7 +8,7 @@ const BookCardPreview = ({ title, subtitle, coverImage }) => {
 
   return (
     <PreviewCard>
-      <div className="w-full max-w-sm bg-white/70 backdrop-blur rounded-2xl shadow-appSoft border border-white/50 p-4 md:p-5 relative overflow-hidden">
+      <div className="w-full max-w-sm bg-white/70 backdrop-blur rounded-2xl shadow-appSoft border border-white/50 p-4 md:p-5 relative overflow-hidden matrix-surface">
         {/* Vibrant gradient background layers (like Stripe) */}
         <div className="absolute inset-0 opacity-70">
           <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-purple-300 via-pink-300 to-transparent rounded-full blur-3xl transform translate-x-20 -translate-y-20" />
@@ -27,7 +27,7 @@ const BookCardPreview = ({ title, subtitle, coverImage }) => {
               <span className="text-sm font-semibold text-app-gray-900">
                 {displayTitle}
               </span>
-              <span className="mt-0.5 inline-flex items-center rounded-full bg-white/70 px-2 py-0.5 text-[11px] text-app-gray-600 shadow-sm">
+              <span className="mt-0.5 inline-flex items-center rounded-full bg-white/70 px-2 py-0.5 text-[11px] text-app-gray-600 shadow-sm matrix-surface-soft">
                 • Journey on Airäbook
               </span>
             </div>
@@ -46,7 +46,7 @@ const BookCardPreview = ({ title, subtitle, coverImage }) => {
               <img src={coverImage} alt="Book cover" className="w-full h-full object-cover" />
             </div>
           ) : (
-            <div className="mt-4 h-64 md:h-80 rounded-xl bg-gradient-to-br from-purple-100/80 via-pink-100/60 to-blue-100/70 border border-white/50 backdrop-blur-sm shadow-inner" />
+            <div className="mt-4 h-64 md:h-80 rounded-xl bg-gradient-to-br from-purple-100/80 via-pink-100/60 to-blue-100/70 border border-white/50 backdrop-blur-sm shadow-inner matrix-surface-soft" />
           )}
         </div>
       </div>

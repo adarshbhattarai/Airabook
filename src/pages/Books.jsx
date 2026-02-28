@@ -1,18 +1,19 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { PlusCircle, Sparkles, BookOpen } from 'lucide-react';
-import { useToast } from '@/components/ui/use-toast';
 import BookCard from '@/components/BookCard';
 import StatCard from '@/components/app/StatCard';
 import AppLoader from '@/components/app/AppLoader';
+import { doc, getDoc } from 'firebase/firestore';
+import { firestore } from '@/lib/firebase';
 
 const Books = () => {
   const { appUser, appLoading } = useAuth();
   const navigate = useNavigate();
-  const { toast } = useToast();
   const [deletedBooks, setDeletedBooks] = useState(new Set());
+  const [bookAccessRoleById, setBookAccessRoleById] = useState({});
 
   console.log('📚 Books Page Render:', {
     appLoading,
@@ -21,16 +22,99 @@ const Books = () => {
   });
 
   // Extract bookIds from accessibleBookIds (handle both old string array and new object array)
-  const books = appLoading || !appUser ? [] : (appUser.accessibleBookIds || []).map(item => {
-    if (typeof item === 'string') {
-      // Old format - return minimal object
-      return { bookId: item, title: 'Untitled Book', coverImage: null };
+  const books = useMemo(() => {
+    if (appLoading || !appUser) return [];
+    return (appUser.accessibleBookIds || []).map(item => {
+      if (typeof item === 'string') {
+        // Old format - return minimal object
+        return { bookId: item, title: 'Untitled Book', coverImage: null, coverImageUrl: null };
+      }
+      // Normalize old/new object shapes
+      return {
+        ...item,
+        title: item.title || item.babyName || 'Untitled Book',
+        coverImage: item.coverImage || item.coverImageUrl || null,
+      };
+    }).filter(book => !deletedBooks.has(book.bookId));
+  }, [appLoading, appUser, deletedBooks]);
+
+  const getRoleFromBookItem = useCallback((bookItem) => {
+    if (!bookItem) return null;
+    if (bookItem.ownerId) {
+      return bookItem.ownerId === appUser?.uid ? 'owned' : 'coauthored';
     }
-    // New format - return full object
-    return item;
-  }).filter(book => !deletedBooks.has(book.bookId));
+    if (typeof bookItem.isOwner === 'boolean') {
+      return bookItem.isOwner ? 'owned' : 'coauthored';
+    }
+    if (typeof bookItem.role === 'string') {
+      const role = bookItem.role.toLowerCase();
+      if (role.includes('owner')) return 'owned';
+      if (role.includes('co')) return 'coauthored';
+    }
+    if (bookItem.members && appUser?.uid && bookItem.members[appUser.uid]) {
+      return bookItem.members[appUser.uid] === 'Owner' ? 'owned' : 'coauthored';
+    }
+    return null;
+  }, [appUser?.uid]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const classifyBooksByAccess = async () => {
+      if (!appUser?.uid || books.length === 0) {
+        setBookAccessRoleById({});
+        return;
+      }
+
+      const entries = await Promise.all(books.map(async (bookItem) => {
+        const roleFromItem = getRoleFromBookItem(bookItem);
+        if (roleFromItem) {
+          return [bookItem.bookId, roleFromItem];
+        }
+
+        try {
+          const snap = await getDoc(doc(firestore, 'books', bookItem.bookId));
+          if (!snap.exists()) {
+            return [bookItem.bookId, 'owned'];
+          }
+          const data = snap.data() || {};
+          const ownerId = data.ownerId || Object.entries(data.members || {}).find(([, role]) => role === 'Owner')?.[0] || null;
+          return [bookItem.bookId, ownerId === appUser.uid ? 'owned' : 'coauthored'];
+        } catch (error) {
+          console.warn('Could not classify book access role:', bookItem.bookId, error);
+          return [bookItem.bookId, 'owned'];
+        }
+      }));
+
+      if (cancelled) return;
+      setBookAccessRoleById(Object.fromEntries(entries));
+    };
+
+    classifyBooksByAccess();
+    return () => {
+      cancelled = true;
+    };
+  }, [appUser?.uid, books, getRoleFromBookItem]);
+
+  const getBookRole = useCallback((bookItem) => {
+    const roleFromItem = getRoleFromBookItem(bookItem);
+    if (roleFromItem) return roleFromItem;
+    return bookAccessRoleById[bookItem.bookId] || 'owned';
+  }, [bookAccessRoleById, getRoleFromBookItem]);
+
+  const ownedBooks = useMemo(
+    () => books.filter((bookItem) => getBookRole(bookItem) === 'owned'),
+    [books, getBookRole],
+  );
+  const coAuthoredBooks = useMemo(
+    () => books.filter((bookItem) => getBookRole(bookItem) === 'coauthored'),
+    [books, getBookRole],
+  );
 
   const totalBooks = books.length;
+  const ownedCount = ownedBooks.length;
+  const coAuthoredCount = coAuthoredBooks.length;
+  const currentPlanLabel = appUser?.billing?.planLabel || 'Free Explorer';
 
   // Redirect to create-book if user has no books
   useEffect(() => {
@@ -66,7 +150,7 @@ const Books = () => {
               Your books
             </h1>
             <p className="mt-1 text-sm text-app-gray-600 leading-relaxed">
-              Manage your stories, track your plan, and jump back into writing.
+              Manage your library and continue writing where you left off.
             </p>
           </div>
           <div className="flex justify-start sm:justify-end">
@@ -85,22 +169,20 @@ const Books = () => {
           <StatCard
             label="Books"
             value={totalBooks}
-            helper={totalBooks === 0 ? "Let's create your first story" : 'Books in your library'}
+            helper={totalBooks === 0 ? 'Create your first book' : `${ownedCount} owned · ${coAuthoredCount} co-authored`}
             icon={BookOpen}
           />
           <StatCard
-            label="Stories created"
-            value={totalBooks}
-            helper="Free for everyone, forever"
+            label="Current plan"
+            value={currentPlanLabel}
+            helper={totalBooks === 0 ? 'You can create unlimited books' : 'Book access active'}
             icon={Sparkles}
           />
         </div>
 
         <section className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-app-gray-900">
-              Library
-            </h2>
+            <h2 className="text-xl font-semibold text-app-gray-900">Library</h2>
             {books.length > 0 && (
               <p className="text-xs text-app-gray-600">
                 Showing {books.length} {books.length === 1 ? 'book' : 'books'}
@@ -121,16 +203,70 @@ const Books = () => {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {books.map(book => (
-                <BookCard
-                  key={book.bookId}
-                  bookId={book.bookId}
-                  bookTitle={book.title}
-                  coverImage={book.coverImage}
-                  onBookDeleted={handleBookDeleted}
-                />
-              ))}
+            <div className="space-y-8">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-base font-semibold text-app-gray-900">My Books</h3>
+                  <p className="text-xs text-app-gray-600">{ownedCount} total</p>
+                </div>
+                {ownedBooks.length === 0 ? (
+                  <p className="text-sm text-app-gray-600 rounded-xl border border-app-gray-100 bg-white px-4 py-3">
+                    You have not created any books yet.
+                  </p>
+                ) : (
+                  <>
+                    <div className="overflow-x-auto pb-2">
+                      <div className="flex gap-5 pr-2">
+                        {ownedBooks.slice(0, 10).map((book) => (
+                          <div key={book.bookId} className="w-[300px] min-w-[300px] shrink-0">
+                            <BookCard
+                              bookId={book.bookId}
+                              bookTitle={book.title}
+                              coverImage={book.coverImage || book.coverImageUrl}
+                              onBookDeleted={handleBookDeleted}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {ownedBooks.length > 10 && (
+                      <p className="text-xs text-app-gray-600">Showing first 10 books in this section.</p>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-base font-semibold text-app-gray-900">Shared with me</h3>
+                  <p className="text-xs text-app-gray-600">{coAuthoredCount} total</p>
+                </div>
+                {coAuthoredBooks.length === 0 ? (
+                  <p className="text-sm text-app-gray-600 rounded-xl border border-app-gray-100 bg-white px-4 py-3">
+                    No co-authored books yet.
+                  </p>
+                ) : (
+                  <>
+                    <div className="overflow-x-auto pb-2">
+                      <div className="flex gap-5 pr-2">
+                        {coAuthoredBooks.slice(0, 10).map((book) => (
+                          <div key={book.bookId} className="w-[300px] min-w-[300px] shrink-0">
+                            <BookCard
+                              bookId={book.bookId}
+                              bookTitle={book.title}
+                              coverImage={book.coverImage || book.coverImageUrl}
+                              onBookDeleted={handleBookDeleted}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {coAuthoredBooks.length > 10 && (
+                      <p className="text-xs text-app-gray-600">Showing first 10 books in this section.</p>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           )}
         </section>

@@ -164,7 +164,7 @@ const BookItem = ({ bookId, bookTitle, coverImage, onBookDeleted }) => {
   return (
     <div className={`relative bg-white p-5 rounded-2xl shadow-appSoft border border-app-gray-100 hover:shadow-appCard hover:border-app-iris/40 transition-all duration-200 ${isDeleting ? 'pointer-events-none' : ''}`}>
       <Link
-        to={`/book/${bookId}`}
+        to={`/book/${bookId}/view`}
         className="flex items-center gap-4 pr-28"
       >
         {book.coverImage ? (
@@ -187,7 +187,7 @@ const BookItem = ({ bookId, bookTitle, coverImage, onBookDeleted }) => {
             {book.name}
           </h3>
           <p className="mt-1 text-xs text-app-gray-600">
-            Click to open the editor and continue the journey.
+            Click to open and read this journey.
           </p>
         </div>
       </Link>

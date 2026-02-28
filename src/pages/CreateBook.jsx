@@ -22,6 +22,8 @@ const CreateBook = () => {
   const [promptMode, setPromptMode] = useState(false); // false = baby journal, true = custom prompt
   const [prompt, setPrompt] = useState('');
   const [layoutMode, setLayoutMode] = useState('standard'); // 'standard', 'a4', 'scrapbook'
+  const [openPlannerAfterCreate, setOpenPlannerAfterCreate] = useState(false);
+  const [plannerPrompt, setPlannerPrompt] = useState('');
   const [coverImageFile, setCoverImageFile] = useState(null);
   const [coverImagePreview, setCoverImagePreview] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -165,6 +167,15 @@ const CreateBook = () => {
           ownerId: user.uid
         })),
         skipFetch: true,
+        ...(openPlannerAfterCreate
+          ? {
+            plannerSeed: {
+              open: true,
+              source: 'create',
+              initialPrompt: plannerPrompt.trim(),
+            },
+          }
+          : {}),
       };
 
       console.log("📦 Navigation State:", navState);
@@ -435,6 +446,42 @@ const CreateBook = () => {
                       )}
                     </div>
                   )}
+
+                  <div className="p-4 rounded-xl border border-app-gray-200 bg-app-gray-50 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-xs font-semibold text-app-gray-600 uppercase tracking-wide">
+                          Next step: Media Planner
+                        </div>
+                        <p className="text-xs text-app-gray-600 mt-1">
+                          After the book is created, open a media-planning modal to distribute images/videos across pages.
+                        </p>
+                      </div>
+                      <Switch
+                        checked={openPlannerAfterCreate}
+                        onCheckedChange={setOpenPlannerAfterCreate}
+                      />
+                    </div>
+
+                    {openPlannerAfterCreate && (
+                      <div className="space-y-3">
+                        <div>
+                          <label htmlFor="planner-prompt" className="text-xs font-semibold text-app-gray-600 mb-2 block">
+                            Media distribution prompt
+                          </label>
+                          <Textarea
+                            id="planner-prompt"
+                            value={plannerPrompt}
+                            onChange={(e) => setPlannerPrompt(e.target.value)}
+                            placeholder="Example: Spread key match moments across 6 pages, keep each video on its own page, and add short captions."
+                            className="min-h-[90px] rounded-xl border-app-gray-300"
+                            maxLength={500}
+                          />
+                          <span className="text-xs text-app-gray-500">{plannerPrompt.length}/500</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="pt-4 flex items-center justify-between gap-3">
@@ -442,7 +489,7 @@ const CreateBook = () => {
                     type="button"
                     variant="appGhost"
                     className="text-sm"
-                    onClick={() => navigate('/dashboard')}
+                    onClick={() => navigate('/books')}
                     disabled={loading}
                   >
                     Skip for now

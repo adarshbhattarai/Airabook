@@ -12,8 +12,11 @@ const SectionTitle = ({ section, value, onChange, readOnly }) => {
                 onChange={(e) => onChange(e.target.value)}
                 placeholder={section.placeholder}
                 readOnly={readOnly}
-                className="text-2xl sm:text-3xl font-semibold bg-white/80 border border-app-gray-100 shadow-appSoft focus-visible:ring-2 focus-visible:ring-app-iris/30"
+                className="text-2xl sm:text-3xl font-semibold bg-white/90 border border-app-gray-300 shadow-appSoft focus-visible:ring-2 focus-visible:ring-app-iris/30 template-page-input"
             />
+            {section.helperText && (
+                <p className="text-xs text-app-gray-600">{section.helperText}</p>
+            )}
         </div>
     );
 };

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Sparkles, Send } from 'lucide-react';
+import { ImagePlus, Sparkles, Send } from 'lucide-react';
 import { PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { streamAirabookAI } from '@/lib/aiStream';
 
@@ -11,6 +11,7 @@ const ChatPanel = ({
   chapterId,
   incomingMessages,
   incomingMessagesToken,
+  onOpenPhotoPlanner,
 }) => {
   const [messages, setMessages] = useState([
     { role: 'assistant', content: 'Hello! I can help you plan your book, brainstorm ideas, or review your writing. What are you working on today?' }
@@ -228,15 +229,32 @@ const ChatPanel = ({
           <Sparkles className="h-4 w-4 text-app-iris" />
           <h3 className="font-semibold text-foreground text-sm">AI Assistant</h3>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setIsMinimized(true)}
-          className="h-6 w-6 text-muted-foreground hover:text-foreground"
-          title="Minimize"
-        >
-          <PanelRightClose className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-1">
+          {onOpenPhotoPlanner && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onOpenPhotoPlanner({
+                source: 'book_assistant',
+                initialPrompt: input.trim(),
+              })}
+              className="h-7 px-2 text-xs"
+              title="Plan with media"
+            >
+              <ImagePlus className="h-3.5 w-3.5 mr-1 text-app-iris" />
+              Plan media
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsMinimized(true)}
+            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+            title="Minimize"
+          >
+            <PanelRightClose className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">

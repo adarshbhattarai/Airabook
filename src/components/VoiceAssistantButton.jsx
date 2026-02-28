@@ -3,8 +3,9 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { Mic, MicOff, Loader2, Volume2, Brain } from 'lucide-react';
 import { useVoiceAssistant } from '@/hooks/useVoiceAssistant';
+import { cn } from '@/lib/utils';
 
-const VoiceAssistantButton = ({ bookId, chapterId, pageId }) => {
+const VoiceAssistantButton = ({ bookId, chapterId, pageId, className = '' }) => {
   const { toast } = useToast();
   const [debugOpen, setDebugOpen] = useState(false);
   const lastErrorToastRef = useRef('');
@@ -83,7 +84,7 @@ const VoiceAssistantButton = ({ bookId, chapterId, pageId }) => {
         variant="outline"
         onClick={onClick}
         disabled={!canStart || isConnecting}
-        className="flex items-center gap-2 h-8 text-xs"
+        className={cn('flex items-center gap-2 h-8 text-xs', className)}
         title="Talk with Aira (voice)"
       >
         <Icon className={`h-3 w-3 ${isConnecting ? 'animate-spin' : ''}`} />

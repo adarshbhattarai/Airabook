@@ -19,7 +19,7 @@ const NotionSuggestionMenu = ({ items, selectedIndex, onItemClick, loadingState 
       rows.push(
         <div
           key={`group-${groupLabel}-${index}`}
-          className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500"
+          className="bn-slash-group px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wide"
         >
           {groupLabel}
         </div>
@@ -32,19 +32,19 @@ const NotionSuggestionMenu = ({ items, selectedIndex, onItemClick, loadingState 
         key={`item-${item.title}-${index}`}
         id={`bn-suggestion-menu-item-${index}`}
         type="button"
-        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
-          isSelected ? "bg-gray-100" : "hover:bg-gray-100"
+        className={`bn-slash-item w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
+          isSelected ? "bn-slash-item-selected" : ""
         }`}
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => onItemClick?.(item)}
       >
-        <span className="h-5 w-5 text-gray-500 flex items-center justify-center">
+        <span className="bn-slash-item-icon h-5 w-5 flex items-center justify-center">
           {item.icon || null}
         </span>
         <span className="flex-1 min-w-0">
-          <span className="block text-sm font-medium text-gray-900">{item.title}</span>
+          <span className="bn-slash-item-title block text-sm font-medium">{item.title}</span>
           {item.subtext && (
-            <span className="block text-xs text-gray-500 truncate">{item.subtext}</span>
+            <span className="bn-slash-item-subtext block text-xs truncate">{item.subtext}</span>
           )}
         </span>
       </button>
@@ -54,22 +54,22 @@ const NotionSuggestionMenu = ({ items, selectedIndex, onItemClick, loadingState 
   return (
     <div
       id="bn-suggestion-menu"
-      className="min-w-[320px] max-w-[360px] rounded-2xl border border-gray-200 bg-white/95 text-gray-900 shadow-2xl backdrop-blur"
+      className="bn-slash-menu min-w-[320px] max-w-[360px] rounded-2xl border shadow-2xl backdrop-blur"
     >
-      <div className="px-3 pt-3 pb-2 border-b border-gray-200 text-xs text-gray-500">
+      <div className="bn-slash-filter px-3 pt-3 pb-2 border-b text-xs">
         Filter...
       </div>
-      <div className="max-h-[280px] overflow-auto py-2">
+      <div className="bn-slash-body max-h-[280px] overflow-auto py-2">
         {(loadingState === "loading-initial" || loadingState === "loading") && (
-          <div className="px-3 py-2 text-xs text-gray-500">Loading...</div>
+          <div className="bn-slash-empty px-3 py-2 text-xs">Loading...</div>
         )}
         {rows.length > 0 ? (
           rows
         ) : (
-          <div className="px-3 py-2 text-xs text-gray-500">No results</div>
+          <div className="bn-slash-empty px-3 py-2 text-xs">No results</div>
         )}
       </div>
-      <div className="flex items-center justify-between px-3 py-2 border-t border-gray-200 text-[11px] text-gray-400">
+      <div className="bn-slash-footer flex items-center justify-between px-3 py-2 border-t text-[11px]">
         <span>Type '/' on the page</span>
         <span>esc</span>
       </div>
@@ -89,6 +89,7 @@ const BlockEditor = forwardRef(
       onFocus,
       onMediaRequest, // NEW: callback when /media command is triggered
       onGenImageRequest, // NEW: callback when /genimg command is triggered
+      readOnly = false,
     },
     ref
   ) => {
@@ -633,7 +634,7 @@ const BlockEditor = forwardRef(
 
     return (
       <div
-        className="w-full h-full min-h-0"
+        className="app-block-editor-root w-full h-full min-h-0"
         onFocus={onFocus} // Trigger focus event when user clicks or types
         tabIndex={-1} // Allow div to focus if needed, but usually editor children handle it
       >
@@ -641,14 +642,18 @@ const BlockEditor = forwardRef(
           editor={editor}
           onChange={handleChange}
           theme={"light"}
+          editable={!readOnly}
+          className="app-blocknote"
           slashMenu={false} // Disable default, we'll use custom
         >
           {/* Custom Slash Menu with /media command */}
-          <SuggestionMenuController
-            triggerCharacter="/"
-            getItems={getCustomSlashMenuItems}
-            suggestionMenuComponent={NotionSuggestionMenu}
-          />
+          {!readOnly && (
+            <SuggestionMenuController
+              triggerCharacter="/"
+              getItems={getCustomSlashMenuItems}
+              suggestionMenuComponent={NotionSuggestionMenu}
+            />
+          )}
         </BlockNoteView>
       </div>
     );

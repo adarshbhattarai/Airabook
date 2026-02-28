@@ -6,12 +6,31 @@ service cloud.firestore {
     }
     // Users collection
     match /users/{userId} {
+      function isValidProfileFieldLengths() {
+        return request.resource.data.displayName is string &&
+          request.resource.data.displayName.size() > 0 &&
+          request.resource.data.displayName.size() <= 50 &&
+          (!('writingContext' in request.resource.data) ||
+            (request.resource.data.writingContext is string &&
+             request.resource.data.writingContext.size() <= 200)) &&
+          (!('displayNameLower' in request.resource.data) ||
+            (request.resource.data.displayNameLower is string &&
+             request.resource.data.displayNameLower.size() <= 50));
+      }
+
       allow read: if isAdminRequest() || (request.auth != null && request.auth.uid == userId);
       allow create: if isAdminRequest(); // Only backend (Admin SDK/Admin claim) can create users
       allow update: if isAdminRequest() || (request.auth != null && request.auth.uid == userId &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(
           ['photoURL', 'displayName', 'displayNameLower', 'writingContext', 'language', 'useLanguageForBooks', 'updatedAt']
-        ));
+        ) &&
+        isValidProfileFieldLengths());
+
+      // Notification projection is server-authoritative (Cloud Functions/Admin SDK only writes)
+      match /notifications/{notificationId} {
+        allow read: if isAdminRequest() || (request.auth != null && request.auth.uid == userId);
+        allow create, update, delete: if false;
+      }
     }
 
     // Payments collection
@@ -61,11 +80,13 @@ service cloud.firestore {
       // - Owner: full access
       // - Co-author: can update pages/chapters but not isPublic, members, or delete chapters
       allow update: if isAdminRequest() || (request.auth != null && (
-        isOwner() || 
+        (isOwner() &&
+         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['members', 'memberPermissions', 'ownerId'])) ||
         (isCoAuthor() && 
-         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isPublic', 'members', 'ownerId']) &&
+         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isPublic', 'members', 'memberPermissions', 'ownerId']) &&
          request.resource.data.isPublic == resource.data.isPublic &&
          request.resource.data.members == resource.data.members &&
+         request.resource.data.memberPermissions == resource.data.memberPermissions &&
          request.resource.data.ownerId == resource.data.ownerId)
       ));
 
@@ -91,20 +112,15 @@ service cloud.firestore {
 
     // Invites collection
     match /invites/{inviteId} {
-      // Helper function to check if user is the inviter (book owner)
-      function isInviter() {
-        return request.auth != null && resource.data.invitedBy == request.auth.uid;
+      function isOwnerOrInvitee() {
+        return request.auth != null && (
+          resource.data.ownerId == request.auth.uid ||
+          resource.data.inviteeUid == request.auth.uid
+        );
       }
 
-      // Helper function to check if user is the invitee
-      function isInvitee() {
-        return request.auth != null && request.auth.token.email == resource.data.email;
-      }
-
-      allow read: if isAdminRequest() || (request.auth != null && (isInviter() || isInvitee()));
-      allow create: if isAdminRequest() || request.auth != null; // Book owner creates invites
-      allow update: if isAdminRequest() || (request.auth != null && isInvitee()); // Only invitee can accept
-      allow delete: if isAdminRequest() || (request.auth != null && (isInviter() || isInvitee()));
+      allow read: if isAdminRequest() || isOwnerOrInvitee();
+      allow create, update, delete: if false;
     }
 
     // Albums collection - single document per album (no subcollections)
@@ -121,11 +137,12 @@ service cloud.firestore {
 
       allow read: if isAdminRequest() || (request.auth != null && hasAlbumAccess());
 
-      allow create: if isAdminRequest() || (request.auth != null && 
-        request.resource.data.accessPermission.ownerId == request.auth.uid);
+      // Album creation must go through backend callables for quota enforcement.
+      allow create: if isAdminRequest();
 
       allow update: if isAdminRequest() || (request.auth != null &&
-        resource.data.accessPermission.ownerId == request.auth.uid);
+        resource.data.accessPermission.ownerId == request.auth.uid &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['accessPermission']));
 
       allow delete: if isAdminRequest() || (request.auth != null &&
         resource.data.accessPermission.ownerId == request.auth.uid);
