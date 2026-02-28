@@ -106,7 +106,7 @@ const computePalette = (mode) => {
   };
 };
 
-const DashboardTalk3DView = () => {
+const DashboardTalk3DView = ({ bookId, chapterId, pageId }) => {
   const {
     status,
     statusCopy,
@@ -115,7 +115,8 @@ const DashboardTalk3DView = () => {
     isListening,
     isSpeaking,
     prefersReducedMotion,
-  } = useTalkDemoState();
+    canStart,
+  } = useTalkDemoState({ bookId, chapterId, pageId });
 
   const [themeMode, setThemeMode] = useState(() => detectThemeMode());
 
@@ -155,11 +156,13 @@ const DashboardTalk3DView = () => {
             'dashboard-talk-mic-btn dashboard-talk-3d-keyboard-btn',
             isActive && 'dashboard-talk-mic-btn-active',
             isSpeaking && 'dashboard-talk-mic-btn-speaking',
+            !canStart && 'opacity-60 cursor-not-allowed',
           )}
+          disabled={!canStart || status === 'connecting'}
           onClick={toggleMic}
           aria-label={isActive ? 'Stop talk mode' : 'Start talk mode'}
           aria-pressed={isActive}
-          title={isActive ? 'Stop talk mode' : 'Start talk mode'}
+          title={!canStart ? 'Open a book to enable talk mode' : (isActive ? 'Stop talk mode' : 'Start talk mode')}
         >
           <MicIcon className={cn('h-6 w-6', status === 'connecting' && 'animate-spin')} />
         </button>

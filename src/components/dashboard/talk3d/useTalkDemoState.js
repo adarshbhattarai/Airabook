@@ -1,8 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-
-const DEFAULT_CONNECTING_DELAY_MS = 820;
-const DEFAULT_SPEAKING_DELAY_MS = 1300;
-const DEFAULT_SPEAKING_DURATION_MS = 1400;
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useVoiceAssistant } from '@/hooks/useVoiceAssistant';
 
 export const TALK_STATUS_COPY = {
   idle: {
@@ -11,29 +8,51 @@ export const TALK_STATUS_COPY = {
   },
   connecting: {
     label: 'Connecting...',
-    helper: 'Preparing voice channel (UI demo only).',
+    helper: 'Opening voice channel…',
   },
   listening: {
     label: 'Listening',
     helper: 'I am listening. Tap again to stop.',
   },
-  speaking_demo: {
-    label: 'Speaking (demo)',
-    helper: 'Voice animation preview in progress.',
+  user_speaking: {
+    label: 'Listening',
+    helper: 'You are speaking…',
+  },
+  thinking: {
+    label: 'Thinking',
+    helper: 'Processing your voice…',
+  },
+  assistant_speaking: {
+    label: 'Speaking',
+    helper: 'Assistant is speaking. Tap mic to interrupt.',
+  },
+  error: {
+    label: 'Voice error',
+    helper: 'Voice channel error. Tap mic to retry.',
+  },
+  disconnected: {
+    label: 'Disconnected',
+    helper: 'Voice channel closed. Tap mic to reconnect.',
   },
 };
 
 const useTalkDemoState = ({
-  connectingDelayMs = DEFAULT_CONNECTING_DELAY_MS,
-  speakingDelayMs = DEFAULT_SPEAKING_DELAY_MS,
-  speakingDurationMs = DEFAULT_SPEAKING_DURATION_MS,
+  bookId,
+  chapterId,
+  pageId,
 } = {}) => {
-  const [status, setStatus] = useState('idle');
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
 
-  const connectingTimerRef = useRef(null);
-  const speakingStartTimerRef = useRef(null);
-  const speakingEndTimerRef = useRef(null);
+  const {
+    status,
+    canStart,
+    wsConnected,
+    lastError,
+    startListening,
+    stopListening,
+    interrupt,
+    disconnect,
+  } = useVoiceAssistant({ bookId, chapterId, pageId });
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -51,71 +70,61 @@ const useTalkDemoState = ({
     return () => mediaQuery.removeListener(applyPreference);
   }, []);
 
-  const clearTimers = useCallback(() => {
-    if (connectingTimerRef.current) {
-      clearTimeout(connectingTimerRef.current);
-      connectingTimerRef.current = null;
-    }
-    if (speakingStartTimerRef.current) {
-      clearTimeout(speakingStartTimerRef.current);
-      speakingStartTimerRef.current = null;
-    }
-    if (speakingEndTimerRef.current) {
-      clearTimeout(speakingEndTimerRef.current);
-      speakingEndTimerRef.current = null;
-    }
-  }, []);
+  const toggleMic = useCallback(async () => {
+    if (!canStart || status === 'connecting') return;
 
-  useEffect(() => () => clearTimers(), [clearTimers]);
-
-  const queueSpeakingDemo = useCallback(() => {
-    if (prefersReducedMotion) return;
-
-    speakingStartTimerRef.current = setTimeout(() => {
-      setStatus('speaking_demo');
-      speakingEndTimerRef.current = setTimeout(() => {
-        setStatus('listening');
-      }, speakingDurationMs);
-    }, speakingDelayMs);
-  }, [prefersReducedMotion, speakingDelayMs, speakingDurationMs]);
-
-  const startDemoFlow = useCallback(() => {
-    clearTimers();
-    setStatus('connecting');
-    connectingTimerRef.current = setTimeout(() => {
-      setStatus('listening');
-      queueSpeakingDemo();
-    }, connectingDelayMs);
-  }, [clearTimers, queueSpeakingDemo, connectingDelayMs]);
-
-  const toggleMic = useCallback(() => {
-    if (status === 'connecting') return;
-    if (status === 'idle') {
-      startDemoFlow();
+    if (status === 'assistant_speaking') {
+      interrupt();
       return;
     }
 
-    clearTimers();
-    setStatus('idle');
-  }, [status, startDemoFlow, clearTimers]);
+    if (status === 'listening' || status === 'user_speaking' || status === 'thinking') {
+      stopListening();
+      return;
+    }
 
-  const isActive = status !== 'idle';
-  const isSpeaking = status === 'speaking_demo';
-  const isListening = status === 'listening' || isSpeaking;
+    if (status === 'error' || status === 'disconnected') {
+      disconnect();
+    }
 
-  const statusCopy = useMemo(
-    () => TALK_STATUS_COPY[status] || TALK_STATUS_COPY.idle,
-    [status],
-  );
+    try {
+      await startListening();
+    } catch (error) {
+      console.error('[dashboard-talk] startListening failed:', error);
+    }
+  }, [canStart, disconnect, interrupt, startListening, status, stopListening]);
+
+  const isActive = status !== 'idle' && status !== 'disconnected' && status !== 'error';
+  const isSpeaking = status === 'assistant_speaking';
+  const isListening = status === 'listening' || status === 'user_speaking';
+
+  const statusCopy = useMemo(() => {
+    if (!canStart) {
+      return {
+        label: 'No book context',
+        helper: 'Open a book or select context before using talk mode.',
+      };
+    }
+    if (status === 'error') {
+      return {
+        label: TALK_STATUS_COPY.error.label,
+        helper: lastError?.message || TALK_STATUS_COPY.error.helper,
+      };
+    }
+    return TALK_STATUS_COPY[status] || TALK_STATUS_COPY.idle;
+  }, [canStart, lastError?.message, status]);
 
   return {
-    status,
+    status: canStart ? status : 'idle',
     statusCopy,
     toggleMic,
     isActive,
     isListening,
     isSpeaking,
     prefersReducedMotion,
+    canStart,
+    wsConnected,
+    lastError,
   };
 };
 

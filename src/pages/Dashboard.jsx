@@ -39,6 +39,7 @@ const Dashboard = () => {
     }
     return item;
   }) : [];
+  const voiceBookId = selectedBook?.bookId || books[0]?.bookId || null;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -211,13 +212,15 @@ const Dashboard = () => {
 
       {dashboardMode === 'talk' ? (
         webGLChecked && webGLSupported ? (
-          <Talk3DErrorBoundary fallback={<DashboardTalkView initialVisualMode={talkVisualMode} />}>
-            <Suspense fallback={<DashboardTalkView initialVisualMode={talkVisualMode} />}>
-              <DashboardTalk3DView />
+          <Talk3DErrorBoundary
+            fallback={<DashboardTalkView initialVisualMode={talkVisualMode} bookId={voiceBookId} />}
+          >
+            <Suspense fallback={<DashboardTalkView initialVisualMode={talkVisualMode} bookId={voiceBookId} />}>
+              <DashboardTalk3DView bookId={voiceBookId} />
             </Suspense>
           </Talk3DErrorBoundary>
         ) : (
-          <DashboardTalkView initialVisualMode={talkVisualMode} />
+          <DashboardTalkView initialVisualMode={talkVisualMode} bookId={voiceBookId} />
         )
       ) : (
         <>
