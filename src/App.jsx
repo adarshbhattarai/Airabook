@@ -12,14 +12,16 @@ import Signup from '@/pages/Signup';
 import ForgotPassword from '@/pages/ForgotPassword';
 import Dashboard from '@/pages/Dashboard';
 import Books from '@/pages/Books';
+import Notifications from '@/pages/Notifications';
 import AssetRegistry from '@/pages/Media';
 import Notes from '@/pages/Notes';
 import CreateBook from '@/pages/CreateBook';
+import BabyJournalPreview from '@/pages/BabyJournalPreview';
 import Donate from '@/pages/Donate';
 import DonateSuccess from '@/pages/DonateSuccess';
 import BookDetail from '@/pages/BookDetail';
-import BookView from '@/pages/BookView';
 import AlbumDetail from '@/pages/AlbumDetail';
+import NoteDetail from '@/pages/NoteDetail';
 import ErrorPage from '@/pages/ErrorPage';
 import ProfileSettings from '@/pages/ProfileSettings';
 import AdminDashboard from '@/pages/admin/AdminDashboard';
@@ -83,6 +85,16 @@ function App() {
               }
             />
             <Route
+              path="/notifications"
+              element={
+                <PrivateRoute>
+                  <ThemedAppShell>
+                    <Notifications />
+                  </ThemedAppShell>
+                </PrivateRoute>
+              }
+            />
+            <Route
               path="/media"
               element={
                 <PrivateRoute>
@@ -113,11 +125,31 @@ function App() {
               }
             />
             <Route
+              path="/notes/:id"
+              element={
+                <PrivateRoute>
+                  <ThemedAppShell>
+                    <NoteDetail />
+                  </ThemedAppShell>
+                </PrivateRoute>
+              }
+            />
+            <Route
               path="/create-book"
               element={
                 <PrivateRoute>
                   <ThemedAppShell>
                     <CreateBook />
+                  </ThemedAppShell>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/baby-journal-preview"
+              element={
+                <PrivateRoute>
+                  <ThemedAppShell>
+                    <BabyJournalPreview />
                   </ThemedAppShell>
                 </PrivateRoute>
               }
@@ -137,7 +169,7 @@ function App() {
               element={
                 <PrivateRoute>
                   <ThemedAppShell>
-                    <BookView />
+                    <BookDetail />
                   </ThemedAppShell>
                 </PrivateRoute>
               }

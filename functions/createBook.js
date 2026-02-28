@@ -3,7 +3,7 @@ const logger = require("firebase-functions/logger");
 
 const admin = require("firebase-admin");
 const FieldValue = require("firebase-admin/firestore").FieldValue;
-const { assertAndIncrementCounter } = require("./utils/limits");
+const { assertAndIncrementCounter, loadConfig, tierForUser } = require("./utils/limits");
 
 // Firebase Admin should be initialized by index.js
 // If not initialized, initialize with default settings (with console.log since logger might not be ready)
@@ -31,6 +31,7 @@ const {
   extractChapterTitles,
   titlesToChapters,
 } = require("./utils/prompts");
+const { babyJournalTemplateV1 } = require("./templates/babyJournal");
 
 // --- Helper: safe stringify ---------------------------------------------------
 function safeStringify(obj, space = 2) {
@@ -71,6 +72,51 @@ const getMidpointString = (prev = "", next = "") => {
 
 const getNewOrderBetween = (prevOrder = "", nextOrder = "") =>
   getMidpointString(prevOrder, nextOrder);
+
+// Seed a few starter pages inside a chapter (used for generated baby journals)
+async function seedStarterPages(db, bookId, chapterId, userId, template, pagesPerChapter = 3) {
+  const summaries = [];
+  try {
+    const chapterRef = db.collection("books").doc(bookId).collection("chapters").doc(chapterId);
+    for (let i = 0; i < pagesPerChapter; i++) {
+      const order = String.fromCharCode(97 + i); // a, b, c...
+      const pageData = {
+        note: "",
+        plainText: "",
+        embeddings: null,
+        embeddingModel: null,
+        media: [],
+        order,
+        type: template?.type || "babyJournalPage",
+        templateVersion: template?.templateVersion || "v1",
+        content: template?.defaults ? { ...template.defaults } : {},
+        theme: template?.theme || null,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        createdBy: userId,
+      };
+
+      const pageRef = await chapterRef.collection("pages").add(pageData);
+      summaries.push({
+        pageId: pageRef.id,
+        shortNote: `Page ${i + 1}`,
+        order,
+      });
+    }
+
+    if (summaries.length > 0) {
+      await chapterRef.update({
+        pagesSummary: summaries,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+
+    return summaries;
+  } catch (error) {
+    logger.error("âŒ Failed to seed starter pages:", error);
+    return [];
+  }
+}
 
 // --- Validation --------------------------------------------------------------
 function validateCreateBookRequest(data) {
@@ -306,6 +352,16 @@ exports.createBook = onCall(
         bookDescription = `A blank baby book for ${title} - start writing your own story!`;
       }
 
+      const cfg = loadConfig();
+      const tier = tierForUser(userData, userId, cfg);
+      const chapterPerBookLimit = Number(cfg?.plans?.[tier]?.chaptersPerBook);
+      if (Number.isFinite(chapterPerBookLimit) && chapterPerBookLimit > 0 && tier !== "god" && chapters.length > chapterPerBookLimit) {
+        throw new HttpsError(
+          "resource-exhausted",
+          `You can create up to ${chapterPerBookLimit} chapters per book on your current plan.`
+        );
+      }
+
       // Create book document
       logger.log(`📝 Creating book document`);
       const bookData = {
@@ -315,6 +371,7 @@ exports.createBook = onCall(
         creationType,
         description: bookDescription,
         ownerId: userId,
+        templateType: creationType === 0 && !promptMode ? babyJournalTemplateV1.type : null,
         members: {
           [userId]: "Owner",
         },
@@ -357,6 +414,19 @@ exports.createBook = onCall(
         logger.log(
           `📄 Chapter "${chapter.title}" created with ID: ${chapterRef.id} in book ${bookRef.id}`
         );
+        if (creationType === 0 && !promptMode) {
+          const seeded = await seedStarterPages(
+            db,
+            bookRef.id,
+            chapterRef.id,
+            userId,
+            babyJournalTemplateV1,
+            3
+          );
+          logger.log(
+            `Seeded ${seeded.length} starter page(s) for chapter "${chapter.title}"`
+          );
+        }
         return {
           id: chapterRef.id,
           title: chapter.title,

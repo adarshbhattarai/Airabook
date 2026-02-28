@@ -18,6 +18,7 @@ import {
 } from 'firebase/functions';
 import { auth, firestore, functions } from '@/lib/firebase';
 import { useToast } from '@/components/ui/use-toast';
+import { PROFILE_LIMITS } from '@/constants/profileLimits';
 
 const defaultEntitlements = {
   canReadBooks: true,
@@ -58,6 +59,11 @@ export const AuthProvider = ({ children }) => {
         console.log('👤 Fetching user data for:', user.uid);
         setAppLoading(true);
 
+        const syncUserAuthFlags = httpsCallable(functions, 'syncUserAuthFlags');
+        syncUserAuthFlags().catch((error) => {
+          console.warn('syncUserAuthFlags failed:', error?.message || error);
+        });
+
         const userRef = doc(firestore, 'users', user.uid);
         console.log('🔗 Setting up snapshot listener for:', userRef.path);
 
@@ -72,6 +78,11 @@ export const AuthProvider = ({ children }) => {
               setAppUser({
                 uid: user.uid,
                 ...userData,
+                emailVerified: typeof userData.emailVerified === 'boolean' ? userData.emailVerified : !!user.emailVerified,
+                notificationCounters: {
+                  pendingInvites: 0,
+                  ...(userData.notificationCounters || {}),
+                },
                 billing: userData.billing || createDefaultBilling(),
               });
               setAppLoading(false);
@@ -92,6 +103,8 @@ export const AuthProvider = ({ children }) => {
               billing: createDefaultBilling(),
               displayName: user.displayName || '',
               email: user.email || '',
+              emailVerified: !!user.emailVerified,
+              notificationCounters: { pendingInvites: 0 },
               createdAt: new Date(),
               updatedAt: new Date(),
             });
@@ -183,10 +196,31 @@ export const AuthProvider = ({ children }) => {
       throw new Error('No user is currently signed in.');
     }
 
+    const normalizedDisplayName = typeof displayName === 'string' ? displayName.trim() : '';
+    const hasWritingContext = typeof additionalData.writingContext === 'string';
+    const normalizedWritingContext = hasWritingContext ? additionalData.writingContext : undefined;
+
+    if (!normalizedDisplayName) {
+      throw new Error('Display name is required.');
+    }
+
+    if (normalizedDisplayName.length > PROFILE_LIMITS.displayName) {
+      throw new Error(`Display name cannot exceed ${PROFILE_LIMITS.displayName} characters.`);
+    }
+
+    if (hasWritingContext && normalizedWritingContext.length > PROFILE_LIMITS.writingContext) {
+      throw new Error(`Writing context cannot exceed ${PROFILE_LIMITS.writingContext} characters.`);
+    }
+
+    const normalizedAdditionalData = { ...additionalData };
+    if (hasWritingContext) {
+      normalizedAdditionalData.writingContext = normalizedWritingContext;
+    }
+
     const profileUpdates = {};
 
-    if (displayName && displayName !== auth.currentUser.displayName) {
-      profileUpdates.displayName = displayName;
+    if (normalizedDisplayName !== auth.currentUser.displayName) {
+      profileUpdates.displayName = normalizedDisplayName;
     }
 
     if (photoURL && photoURL !== auth.currentUser.photoURL) {
@@ -206,11 +240,12 @@ export const AuthProvider = ({ children }) => {
     await setDoc(
       userRef,
       {
-        displayName: displayName || auth.currentUser.displayName || '',
+        displayName: normalizedDisplayName,
+        displayNameLower: normalizedDisplayName.toLowerCase(),
         email: email || auth.currentUser.email || '',
         photoURL: photoURL || auth.currentUser.photoURL || '',
         updatedAt: new Date(),
-        ...additionalData, // Save any additional fields (writingContext, language, etc.)
+        ...normalizedAdditionalData, // Save any additional fields (writingContext, language, etc.)
       },
       { merge: true },
     );

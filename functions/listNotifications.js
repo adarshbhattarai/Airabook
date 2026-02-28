@@ -1,0 +1,4 @@
+const { onCall } = require('firebase-functions/v2/https');
+const { listNotificationsController } = require('./modules/collab/controllers/collabController');
+
+exports.listNotifications = onCall({ region: 'us-central1', cors: true }, listNotificationsController);

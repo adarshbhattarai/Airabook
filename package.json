@@ -49,6 +49,8 @@
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-toast": "^1.1.5",
     "@radix-ui/react-toggle-group": "^1.1.11",
+    "@react-three/drei": "^9.105.6",
+    "@react-three/fiber": "^8.17.10",
     "@stripe/stripe-js": "^2.4.0",
     "@supabase/supabase-js": "2.30.0",
     "class-variance-authority": "^0.7.1",
@@ -64,6 +66,7 @@
     "react-router-dom": "^6.16.0",
     "tailwind-merge": "^1.14.0",
     "tailwindcss-animate": "^1.0.7",
+    "three": "^0.160.0",
     "uuid": "^13.0.0"
   },
   "devDependencies": {

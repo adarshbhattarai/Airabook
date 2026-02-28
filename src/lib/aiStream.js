@@ -1,35 +1,106 @@
 import { auth } from '@/lib/firebase';
+import { SERVICE_ENDPOINTS, buildServiceUrl } from '@/config/serviceEndpoints';
 
-const REGION = 'us-central1';
+const DEFAULT_CHAT_STREAM_PATH = 'api/v1/chat/stream';
+const CHUNK_EVENTS = new Set(['chunk', 'delta', 'token', 'assistant_text', 'assistanttext', 'content', 'message']);
+const DONE_EVENTS = new Set(['done', 'final', 'complete', 'completed', 'finish', 'finished']);
+const ERROR_EVENTS = new Set(['error', 'failed', 'failure']);
 
 const getStreamUrl = () => {
-  const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
-  if (!projectId) {
-    throw new Error('Missing Firebase project ID.');
+  const configuredPath = import.meta.env.VITE_SPRING_CHAT_STREAM_ENDPOINT || DEFAULT_CHAT_STREAM_PATH;
+  if (/^https?:\/\//i.test(configuredPath)) {
+    return configuredPath;
   }
 
-  const currentMode = import.meta.env.MODE;
-  const isProduction = currentMode === 'production';
-  const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+  const normalizedPath = (
+    SERVICE_ENDPOINTS.spring.baseUrl.endsWith('/api/v1') && configuredPath.startsWith('api/v1/')
+      ? configuredPath.replace(/^api\/v1\//, '')
+      : configuredPath
+  );
 
-  let useEmulator = false;
-  let useFunctionsEmulatorOnly = false;
+  return buildServiceUrl(SERVICE_ENDPOINTS.spring.baseUrl, normalizedPath);
+};
 
-  if (!isProduction && hostname) {
-    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('localhost');
-    const emulatorFlag = import.meta.env.VITE_USE_EMULATOR;
-    useEmulator = isLocalhost && (emulatorFlag === 'true' || emulatorFlag === true);
+const normalizeRole = (role) => {
+  if (role === 'assistant' || role === 'model') return 'assistant';
+  if (role === 'system') return 'system';
+  return 'user';
+};
 
-    const functionsEmulatorFlag = import.meta.env.VITE_USE_FUNCTIONS_EMULATOR;
-    useFunctionsEmulatorOnly =
-      !useEmulator && isLocalhost && (functionsEmulatorFlag === 'true' || functionsEmulatorFlag === true);
+const normalizeEventName = (value) => {
+  if (!value || typeof value !== 'string') return '';
+  return value
+    .replace(/([A-Z])/g, '_$1')
+    .replace(/[\s-]+/g, '_')
+    .toLowerCase()
+    .replace(/^_+/, '');
+};
+
+const extractTextFromPayload = (payload) => {
+  if (!payload) return '';
+  if (typeof payload === 'string') return payload;
+  if (typeof payload?.text === 'string') return payload.text;
+  if (typeof payload?.delta === 'string') return payload.delta;
+  if (typeof payload?.content === 'string') return payload.content;
+  if (typeof payload?.message === 'string') return payload.message;
+  if (typeof payload?.outputText === 'string') return payload.outputText;
+
+  if (Array.isArray(payload?.content)) {
+    return payload.content
+      .map((item) => (typeof item?.text === 'string' ? item.text : ''))
+      .join('');
   }
 
-  if (useEmulator || useFunctionsEmulatorOnly) {
-    return `http://127.0.0.1:5001/${projectId}/${REGION}/airabookaiStream`;
+  if (payload?.response && typeof payload.response === 'object') {
+    return extractTextFromPayload(payload.response);
   }
 
-  return `https://${REGION}-${projectId}.cloudfunctions.net/airabookaiStream`;
+  return '';
+};
+
+const normalizeMessagesForBackend = (messages) => (
+  Array.isArray(messages)
+    ? messages
+      .map((message) => {
+        const content = typeof message?.content === 'string' ? message.content : '';
+        if (!content.trim()) return null;
+        return {
+          role: normalizeRole(message?.role),
+          content,
+        };
+      })
+      .filter(Boolean)
+    : []
+);
+
+const buildRequestPayload = ({
+  messages,
+  isSurprise = false,
+  action,
+  bookId,
+  chapterId,
+  scope,
+}) => {
+  const source = typeof scope === 'string' && scope.trim() ? scope.trim() : 'dashboard';
+  const payload = {
+    messages: normalizeMessagesForBackend(messages),
+    source,
+    scope: source,
+    context: source,
+    isSurprise: Boolean(isSurprise),
+  };
+
+  if (typeof action === 'string' && action.trim()) {
+    payload.action = action.trim();
+  }
+  if (typeof bookId === 'string' && bookId.trim()) {
+    payload.bookId = bookId.trim();
+  }
+  if (typeof chapterId === 'string' && chapterId.trim()) {
+    payload.chapterId = chapterId.trim();
+  }
+
+  return payload;
 };
 
 const parseSseEvent = (rawEvent) => {
@@ -63,6 +134,35 @@ const parseSseEvent = (rawEvent) => {
   return { event, data };
 };
 
+const parseNonSseResponse = async (response) => {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    return response.json();
+  }
+
+  const text = await response.text();
+  return { text };
+};
+
+const parseErrorResponse = async (response) => {
+  const contentType = response.headers.get('content-type') || '';
+  let message = `Streaming request failed with ${response.status}`;
+
+  if (contentType.includes('application/json')) {
+    try {
+      const json = await response.json();
+      message = json?.error || json?.message || message;
+    } catch (_) {
+      // Ignore JSON parse failures and keep fallback message.
+    }
+  } else {
+    const text = await response.text();
+    if (text) message = text;
+  }
+
+  throw new Error(message);
+};
+
 export const streamAirabookAI = async ({
   messages,
   isSurprise = false,
@@ -87,24 +187,35 @@ export const streamAirabookAI = async ({
   }
 
   const idToken = await user.getIdToken();
+  const payload = buildRequestPayload({ messages, isSurprise, action, bookId, chapterId, scope });
   const response = await fetch(getStreamUrl(), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${idToken}`,
     },
-    body: JSON.stringify({ messages, isSurprise, action, bookId, chapterId, scope }),
+    body: JSON.stringify(payload),
     signal,
   });
 
-  if (!response.ok || !response.body) {
-    const errorText = await response.text();
-    throw new Error(errorText || 'Streaming request failed.');
+  if (!response.ok) {
+    await parseErrorResponse(response);
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('text/event-stream') || !response.body) {
+    const data = await parseNonSseResponse(response);
+    if (typeof onDone === 'function') {
+      onDone(typeof data === 'object' ? data : { text: String(data || '') });
+    }
+    return;
   }
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder('utf-8');
   let buffer = '';
+  let combinedText = '';
+  let didEmitDone = false;
 
   while (true) {
     const { value, done } = await reader.read();
@@ -121,63 +232,80 @@ export const streamAirabookAI = async ({
       if (!rawEvent) continue;
       const parsed = parseSseEvent(rawEvent);
       if (!parsed) continue;
+      const payloadData = parsed.data || {};
+      const normalizedEvent = normalizeEventName(parsed.event || 'message');
+      const payloadEvent = normalizeEventName(payloadData?.event || payloadData?.type || '');
+      const eventName = payloadEvent || normalizedEvent || 'message';
+      const chunkText = extractTextFromPayload(payloadData);
 
-      if (parsed.event === 'chunk') {
-        if (parsed.data?.text && typeof onChunk === 'function') {
-          onChunk(parsed.data.text);
-        }
-      } else if (parsed.event === 'outline') {
+      if (eventName === 'outline') {
         if (typeof onOutline === 'function') {
-          onOutline(parsed.data || {});
+          onOutline(payloadData);
         }
         if (typeof onEvent === 'function') {
-          onEvent(parsed.event, parsed.data || {});
+          onEvent(eventName, payloadData);
         }
-      } else if (parsed.event === 'page_start') {
+      } else if (eventName === 'page_start') {
         if (typeof onPageStart === 'function') {
-          onPageStart(parsed.data || {});
+          onPageStart(payloadData);
         }
         if (typeof onEvent === 'function') {
-          onEvent(parsed.event, parsed.data || {});
+          onEvent(eventName, payloadData);
         }
-      } else if (parsed.event === 'page_chunk') {
+      } else if (eventName === 'page_chunk') {
         if (typeof onPageChunk === 'function') {
-          onPageChunk(parsed.data || {});
+          onPageChunk(payloadData);
         }
         if (typeof onEvent === 'function') {
-          onEvent(parsed.event, parsed.data || {});
+          onEvent(eventName, payloadData);
         }
-      } else if (parsed.event === 'page_done') {
+      } else if (eventName === 'page_done') {
         if (typeof onPageDone === 'function') {
-          onPageDone(parsed.data || {});
+          onPageDone(payloadData);
         }
         if (typeof onEvent === 'function') {
-          onEvent(parsed.event, parsed.data || {});
+          onEvent(eventName, payloadData);
         }
-      } else if (parsed.event === 'page_error') {
+      } else if (eventName === 'page_error') {
         if (typeof onPageError === 'function') {
-          onPageError(parsed.data || {});
+          onPageError(payloadData);
         }
         if (typeof onEvent === 'function') {
-          onEvent(parsed.event, parsed.data || {});
+          onEvent(eventName, payloadData);
         }
-      } else if (parsed.event === 'done') {
+      } else if (DONE_EVENTS.has(eventName)) {
+        didEmitDone = true;
+        const donePayload = typeof payloadData === 'object' && payloadData
+          ? { ...payloadData, text: extractTextFromPayload(payloadData) || combinedText || '' }
+          : { text: combinedText || '' };
         if (typeof onDone === 'function') {
-          onDone(parsed.data || {});
+          onDone(donePayload);
         }
         if (typeof onEvent === 'function') {
-          onEvent(parsed.event, parsed.data || {});
+          onEvent(eventName, payloadData);
         }
-      } else if (parsed.event === 'error') {
+      } else if (ERROR_EVENTS.has(eventName)) {
         if (typeof onError === 'function') {
-          onError(parsed.data || {});
+          onError(payloadData);
         }
         if (typeof onEvent === 'function') {
-          onEvent(parsed.event, parsed.data || {});
+          onEvent(eventName, payloadData);
+        }
+      } else if (CHUNK_EVENTS.has(eventName) && chunkText) {
+        combinedText += chunkText;
+        if (typeof onChunk === 'function') {
+          onChunk(chunkText);
+        }
+        if (typeof onEvent === 'function') {
+          onEvent(eventName, payloadData);
         }
       } else if (typeof onEvent === 'function') {
-        onEvent(parsed.event, parsed.data || {});
+        onEvent(eventName, payloadData);
       }
     }
+  }
+
+  if (!didEmitDone && combinedText && typeof onDone === 'function') {
+    onDone({ text: combinedText });
   }
 };

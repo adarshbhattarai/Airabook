@@ -5,7 +5,7 @@ const StatCard = ({ label, value, helper, icon: Icon, trend, className }) => {
   return (
     <div
       className={cn(
-        'bg-white rounded-2xl border border-app-gray-100 shadow-appSoft p-4 flex items-center justify-between gap-4',
+        'bg-white rounded-2xl border border-app-gray-100 shadow-appSoft p-4 flex items-center justify-between gap-4 matrix-surface',
         className,
       )}
     >

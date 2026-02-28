@@ -38,11 +38,17 @@ export const DialogContent = React.forwardRef(({ className, children, ...props }
 
     {/* Centering wrapper */}
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {(() => {
+        const hasCustomMaxWidth =
+          typeof className === "string" && /(^|\s)!?max-w-[^\s]+/.test(className);
+
+        return (
       <DialogPrimitive.Content
         ref={ref}
         // Keep Content relative so absolute children (your X / nav buttons) position correctly
         className={cn(
-          "relative w-full max-w-lg outline-none",
+          "relative w-full outline-none",
+          !hasCustomMaxWidth && "max-w-lg",
           // Subtle scale/opacity animation on open/close
           "data-[state=open]:animate-in data-[state=closed]:animate-out",
           "data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95",
@@ -53,6 +59,8 @@ export const DialogContent = React.forwardRef(({ className, children, ...props }
       >
         {children}
       </DialogPrimitive.Content>
+        );
+      })()}
     </div>
   </DialogPortal>
 ));

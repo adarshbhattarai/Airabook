@@ -7,6 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '@/lib/firebase';
 import { defaultAvatars } from '@/constants/avatars';
+import { PROFILE_LIMITS } from '@/constants/profileLimits';
 
 const ProfileSettings = () => {
   const { user, appUser, updateUserProfile, changePassword } = useAuth();
@@ -24,10 +25,10 @@ const ProfileSettings = () => {
   const [initialProfile, setInitialProfile] = useState(null);
 
   useEffect(() => {
-    const activeDisplayName = appUser?.displayName || user?.displayName || '';
+    const activeDisplayName = (appUser?.displayName || user?.displayName || '').slice(0, PROFILE_LIMITS.displayName);
     const activeEmail = appUser?.email || user?.email || '';
     const activeAvatar = user?.photoURL || '';
-    const activeWritingContext = appUser?.writingContext || '';
+    const activeWritingContext = (appUser?.writingContext || '').slice(0, PROFILE_LIMITS.writingContext);
     const activeLanguage = appUser?.language || 'English';
     const activeUseLanguageForBooks = appUser?.useLanguageForBooks || false;
 
@@ -48,6 +49,8 @@ const ProfileSettings = () => {
   }, [appUser, user]);
 
   const selectedAvatar = useMemo(() => customAvatar || currentAvatar, [customAvatar, currentAvatar]);
+  const displayNameCharsUsed = displayName.length;
+  const writingContextCharsUsed = writingContext.length;
 
   const hasUnsavedChanges = useMemo(() => {
     if (!initialProfile) return false;
@@ -111,11 +114,31 @@ const ProfileSettings = () => {
 
   const handleProfileSave = async (event) => {
     event.preventDefault();
+    const normalizedDisplayName = displayName.trim();
+
+    if (normalizedDisplayName.length === 0 || normalizedDisplayName.length > PROFILE_LIMITS.displayName) {
+      toast({
+        title: 'Invalid display name',
+        description: `Display name must be between 1 and ${PROFILE_LIMITS.displayName} characters.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (writingContext.length > PROFILE_LIMITS.writingContext) {
+      toast({
+        title: 'Writing context is too long',
+        description: `Writing context cannot exceed ${PROFILE_LIMITS.writingContext} characters.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsSavingProfile(true);
 
     try {
       await updateUserProfile({
-        displayName,
+        displayName: normalizedDisplayName,
         email,
         photoURL: selectedAvatar,
         writingContext,
@@ -127,10 +150,11 @@ const ProfileSettings = () => {
         title: 'Profile updated',
         description: 'Your profile details were saved successfully.',
       });
+      setDisplayName(normalizedDisplayName);
       setCurrentAvatar(selectedAvatar || '');
       setCustomAvatar('');
       setInitialProfile({
-        displayName,
+        displayName: normalizedDisplayName,
         writingContext,
         language,
         useLanguageForBooks,
@@ -183,8 +207,12 @@ const ProfileSettings = () => {
                       value={displayName}
                       onChange={(e) => setDisplayName(e.target.value)}
                       placeholder="Your name"
+                      maxLength={PROFILE_LIMITS.displayName}
                       required
                     />
+                    <p className="mt-1 text-xs text-muted-foreground text-right">
+                      {displayNameCharsUsed}/{PROFILE_LIMITS.displayName}
+                    </p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1">Email</label>
@@ -201,10 +229,19 @@ const ProfileSettings = () => {
                   <label className="block text-sm font-medium text-foreground mb-1">Writing Context</label>
                   <textarea
                     value={writingContext}
-                    onChange={(e) => setWritingContext(e.target.value)}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value.length <= PROFILE_LIMITS.writingContext) {
+                        setWritingContext(value);
+                      }
+                    }}
                     placeholder="Describe your writing style, preferred genres, or any context for the AI..."
+                    maxLength={PROFILE_LIMITS.writingContext}
                   className="w-full min-h-[120px] rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   />
+                  <p className="mt-1 text-xs text-muted-foreground text-right">
+                    {writingContextCharsUsed}/{PROFILE_LIMITS.writingContext}
+                  </p>
                 </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

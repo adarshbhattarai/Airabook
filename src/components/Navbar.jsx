@@ -30,7 +30,7 @@ const Navbar = () => {
 
   const navItems = [
     { name: 'Home', path: homePath, public: true },
-    { name: 'Asset Registry', path: '/media', public: false },
+    { name: 'Dashboard', path: '/dashboard', public: false },
     // { name: 'Notes', path: '/notes', public: false },
   ];
 
@@ -38,7 +38,7 @@ const Navbar = () => {
   const isHiddenPage = hiddenPaths.includes(location.pathname);
 
   const visibleNavItems = navItems.filter(item => {
-    if (isHiddenPage && item.path === homePath) return false;
+    if (isHiddenPage && item.name === 'Home') return false;
     return item.public || user;
   });
 
