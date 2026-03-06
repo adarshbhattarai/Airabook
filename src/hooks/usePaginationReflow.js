@@ -27,6 +27,7 @@ export function usePaginationReflow({
   getNewOrderBetween,
   pageApi,
   canRemoveTempPages = true,
+  allowAutoPageInsert = true,
   getLastUserInputAt,
   options,
 }) {
@@ -279,6 +280,7 @@ export function usePaginationReflow({
             // Ensure next page exists
             let nextId = workingPages[i + 1]?.id;
             if (!nextId) {
+              if (!allowAutoPageInsert) break;
               nextId = await insertTempPageAfter(workingPages, i);
             } else {
               await waitForPageReady(nextId);
@@ -344,6 +346,7 @@ export function usePaginationReflow({
       pullUnderflowOnePage,
       waitForPageReady,
       getLastUserInputAt,
+      allowAutoPageInsert,
       opts.typingCooldownMs,
     ]
   );

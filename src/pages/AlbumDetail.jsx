@@ -104,6 +104,10 @@ const AlbumDetail = () => {
   const [editingCover, setEditingCover] = useState(null);
   const [coverPreview, setCoverPreview] = useState(null);
   const [updating, setUpdating] = useState(false);
+  const [canUploadMedia, setCanUploadMedia] = useState(false);
+  const [canEditAlbum, setCanEditAlbum] = useState(false);
+  const [canDeleteAlbumAssets, setCanDeleteAlbumAssets] = useState(false);
+  const [permissionHint, setPermissionHint] = useState('');
   const fileInputRef = useRef(null);
   const coverInputRef = useRef(null);
 
@@ -159,6 +163,46 @@ const AlbumDetail = () => {
         setAlbum(albumData);
         setEditingName(albumData.name || '');
         setCoverPreview(convertToEmulatorURL(albumData.coverImage));
+
+        const albumOwnerId = albumData?.accessPermission?.ownerId || '';
+        const isAlbumOwner = !!user?.uid && albumOwnerId === user.uid;
+        let hasBook = false;
+        let canManageBookMedia = false;
+        try {
+          const bookSnap = await getDoc(doc(firestore, 'books', bookId));
+          if (bookSnap.exists()) {
+            hasBook = true;
+            const bookData = bookSnap.data() || {};
+            const isOwner = bookData.ownerId === user.uid || bookData.members?.[user.uid] === 'Owner';
+            const isCoAuthor = bookData.members?.[user.uid] === 'Co-author';
+            const coAuthorCanManage = !!bookData.memberPermissions?.[user.uid]?.canManageMedia;
+            canManageBookMedia = isOwner || (isCoAuthor && coAuthorCanManage);
+          }
+        } catch (permErr) {
+          console.warn('Failed to resolve book permissions for album upload:', permErr);
+        }
+
+        const uploadAllowed = hasBook ? canManageBookMedia : isAlbumOwner;
+        const editAllowed = isAlbumOwner;
+        const deleteAllowed = !hasBook && isAlbumOwner;
+
+        setCanUploadMedia(uploadAllowed);
+        setCanEditAlbum(editAllowed);
+        setCanDeleteAlbumAssets(deleteAllowed);
+
+        if (!uploadAllowed) {
+          setPermissionHint(
+            hasBook
+              ? 'You need owner access or co-author media permission to upload here.'
+              : 'Only the album owner can upload media to this asset.'
+          );
+        } else if (hasBook) {
+          setPermissionHint('This album is linked to a book. Delete the book to remove this album.');
+        } else if (!deleteAllowed) {
+          setPermissionHint('Only the album owner can delete this asset.');
+        } else {
+          setPermissionHint('');
+        }
 
         console.log('Album data:', albumData);
         console.log('Images array:', albumData.images);
@@ -383,13 +427,22 @@ const AlbumDetail = () => {
   const handleFileSelect = (event) => {
     const files = Array.from(event.target.files || []);
     if (files.length === 0) return;
+    if (!canUploadMedia) {
+      toast({
+        title: 'Permission required',
+        description: permissionHint || 'You do not have permission to upload media to this asset.',
+        variant: 'destructive',
+      });
+      event.target.value = '';
+      return;
+    }
     files.forEach(file => handleUpload(file));
     // Reset input
     event.target.value = '';
   };
 
   const handleUpload = (file) => {
-    if (!file || !user) return;
+    if (!file || !user || !canUploadMedia) return;
 
     setUploading(true);
     const mediaType = file.type.startsWith('video') ? 'video' : 'image';
@@ -558,6 +611,7 @@ const AlbumDetail = () => {
                   setEditingCover(null);
                   setEditModalOpen(true);
                 }}
+                disabled={!canEditAlbum}
                 title="Edit asset details"
                 aria-label="Edit asset details"
               >
@@ -574,7 +628,7 @@ const AlbumDetail = () => {
                 variant="outline"
                 size="sm"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
+                disabled={uploading || !canUploadMedia}
                 className="asset-header-btn asset-top-action-btn h-8 rounded-pill px-4 text-xs font-semibold"
               >
                 {uploading ? (
@@ -587,7 +641,7 @@ const AlbumDetail = () => {
               <Button
                 variant="outline"
                 onClick={requestAlbumDelete}
-                disabled={deletingAlbum}
+                disabled={deletingAlbum || !canDeleteAlbumAssets}
                 className="asset-header-btn asset-top-action-btn asset-header-btn-danger h-8 rounded-pill px-4 text-xs font-semibold"
               >
                 {deletingAlbum ? (
@@ -599,6 +653,11 @@ const AlbumDetail = () => {
                   'Delete assets'
                 )}
               </Button>
+              {permissionHint && (
+                <span className="text-[11px] text-app-gray-500">
+                  {permissionHint}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -614,6 +673,7 @@ const AlbumDetail = () => {
             <Button
               variant="appPrimary"
               onClick={() => fileInputRef.current?.click()}
+              disabled={!canUploadMedia}
               className="gap-2 h-10 rounded-xl px-5 text-sm font-semibold"
             >
               <UploadCloud className="h-4 w-4" />

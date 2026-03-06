@@ -958,6 +958,12 @@ const PhotoPlannerDialog = ({
     }
     if (files.length === 0 || !user) return;
 
+    const validationError = ensureValidation();
+    if (validationError) {
+      toast({ title: 'Cannot upload', description: validationError, variant: 'destructive' });
+      return;
+    }
+
     const remaining = Math.max(0, MAX_MEDIA_ITEMS - mediaItems.length);
     if (remaining === 0) {
       toast({

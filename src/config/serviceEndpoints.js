@@ -22,7 +22,16 @@ export const SERVICE_ENDPOINTS = {
         import.meta.env.VITE_SPRING_BOOK_CREATION_PLAN_STREAM_ENDPOINT || '',
       // Optional dedicated endpoint for human-in-the-loop responses
       bookCreationPlanHitlResponse:
-        import.meta.env.VITE_SPRING_BOOK_CREATION_PLAN_HITL_ENDPOINT || '',
+        import.meta.env.VITE_SPRING_BOOK_CREATION_PLAN_HITL_ENDPOINT || 'api/v1/chat/planner-agent/stream/decision',
+      // HITL decision endpoint for chat/planner card acknowledgements
+      chatPlannerHitlDecision:
+        import.meta.env.VITE_SPRING_CHAT_HITL_DECISION_ENDPOINT || 'api/v1/chat/planner-agent/stream/decision',
+      // Conversation history endpoint for dashboard history picker
+      conversationHistory:
+        import.meta.env.VITE_SPRING_CONVERSATION_HISTORY_ENDPOINT || 'api/v1/conversation-history',
+      // Conversation detail endpoint used when loading an existing thread from history
+      conversationById:
+        import.meta.env.VITE_SPRING_CONVERSATION_BY_ID_ENDPOINT || 'api/v1/conversations/{conversationId}',
     },
   },
 };

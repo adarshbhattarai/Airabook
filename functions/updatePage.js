@@ -8,6 +8,7 @@ const FieldValue = require('firebase-admin/firestore').FieldValue;
 
 const { extractTextFromHtml, generateEmbeddings } = require('./utils/embeddingsClient');
 const { updateChapterPageSummary } = require('./utils/chapterUtils');
+const { validatePageContentLimits } = require('./utils/pageContentValidation');
 
 const db = admin.firestore();
 
@@ -63,6 +64,11 @@ exports.updatePage = onCall(
             if (!pageDoc.exists) {
                 throw new HttpsError('not-found', 'Page not found.');
             }
+
+            validatePageContentLimits({
+                note: note || '',
+                content: content !== undefined ? content : pageDoc.data().content,
+            });
 
             // Extract plain text
             const plainText = extractTextFromHtml(note || '');

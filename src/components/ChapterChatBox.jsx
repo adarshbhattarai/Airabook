@@ -3,6 +3,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ArrowRight, ImagePlus, Sparkles } from 'lucide-react';
 import { streamAirabookAI } from '@/lib/aiStream';
+import {
+  extractConversationId,
+  extractUiCards,
+  mergeUniqueCards,
+  buildUiActionStateKey,
+} from '@/lib/chatUiEvents';
+import { executeChatUiAction } from '@/services/chatUiActionService';
+import StreamUiCards from '@/components/chat/StreamUiCards';
 
 const ChapterChatBox = ({
   inputValue,
@@ -23,6 +31,33 @@ const ChapterChatBox = ({
   const input = isControlled ? inputValue : internalInput;
   const setInput = isControlled ? onInputChange : setInternalInput;
   const messagesRef = useRef(messages);
+  const [conversationId, setConversationId] = useState('');
+  const conversationIdRef = useRef(conversationId);
+
+  const attachCardsToAssistant = (assistantId, eventName, payload) => {
+    const cards = extractUiCards(eventName, payload);
+    if (cards.length === 0) return;
+    setMessages(prev => prev.map((msg) => (
+      msg.id === assistantId
+        ? { ...msg, uiCards: mergeUniqueCards(msg.uiCards, cards) }
+        : msg
+    )));
+  };
+
+  const setMessageActionState = (messageId, cardId, actionId, nextState) => {
+    const actionKey = buildUiActionStateKey(cardId, actionId);
+    setMessages(prev => prev.map((msg) => (
+      msg.id === messageId
+        ? {
+          ...msg,
+          uiActionState: {
+            ...(msg.uiActionState || {}),
+            [actionKey]: nextState,
+          },
+        }
+        : msg
+    )));
+  };
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
@@ -47,12 +82,18 @@ const ChapterChatBox = ({
         scope: 'chapter_assistant',
         bookId,
         chapterId,
+        conversationId: conversationIdRef.current,
         onChunk: (text) => {
           setMessages(prev => prev.map(msg => (
             msg.id === assistantId ? { ...msg, content: `${msg.content}${text}` } : msg
           )));
         },
         onDone: (data) => {
+          const resolvedConversationId = extractConversationId(data);
+          if (resolvedConversationId) {
+            setConversationId(resolvedConversationId);
+          }
+          const doneCards = extractUiCards('done', data);
           setMessages(prev => prev.map(msg => (
             msg.id === assistantId
               ? {
@@ -60,9 +101,13 @@ const ChapterChatBox = ({
                 content: data?.text || msg.content,
                 actions: data?.actions || [],
                 actionPrompt: data?.actionPrompt || '',
+                uiCards: mergeUniqueCards(msg.uiCards, doneCards),
               }
               : msg
           )));
+        },
+        onEvent: (eventName, payload) => {
+          attachCardsToAssistant(assistantId, eventName, payload);
         },
         onError: () => {
           setMessages(prev => prev.map(msg => (
@@ -84,7 +129,8 @@ const ChapterChatBox = ({
     }
   };
 
-  const handleAction = async (messageId, actionId) => {
+  const handleAction = async (messageId, action = {}) => {
+    const actionId = typeof action === 'string' ? action : action.id;
     if (actionId === 'deny_generate_chapter') {
       setMessages(prev => prev.map(msg => (
         msg.id === messageId ? { ...msg, actions: [], actionPrompt: '' } : msg
@@ -115,6 +161,7 @@ const ChapterChatBox = ({
         action: 'generate_chapter',
         bookId,
         chapterId,
+        conversationId: conversationIdRef.current,
         onChunk: (text) => {
           setMessages(prev => prev.map(msg => (
             msg.id === assistantId ? { ...msg, content: `${msg.content}${text}` } : msg
@@ -128,11 +175,25 @@ const ChapterChatBox = ({
           }
         },
         onDone: (data) => {
+          const resolvedConversationId = extractConversationId(data);
+          if (resolvedConversationId) {
+            setConversationId(resolvedConversationId);
+          }
+          const doneCards = extractUiCards('done', data);
           setMessages(prev => prev.map(msg => (
             msg.id === assistantId
-              ? { ...msg, content: data?.text || msg.content }
+              ? {
+                ...msg,
+                content: data?.text || msg.content,
+                actions: data?.actions || [],
+                actionPrompt: data?.actionPrompt || '',
+                uiCards: mergeUniqueCards(msg.uiCards, doneCards),
+              }
               : msg
           )));
+        },
+        onEvent: (eventName, payload) => {
+          attachCardsToAssistant(assistantId, eventName, payload);
         },
         onError: () => {
           setMessages(prev => prev.map(msg => (
@@ -152,9 +213,154 @@ const ChapterChatBox = ({
     }
   };
 
+  const handleCardAction = async (messageId, card, action) => {
+    const actionId = action?.id || 'action';
+    const actionKey = buildUiActionStateKey(card?.id, actionId);
+    if (!action?.endpoint && !action?.link && !action?.bodyTemplate && !action?.body) {
+      if (actionId === 'generate_chapter' || actionId === 'create_book' || actionId === 'deny_generate_chapter') {
+        await handleAction(messageId, action);
+        return;
+      }
+      setMessages(prev => prev.map((msg) => (
+        msg.id === messageId
+          ? {
+            ...msg,
+            uiActionState: {
+              ...(msg.uiActionState || {}),
+              [actionKey]: { status: 'error', message: 'No endpoint configured for this action.' },
+            },
+          }
+          : msg
+      )));
+      return;
+    }
+    setMessageActionState(messageId, card?.id, actionId, { status: 'pending', message: '' });
+
+    try {
+      const result = await executeChatUiAction({
+        action,
+        card,
+        context: {
+          conversationId: conversationIdRef.current,
+          bookId,
+          chapterId,
+          source: 'chapter_assistant',
+          messageId,
+          cardId: card?.id,
+          interactionId: card?.payload?.interactionId || '',
+          runId: card?.payload?.runId || '',
+          responsePath: card?.payload?.responsePath || '',
+          hitlContext: card?.payload?.context || {},
+        },
+        onEvent: (eventName, payload) => {
+          attachCardsToAssistant(messageId, eventName, payload);
+        },
+      });
+      const resultCards = extractUiCards('action_result', result?.payload || {});
+      setMessages(prev => prev.map((msg) => (
+        msg.id === messageId
+          ? {
+            ...msg,
+            uiCards: mergeUniqueCards(msg.uiCards, resultCards),
+            uiActionState: {
+              ...(msg.uiActionState || {}),
+              [actionKey]: { status: 'success', message: result?.message || 'Acknowledged.' },
+            },
+          }
+          : msg
+      )));
+    } catch (error) {
+      setMessages(prev => prev.map((msg) => (
+        msg.id === messageId
+          ? {
+            ...msg,
+            uiActionState: {
+              ...(msg.uiActionState || {}),
+              [actionKey]: { status: 'error', message: error?.message || 'Action failed.' },
+            },
+          }
+          : msg
+      )));
+    }
+  };
+
+  const handleHitlDecision = async (messageId, card, option, selectedIndex) => {
+    const optionId = option?.id || String(selectedIndex + 1);
+    const actionKey = buildUiActionStateKey(card?.id, optionId);
+    setMessageActionState(messageId, card?.id, optionId, { status: 'pending', message: '' });
+
+    try {
+      const result = await executeChatUiAction({
+        action: {
+          id: optionId,
+          label: option?.label || `Option ${selectedIndex + 1}`,
+          method: 'POST',
+          endpoint: card?.payload?.responsePath || '',
+          bodyTemplate: {
+            action: 'human_in_loop_response',
+            interactionId: '{{interactionId}}',
+            runId: '{{runId}}',
+            conversationId: '{{conversationId}}',
+            source: 'chapter_assistant',
+            selectedIndex: '{{selectedIndex}}',
+            selectedOption: '{{selectedOption}}',
+            context: '{{hitlContext}}',
+          },
+        },
+        card,
+        context: {
+          conversationId: conversationIdRef.current,
+          bookId,
+          chapterId,
+          source: 'chapter_assistant',
+          messageId,
+          cardId: card?.id,
+          interactionId: card?.payload?.interactionId || '',
+          runId: card?.payload?.runId || '',
+          responsePath: card?.payload?.responsePath || '',
+          selectedIndex,
+          selectedOption: option || {},
+          hitlContext: card?.payload?.context || {},
+        },
+        onEvent: (eventName, payload) => {
+          attachCardsToAssistant(messageId, eventName, payload);
+        },
+      });
+      const resultCards = extractUiCards('hitl_decision', result?.payload || {});
+      setMessages(prev => prev.map((msg) => (
+        msg.id === messageId
+          ? {
+            ...msg,
+            uiCards: mergeUniqueCards(msg.uiCards, resultCards),
+            uiActionState: {
+              ...(msg.uiActionState || {}),
+              [actionKey]: { status: 'success', message: result?.message || 'Decision recorded.' },
+            },
+          }
+          : msg
+      )));
+    } catch (error) {
+      setMessages(prev => prev.map((msg) => (
+        msg.id === messageId
+          ? {
+            ...msg,
+            uiActionState: {
+              ...(msg.uiActionState || {}),
+              [actionKey]: { status: 'error', message: error?.message || 'Decision failed.' },
+            },
+          }
+          : msg
+      )));
+    }
+  };
+
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  useEffect(() => {
+    conversationIdRef.current = conversationId;
+  }, [conversationId]);
 
   return (
     <div className="rounded-lg border border-border bg-card p-4">
@@ -194,7 +400,7 @@ const ChapterChatBox = ({
       </div>
       <div className="mt-3 max-h-56 space-y-3 overflow-y-auto">
         {messages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+          <div key={msg.id || i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${msg.role === 'user'
               ? 'bg-app-iris text-white rounded-br-none'
               : 'bg-app-gray-100 text-foreground rounded-bl-none'
@@ -212,7 +418,7 @@ const ChapterChatBox = ({
                         type="button"
                         size="sm"
                         variant={action.id === 'generate_chapter' ? 'appPrimary' : 'appOutline'}
-                        onClick={() => handleAction(msg.id, action.id)}
+                        onClick={() => handleAction(msg.id, action)}
                         className="h-7 px-2 text-[11px]"
                       >
                         {action.label}
@@ -220,6 +426,14 @@ const ChapterChatBox = ({
                     ))}
                   </div>
                 </div>
+              )}
+              {msg.uiCards && msg.uiCards.length > 0 && (
+                <StreamUiCards
+                  cards={msg.uiCards}
+                  actionState={msg.uiActionState || {}}
+                  onAction={(card, action) => handleCardAction(msg.id, card, action)}
+                  onDecision={(card, option, index) => handleHitlDecision(msg.id, card, option, index)}
+                />
               )}
             </div>
           </div>
