@@ -206,14 +206,14 @@ const AssetRegistry = () => {
   };
 
   if (loading || !appUser) {
-    return <AppLoader message="Loading your assets..." />;
+    return <AppLoader message="Loading your memory library..." />;
   }
 
   return (
     <div className="py-6 px-4 sm:px-6 lg:px-8">
       <Helmet>
-        <title>Asset Registry - Baby Aira</title>
-        <meta name="description" content="Browse and manage your photo and video assets attached to your books." />
+        <title>Memory Library - Baby Aira</title>
+        <meta name="description" content="Browse and manage your photos and videos in your Memory Library." />
       </Helmet>
 
       <div className="max-w-7xl mx-auto">
@@ -226,10 +226,10 @@ const AssetRegistry = () => {
         >
           <div>
             <h1 className="text-[28px] font-semibold text-app-gray-900 leading-tight">
-              Asset registry
+              Memory Library
             </h1>
             <p className="mt-2 text-sm text-app-gray-600 max-w-md">
-              Browse and manage photo and video assets attached to your books.
+              Browse and manage photos and videos in your Memory Library.
             </p>
           </div>
           <div className="flex justify-start sm:justify-end">
@@ -239,7 +239,7 @@ const AssetRegistry = () => {
               className="inline-flex items-center gap-2 text-sm"
             >
               <PlusCircle className="h-4 w-4" />
-              Create new asset
+              Add to Memory Library
             </Button>
           </div>
         </motion.div>
@@ -254,9 +254,9 @@ const AssetRegistry = () => {
               className="text-center py-16 rounded-2xl border border-app-gray-100 bg-white shadow-appSoft"
             >
               <BookOpen className="h-16 w-16 mx-auto text-gray-400 mb-4" />
-              <h3 className="text-lg font-semibold text-app-gray-900 mb-2">No assets yet</h3>
+              <h3 className="text-lg font-semibold text-app-gray-900 mb-2">Your library is empty</h3>
               <p className="text-sm text-app-gray-600 mb-6">
-                Start creating books and adding media to see them here.
+                Start creating books and adding photos or videos to build your Memory Library.
               </p>
               <Button
                 onClick={() => navigate('/dashboard')}
@@ -333,7 +333,7 @@ const AssetRegistry = () => {
                       )}
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/15 transition-all duration-200 flex items-center justify-center">
                         <div className="opacity-0 group-hover:opacity-100 transition-opacity text-white font-semibold text-sm">
-                          View Assets
+                          Open Library
                         </div>
                       </div>
                       {(album.mediaCount || 0) > 0 && (
@@ -391,7 +391,7 @@ const AssetRegistry = () => {
       < Dialog open={createModalOpen} onOpenChange={setCreateModalOpen} >
         <DialogContent className="max-w-md p-6 bg-white rounded-2xl shadow-xl">
           <DialogHeader>
-            <DialogTitle className="text-xl font-bold text-app-gray-900">Create new asset</DialogTitle>
+            <DialogTitle className="text-xl font-bold text-app-gray-900">Add to Memory Library</DialogTitle>
             <DialogDescription className="text-sm text-app-gray-600">
               Create a folder to organize your photos and videos.
             </DialogDescription>

@@ -311,6 +311,21 @@ a:focus-visible {
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+@keyframes eyebrowFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-eyebrow-fade-in {
+  animation: eyebrowFadeIn 0.42s ease forwards;
+}
+
 /* Custom button styles */
 .btn-primary {
   background: linear-gradient(135deg, #8b5cf6, #a78bfa); /* Violet button */

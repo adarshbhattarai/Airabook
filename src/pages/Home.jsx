@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Heart, Star, Baby, Send, Sparkles } from 'lucide-react';
+import { Send, Sparkles } from 'lucide-react';
 import { Helmet } from 'react-helmet';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 
 const Home = () => {
   const { user } = useAuth();
-  const mediaLink = user ? "/media" : "/login";
-  const notesLink = user ? "/notes" : "/login";
 
   const navigate = useNavigate();
   const [typingText, setTypingText] = useState('');
@@ -62,47 +60,66 @@ const Home = () => {
         <meta name="description" content="Create books, journals, and more with AI assistance." />
       </Helmet>
 
-      {/* Matrix Chat Hero Section - Light Mode */}
-      <section className="relative py-20 px-4 overflow-hidden bg-white min-h-[70vh] flex flex-col justify-center items-center">
-        <div className="w-full max-w-6xl mx-auto z-10">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
+      {/* Hero Section */}
+      <section className="relative pt-16 pb-10 md:pt-20 md:pb-12 px-4 overflow-hidden bg-gradient-to-br from-[#f8f6fb] via-[#fcfbfd] to-[#f7fbff] min-h-[72vh] flex flex-col justify-center items-center">
+        <div className="absolute -top-20 -left-16 h-72 w-72 rounded-full bg-[#dfd8ff]/45 blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 -right-24 h-80 w-80 rounded-full bg-[#ffece3]/45 blur-3xl pointer-events-none" />
+        <div className="absolute inset-0 opacity-25 pointer-events-none [background:radial-gradient(circle_at_24%_18%,rgba(152,132,255,0.1),transparent_48%),radial-gradient(circle_at_76%_76%,rgba(255,180,150,0.12),transparent_48%)]" />
 
-            {/* Left Column: Chat Interface */}
-            <div className="space-y-12 text-center lg:text-left">
-              {/* Animated Header */}
-              <div className="min-h-[120px] flex flex-col items-center lg:items-start justify-center space-y-4">
-                <h1 className="text-4xl md:text-6xl font-bold text-gray-900 tracking-tight">
+        <div className="w-full max-w-6xl mx-auto z-10">
+          <motion.div
+            initial={{ opacity: 0, y: 14 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+            viewport={{ once: true }}
+            className="text-center mb-6 md:mb-7"
+          >
+            <p className="text-sm md:text-lg font-bold uppercase tracking-[0.2em] text-[#67608d]">
+              Crafted for generations
+            </p>
+          </motion.div>
+
+          <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,0.88fr)] gap-10 md:gap-12 xl:gap-16 items-start">
+            {/* Left Column */}
+            <div className="max-w-[42rem] w-full mx-auto lg:mx-0 space-y-7 md:space-y-8 text-center lg:text-left">
+              <div className="min-h-[120px] flex flex-col items-center lg:items-start justify-center space-y-4 md:space-y-5">
+                <span className="text-xs font-medium uppercase tracking-[0.28em] text-[#6f6b8f] bg-white/75 border border-[#e5def8] rounded-full px-5 py-2 shadow-sm">
+                  Preserve what matters
+                </span>
+                <h1 className="text-[clamp(2.65rem,5vw,4.6rem)] font-semibold text-[#181a30] tracking-[-0.03em] leading-[0.98]">
                   {typingText}
-                  <span className="animate-pulse text-app-iris">|</span>
+                  <span className="animate-pulse text-[#9e8cff]">|</span>
                 </h1>
-                <h2 className="text-3xl md:text-5xl font-semibold text-gray-500">
+                <h2 className="text-[clamp(2rem,3.9vw,3.35rem)] font-semibold text-[#6b7489] tracking-[-0.02em] leading-[1.03]">
                   with Airäbook
                 </h2>
+                <p className="max-w-[39rem] text-[1.08rem] text-[#545d75]/85 leading-[1.56]">
+                  Design a memory journal that feels intimate, elegant, and deeply personal.
+                  Start with one prompt and let your story unfold chapter by chapter.
+                </p>
               </div>
 
-              {/* Chat Input Replica */}
-              <div className="w-full max-w-xl mx-auto lg:mx-0 relative group">
-                <div className="absolute -inset-1 bg-gradient-to-r from-app-iris via-app-violet to-app-mint rounded-2xl opacity-20 group-hover:opacity-40 transition duration-500 blur-lg"></div>
-                <div className="relative bg-white border border-gray-100 rounded-2xl shadow-2xl overflow-hidden">
+              <div className="w-full max-w-[39rem] mx-auto lg:mx-0">
+                <div className="bg-white/92 border border-white rounded-2xl shadow-[0_18px_40px_-26px_rgba(33,36,64,0.36)] overflow-hidden">
                   <div className="flex flex-col">
                     <textarea
                       value={prompt}
                       onChange={(e) => setPrompt(e.target.value)}
                       placeholder="Describe your book idea..."
-                      className="w-full p-6 text-lg bg-transparent border-none focus:ring-0 resize-none text-gray-900 placeholder:text-gray-400 focus:outline-none min-h-[120px]"
+                      className="w-full p-7 text-[1.08rem] bg-transparent border-none focus:ring-0 resize-none text-[#1f2035] placeholder:text-[#9ea5bb] focus:outline-none min-h-[124px] leading-[1.5]"
                     />
 
-                    <div className="flex items-center justify-between px-4 py-3 bg-gray-50/50 border-t border-gray-100">
+                    <div className="flex items-center justify-between px-5 py-4 bg-[#f8f8fc]/90 border-t border-[#ececf4]">
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => {
                             if (user) {
-                              navigate('/dashboard', { state: { prompt: "Surprise me" } });
+                              navigate('/dashboard', { state: { prompt: 'Surprise me' } });
                             } else {
                               navigate('/login');
                             }
                           }}
-                          className="flex items-center text-gray-500 text-sm px-3 py-1.5 rounded-full hover:bg-gray-100 transition-colors"
+                          className="flex items-center text-[#646a80] text-base px-3 py-1.5 rounded-full hover:bg-[#ececf9] transition-colors"
                         >
                           <Sparkles className="h-4 w-4 mr-2" />
                           Surprise me
@@ -111,7 +128,7 @@ const Home = () => {
 
                       <button
                         onClick={handleInteraction}
-                        className="flex items-center gap-2 text-app-iris font-semibold hover:text-app-iris-hover transition-colors active:scale-95"
+                        className="flex items-center gap-2 text-[#7d6dff] font-semibold hover:text-[#6a59f8] transition-colors active:scale-95"
                       >
                         <span>Send</span>
                         <Send className="h-5 w-5" />
@@ -122,64 +139,57 @@ const Home = () => {
               </div>
             </div>
 
-            {/* Right Column: Mock Book Card */}
-            <div className="flex justify-center lg:justify-end">
-              <div className="w-full max-w-sm group relative bg-white/70 backdrop-blur rounded-2xl shadow-appSoft border border-white/50 p-4 transition-all duration-300 hover:shadow-appCard hover:-translate-y-1 overflow-hidden">
-
-                {/* Gradient background layers */}
-                <div className="absolute inset-0 opacity-40 group-hover:opacity-60 transition-opacity duration-500 pointer-events-none">
-                  <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-purple-200 via-pink-200 to-transparent rounded-full blur-3xl transform translate-x-10 -translate-y-10" />
-                  <div className="absolute bottom-0 left-0 w-64 h-64 bg-gradient-to-tr from-blue-200 via-violet-200 to-transparent rounded-full blur-3xl transform -translate-x-10 translate-y-10" />
+            {/* Right Column */}
+            <div className="flex flex-col items-center lg:items-end">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8 }}
+                viewport={{ once: true }}
+                whileHover={{ y: -6 }}
+                className="w-full max-w-[21.5rem] md:max-w-[22.5rem] relative rounded-[30px] bg-white/86 p-7 md:p-8 shadow-[0_24px_52px_-34px_rgba(40,46,86,0.42)]"
+              >
+                <div className="relative overflow-hidden rounded-[22px] border border-[#e8e1f8]">
+                  <img
+                    src="/brand/babypic.png"
+                    alt="Baby memory preview"
+                    className="h-[320px] md:h-[338px] w-full object-cover object-center"
+                    onError={(e) => {
+                      e.currentTarget.src = '/brand/logo.png';
+                    }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#1a203d]/24 via-transparent to-transparent" />
+                  <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-white/45 to-transparent pointer-events-none" />
                 </div>
+              </motion.div>
 
-                {/* Content layer */}
-                <div className="relative z-10 flex flex-col h-full">
-
-                  {/* Header: Title */}
-                  <div className="flex items-start justify-between gap-3 mb-4">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="h-8 w-8 shrink-0 rounded-xl bg-app-mint text-app-navy flex items-center justify-center text-sm font-semibold shadow-sm">
-                        M
-                      </div>
-                      <div className="flex flex-col min-w-0">
-                        <h3 className="text-sm font-semibold text-app-gray-900 truncate pr-2">
-                          My Daughter's Journal
-                        </h3>
-                        <span className="text-[10px] text-app-gray-500">
-                          Airäbook
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Cover Image Area */}
-                  <div className="block flex-1 relative group/image">
-                    <div className="aspect-[3/4] w-full rounded-xl bg-gradient-to-br from-purple-50 via-white to-blue-50 border border-white/60 shadow-inner overflow-hidden relative">
-                      <img
-                        src="https://horizons-cdn.hostinger.com/9f98afdb-ea6b-4dee-964a-89258405ca0c/img_8474-F1nlG.JPEG"
-                        alt="My Daughter's Journal"
-                        className="w-full h-full object-cover transition-transform duration-500 group-hover/image:scale-105"
-                      />
-
-                      {/* Hover Overlay */}
-                      <div className="absolute inset-0 bg-black/0 group-hover/image:bg-black/10 transition-colors duration-300 flex items-center justify-center opacity-0 group-hover/image:opacity-100">
-                        <div className="bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm text-xs font-medium text-app-gray-900 transform translate-y-2 group-hover/image:translate-y-0 transition-transform duration-300">
-                          Preview
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                </div>
-              </div>
+              <p className="mt-4 md:mt-5 max-w-[21.5rem] md:max-w-[22.5rem] text-center text-[1rem] md:text-[1.05rem] leading-[1.68] text-[#626886] font-serif italic">
+                Time will move on, but this little chapter of life will stay safe here forever.
+              </p>
             </div>
-
           </div>
         </div>
 
-        {/* Background Elements */}
         <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_50%,rgba(99,91,255,0.05),transparent_50%)]"></div>
+          <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_50%,rgba(99,91,255,0.04),transparent_50%)]"></div>
+        </div>
+      </section>
+
+      {/* Story Pause Section */}
+      <section className="relative px-4 pt-10 md:pt-12 pb-16 md:pb-20 bg-gradient-to-b from-[#f7f4fb] via-[#fbfafd] to-white">
+        <div className="max-w-6xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 14 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+            viewport={{ once: true }}
+            className="text-center"
+          >
+            <h2 className="mx-auto max-w-5xl text-[2.15rem] md:text-[3.05rem] font-semibold leading-[1.1] tracking-[-0.01em] font-serif text-[#4b4f69]">
+              The Story of love We&apos;ll Hold onto Forever
+            </h2>
+          </motion.div>
+          <div className="mx-auto mt-10 md:mt-12 h-px max-w-4xl bg-gradient-to-r from-transparent via-[#c8c1e6]/70 to-transparent" />
         </div>
       </section>
 

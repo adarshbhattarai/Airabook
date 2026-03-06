@@ -252,7 +252,7 @@ const BookItem = ({ bookId, bookTitle, coverImage, onBookDeleted }) => {
           <DialogHeader>
             <DialogTitle className="text-2xl font-bold text-gray-800">Delete book?</DialogTitle>
             <DialogDescription className="mt-2 text-gray-600">
-              This will permanently delete "{book.name}" and all its chapters, pages, and media references. The media files will remain in your Asset Registry. To permanently delete the files and free up storage space, please remove them from the Asset Registry.
+              This will permanently delete "{book.name}" and all its chapters, pages, and media references. The media files will remain in your Memory Library. To permanently delete the files and free up storage space, please remove them from the Memory Library.
             </DialogDescription>
           </DialogHeader>
           <div className="mt-6 flex justify-center space-x-4">

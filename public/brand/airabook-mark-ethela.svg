@@ -1,0 +1,19 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="airaBookLeaf" x1="10" y1="10" x2="54" y2="54" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8FF7CA"/>
+      <stop offset="1" stop-color="#3AD89C"/>
+    </linearGradient>
+    <linearGradient id="ethelaOrbit" x1="23" y1="12" x2="56" y2="33" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6C7CFF"/>
+      <stop offset="1" stop-color="#2FA9FF"/>
+    </linearGradient>
+  </defs>
+
+  <path d="M20.5 17.5H31.5C34.7 17.5 37.3 20.1 37.3 23.3V44.5C35.5 42.9 33.3 42.1 30.9 42.1H20.5C18.3 42.1 16.5 43.9 16.5 46.1V21.5C16.5 19.3 18.3 17.5 20.5 17.5Z" stroke="url(#airaBookLeaf)" stroke-width="2.8" stroke-linejoin="round"/>
+  <path d="M43.5 17.5H32.5C29.3 17.5 26.7 20.1 26.7 23.3V44.5C28.5 42.9 30.7 42.1 33.1 42.1H43.5C45.7 42.1 47.5 43.9 47.5 46.1V21.5C47.5 19.3 45.7 17.5 43.5 17.5Z" stroke="url(#airaBookLeaf)" stroke-width="2.8" stroke-linejoin="round"/>
+  <path d="M26.8 26.5L32 21.3L37.2 26.5" stroke="url(#airaBookLeaf)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <path d="M23.5 19.8C27.4 14 34.6 11.6 41.1 13.9C45.6 15.5 49.2 18.8 51.2 23.1" stroke="url(#ethelaOrbit)" stroke-width="2.2" stroke-linecap="round"/>
+  <circle cx="52.6" cy="24.8" r="2.4" fill="#2FA9FF"/>
+</svg>

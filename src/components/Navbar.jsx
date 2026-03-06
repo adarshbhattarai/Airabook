@@ -30,7 +30,7 @@ const Navbar = () => {
 
   const navItems = [
     { name: 'Home', path: homePath, public: true },
-    { name: 'Asset Registry', path: '/media', public: false },
+    { name: 'Memory Library', path: '/media', public: false },
     // { name: 'Notes', path: '/notes', public: false },
   ];
 
@@ -49,17 +49,17 @@ const Navbar = () => {
     <nav className="bg-white/80 backdrop-blur-md shadow-lg sticky top-0 z-50 border-b border-violet-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-          <div onClick={() => window.location.href = homePath} className="flex items-center space-x-2 cursor-pointer">
+          <Link to="/" className="flex items-center">
             <motion.div
               whileHover={{ scale: 1.05 }}
-              className="flex items-center space-x-2"
+              className="flex items-center gap-3 leading-none"
             >
-              <Heart className="h-8 w-8 text-violet-500 fill-current" />
-              <span className="text-2xl font-bold bg-gradient-to-r from-purple-500 to-indigo-500 bg-clip-text text-transparent">
+              <Heart className="h-8 w-8 text-violet-600 fill-current" />
+              <span className="text-2xl md:text-3xl lg:text-4xl font-extrabold tracking-tight text-violet-600">
                 Airäbook
               </span>
             </motion.div>
-          </div>
+          </Link>
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-4">

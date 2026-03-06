@@ -55,25 +55,25 @@ const AppHeader = () => {
   return (
     <header
       className={cn(
-        'hidden md:flex h-16 items-center justify-between px-6 shrink-0 border-b bg-card text-foreground border-border relative z-30',
+        'relative z-30 hidden h-20 shrink-0 items-center justify-between border-b border-slate-200/60 bg-white/80 px-8 text-foreground backdrop-blur md:flex',
         isNeonTheme && 'shadow-[0_12px_30px_rgba(16,185,129,0.12)]',
       )}
     >
       {/* Left: Empty or subtle branding */}
-      <div className="w-48">
+      <div className="w-64">
         {/* Optional: Add breadcrumbs or page title here */}
       </div>
 
       {/* Center: Search bar */}
-      <div className="flex-1 max-w-2xl mx-8">
+      <div className="mx-8 max-w-[860px] flex-1">
         <form onSubmit={handleSearch} className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-app-gray-600" />
+          <Search className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
           <AppInput
             type="text"
-            placeholder="Search books, chapters, notes..."
+            placeholder="Search books, chapters, pages..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 pr-4 w-full"
+            className="h-14 w-full rounded-full border border-slate-200/70 bg-white pl-14 pr-6 text-[1.1rem] text-slate-600 shadow-[0_8px_24px_-20px_rgba(15,23,42,0.25)] placeholder:text-slate-400 focus-visible:ring-violet-300"
           />
         </form>
       </div>

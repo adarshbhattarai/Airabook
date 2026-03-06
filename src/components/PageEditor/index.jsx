@@ -1040,7 +1040,7 @@ const PageEditor = forwardRef(({
                     onClick={() => setMediaPickerTab('library')}
                     className="flex-1"
                   >
-                    Choose from asset registry
+                    Choose from Memory Library
                   </Button>
                 </div>
 
@@ -1066,7 +1066,7 @@ const PageEditor = forwardRef(({
                     <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
                       {albums.length === 0 ? (
                         <div className="text-sm text-app-gray-600 bg-app-gray-50 border border-app-gray-100 rounded-md p-3">
-                          No asset albums yet. Create one from the Asset Registry page.
+                          No library albums yet. Create one from the Memory Library page.
                         </div>
                       ) : (
                         albums.map((album) => (

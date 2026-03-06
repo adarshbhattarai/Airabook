@@ -63,7 +63,7 @@ const MobileTopBar = ({ onMenuClick }) => {
 
       <div className="relative flex items-center gap-2" ref={profileMenuRef}>
         <div className="flex flex-col items-end">
-          <span className="text-xs font-medium text-muted-foreground">Airäbook</span>
+          <span className="text-xs font-medium text-muted-foreground">Airabook by e-thela</span>
           <span className="text-sm font-semibold text-foreground">{displayName}</span>
         </div>
         <button
