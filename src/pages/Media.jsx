@@ -172,7 +172,7 @@ const AssetRegistry = () => {
       if (newAlbumCover) {
         // Use a generic covers folder or temp folder since we don't have album ID yet
         // Or just use the user's root covers folder
-        const storagePath = `${appUser.uid}/covers/${Date.now()}_${newAlbumCover.name}`;
+        const storagePath = `${user.uid}/covers/${Date.now()}_${newAlbumCover.name}`;
         const storageRef = ref(storage, storagePath);
         const uploadTask = await uploadBytesResumable(storageRef, newAlbumCover);
         coverImageUrl = await getDownloadURL(uploadTask.ref);

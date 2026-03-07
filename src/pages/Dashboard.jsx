@@ -1,9 +1,18 @@
 import React, { Suspense, lazy, useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Send, Sparkles, BookText, X } from 'lucide-react';
+import { Send, Sparkles, BookText, X, History, Plus, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { streamAirabookAI } from '@/lib/aiStream';
+import MessageContent from '@/components/chat/MessageContent';
+import {
+  extractConversationId,
+  extractUiCards,
+  mergeUniqueCards,
+  buildUiActionStateKey,
+} from '@/lib/chatUiEvents';
+import { executeChatUiAction } from '@/services/chatUiActionService';
+import StreamUiCards from '@/components/chat/StreamUiCards';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,8 +23,63 @@ import DashboardModeSwitch from '@/components/dashboard/DashboardModeSwitch';
 import DashboardTalkView from '@/components/dashboard/DashboardTalkView';
 import Talk3DErrorBoundary from '@/components/dashboard/talk3d/Talk3DErrorBoundary';
 import useWebGLSupport from '@/components/dashboard/talk3d/useWebGLSupport';
+import {
+  fetchConversationHistory,
+  fetchConversationById,
+  getConversationHistoryCache,
+  upsertConversationHistory,
+} from '@/services/conversationHistoryService';
 
 const DashboardTalk3DView = lazy(() => import('@/components/dashboard/talk3d/DashboardTalk3DView'));
+const HISTORY_PAGE_SIZE = 5;
+
+const normalizeConversationRole = (role) => {
+  if (role === 'assistant' || role === 'model') return 'model';
+  if (role === 'system') return 'assistant';
+  return 'user';
+};
+
+const normalizeHistoryConversationMessages = (entry) => {
+  const source = entry?.raw || {};
+  const list = Array.isArray(source?.messages)
+    ? source.messages
+    : (Array.isArray(source?.history) ? source.history : []);
+  return list
+    .map((item, index) => {
+      const role = normalizeConversationRole(item?.role);
+      const content = String(item?.content || item?.text || item?.message || '').trim();
+      if (!content) return null;
+      return {
+        id: item?.id || `${entry?.conversationId || 'msg'}-${index + 1}`,
+        role,
+        content,
+        actions: [],
+      };
+    })
+    .filter(Boolean);
+};
+
+const formatHistoryTime = (ts) => {
+  if (!ts) return '';
+  const date = new Date(ts);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date);
+};
+
+const appendResultText = (baseText, extraText) => {
+  const text = typeof extraText === 'string' ? extraText.trim() : '';
+  if (!text) return baseText;
+  const current = typeof baseText === 'string' ? baseText : '';
+  if (current.includes(text)) return current;
+  return current ? `${current}\n\n${text}` : text;
+};
+
+const appendStreamingText = (currentText, nextText) => `${currentText || ''}${nextText || ''}`;
 
 const Dashboard = () => {
   const location = useLocation();
@@ -26,11 +90,169 @@ const Dashboard = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedBook, setSelectedBook] = useState(null);
   const [dashboardMode, setDashboardMode] = useState('chat');
+  const [conversationId, setConversationId] = useState('');
+  const [activeConversationMeta, setActiveConversationMeta] = useState(null);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [historyItems, setHistoryItems] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyLoadingMore, setHistoryLoadingMore] = useState(false);
+  const [historyHasMore, setHistoryHasMore] = useState(true);
+  const [historyNextPage, setHistoryNextPage] = useState(1);
+  const [historySelectionLoadingId, setHistorySelectionLoadingId] = useState('');
+  const [historyError, setHistoryError] = useState('');
   const [talkVisualMode] = useState('face');
   const { checked: webGLChecked, supported: webGLSupported } = useWebGLSupport();
   const messagesEndRef = React.useRef(null);
   const hasSubmittedInitialPrompt = React.useRef(false);
   const messagesRef = useRef(messages);
+  const conversationIdRef = useRef(conversationId);
+  const historyPanelRef = useRef(null);
+
+  const attachCardsToAssistant = (assistantId, eventName, payload) => {
+    const cards = extractUiCards(eventName, payload);
+    if (cards.length === 0) return;
+    setMessages(prev => prev.map((msg) => (
+      msg.id === assistantId
+        ? { ...msg, uiCards: mergeUniqueCards(msg.uiCards, cards) }
+        : msg
+    )));
+  };
+
+  const setMessageActionState = (messageId, cardId, actionId, nextState) => {
+    const actionKey = buildUiActionStateKey(cardId, actionId);
+    setMessages(prev => prev.map((msg) => (
+      msg.id === messageId
+        ? {
+          ...msg,
+          uiActionState: {
+            ...(msg.uiActionState || {}),
+            [actionKey]: nextState,
+          },
+        }
+        : msg
+    )));
+  };
+
+  const syncHistoryFromCache = () => {
+    const cached = getConversationHistoryCache({ scope: 'dashboard', size: HISTORY_PAGE_SIZE });
+    if (!cached.cached) return false;
+    setHistoryItems(cached.items);
+    setHistoryHasMore(cached.hasMore);
+    setHistoryNextPage(cached.nextPage);
+    return cached.items.length > 0;
+  };
+
+  const loadHistoryPage = async (page = 1, { force = false } = {}) => {
+    const safePage = Math.max(1, Number(page) || 1);
+    if (safePage === 1) {
+      setHistoryLoading(true);
+    } else {
+      setHistoryLoadingMore(true);
+    }
+    setHistoryError('');
+
+    try {
+      const result = await fetchConversationHistory({
+        scope: 'dashboard',
+        page: safePage,
+        size: HISTORY_PAGE_SIZE,
+        force,
+      });
+      setHistoryItems(result.items);
+      setHistoryHasMore(result.hasMore);
+      setHistoryNextPage(result.nextPage);
+    } catch (error) {
+      setHistoryError(error?.message || 'Failed to load conversation history.');
+    } finally {
+      if (safePage === 1) {
+        setHistoryLoading(false);
+      } else {
+        setHistoryLoadingMore(false);
+      }
+    }
+  };
+
+  const toggleHistoryMenu = async () => {
+    const next = !isHistoryOpen;
+    setIsHistoryOpen(next);
+    if (!next) return;
+
+    const hasCachedItems = syncHistoryFromCache();
+    if (!hasCachedItems) {
+      await loadHistoryPage(1);
+    }
+  };
+
+  const handleNewConversation = () => {
+    setHistorySelectionLoadingId('');
+    setConversationId('');
+    setActiveConversationMeta(null);
+    setMessages([]);
+    setPrompt('');
+    setIsChatStarted(false);
+    setIsHistoryOpen(false);
+  };
+
+  const handleSelectConversation = async (entry) => {
+    const selectedId = String(entry?.conversationId || entry?.id || '').trim();
+    if (!selectedId) return;
+    const fallbackMessages = normalizeHistoryConversationMessages(entry);
+    setHistorySelectionLoadingId(selectedId);
+    setHistoryError('');
+    setConversationId(selectedId);
+    setActiveConversationMeta(entry);
+    setMessages([]);
+    setIsChatStarted(false);
+    setPrompt('');
+    setIsHistoryOpen(false);
+
+    try {
+      const result = await fetchConversationById({ conversationId: selectedId });
+      const resolvedMessages = Array.isArray(result?.messages) ? result.messages : [];
+      const nextMessages = resolvedMessages.length > 0 ? resolvedMessages : fallbackMessages;
+      setConversationId(result?.conversationId || selectedId);
+      setMessages(nextMessages);
+      setIsChatStarted(nextMessages.length > 0);
+      setActiveConversationMeta((current) => ({
+        ...(current || entry),
+        conversationId: result?.conversationId || selectedId,
+        title: result?.title || current?.title || entry?.title || 'Untitled conversation',
+        raw: result?.raw || current?.raw || entry?.raw,
+      }));
+      if ((result?.title || '').trim() || nextMessages.length > 0) {
+        upsertConversationHistory({
+          scope: 'dashboard',
+          size: HISTORY_PAGE_SIZE,
+          item: {
+            conversationId: result?.conversationId || selectedId,
+            title: result?.title || entry?.title || 'Untitled conversation',
+            preview: nextMessages[nextMessages.length - 1]?.content || entry?.preview || '',
+            updatedAt: Date.now(),
+          },
+        });
+        syncHistoryFromCache();
+      }
+    } catch (error) {
+      console.error('Failed to load conversation detail:', error);
+      if (fallbackMessages.length > 0) {
+        setMessages(fallbackMessages);
+        setIsChatStarted(true);
+      } else {
+        setMessages([]);
+        setIsChatStarted(false);
+        setHistoryError(error?.message || 'Failed to load this conversation.');
+      }
+    } finally {
+      setHistorySelectionLoadingId('');
+    }
+  };
+
+  const handleHistoryScroll = (event) => {
+    if (historyLoading || historyLoadingMore || !historyHasMore) return;
+    const target = event.currentTarget;
+    if ((target.scrollTop + target.clientHeight) < (target.scrollHeight - 36)) return;
+    loadHistoryPage(historyNextPage);
+  };
 
   // Extract books from appUser
   const books = appUser?.accessibleBookIds ? appUser.accessibleBookIds.map(item => {
@@ -53,6 +275,35 @@ const Dashboard = () => {
     messagesRef.current = messages;
   }, [messages]);
 
+  useEffect(() => {
+    conversationIdRef.current = conversationId;
+  }, [conversationId]);
+
+  useEffect(() => {
+    syncHistoryFromCache();
+  }, []);
+
+  useEffect(() => {
+    if (!isHistoryOpen) return undefined;
+    const handlePointerDown = (event) => {
+      if (!historyPanelRef.current) return;
+      if (!historyPanelRef.current.contains(event.target)) {
+        setIsHistoryOpen(false);
+      }
+    };
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') {
+        setIsHistoryOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isHistoryOpen]);
+
   const submitPrompt = async (promptText, options = {}) => {
     const isSurprise = options.isSurprise || false;
 
@@ -66,7 +317,15 @@ const Dashboard = () => {
     const assistantId = typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID()
       : `assistant-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const assistantMessage = { id: assistantId, role: 'model', content: '', sources: [], actions: [] };
+    const assistantMessage = {
+      id: assistantId,
+      role: 'model',
+      content: '',
+      streamingContent: '',
+      isStreaming: true,
+      sources: [],
+      actions: [],
+    };
     setMessages(prev => [...prev, userMessage, assistantMessage]);
     setPrompt('');
     setIsChatStarted(true);
@@ -79,30 +338,64 @@ const Dashboard = () => {
       await streamAirabookAI({
         messages: history,
         scope:'dashboard',
+        bookId: selectedBook?.bookId,
         isSurprise,
+        conversationId: conversationIdRef.current,
         bookContext: selectedBook ? { bookId: selectedBook.bookId, title: selectedBook.title } : null,
         onChunk: (text) => {
           setMessages(prev => prev.map(msg => (
-            msg.id === assistantId ? { ...msg, content: `${msg.content}${text}` } : msg
+            msg.id === assistantId
+              ? { ...msg, streamingContent: appendStreamingText(msg.streamingContent, text), isStreaming: true }
+              : msg
           )));
         },
         onDone: (data) => {
+          const resolvedConversationId = extractConversationId(data);
+          const effectiveConversationId = resolvedConversationId || conversationIdRef.current;
+          if (resolvedConversationId) {
+            setConversationId(resolvedConversationId);
+          }
+          if (effectiveConversationId) {
+            const historyEntry = {
+              conversationId: effectiveConversationId,
+              title: data?.title || userMessage.content || 'Untitled conversation',
+              preview: data?.text || userMessage.content || '',
+              updatedAt: Date.now(),
+            };
+            upsertConversationHistory({
+              scope: 'dashboard',
+              size: HISTORY_PAGE_SIZE,
+              item: historyEntry,
+            });
+            syncHistoryFromCache();
+            setActiveConversationMeta((current) => (
+              current?.conversationId === effectiveConversationId
+                ? { ...current, ...historyEntry }
+                : historyEntry
+            ));
+          }
+          const doneCards = extractUiCards('done', data);
           setMessages(prev => prev.map(msg => (
             msg.id === assistantId
               ? {
                 ...msg,
-                content: data?.text || msg.content,
+                content: data?.text || msg.content || msg.streamingContent || '',
+                isStreaming: false,
                 sources: data?.sources || msg.sources,
                 actions: data?.actions || [],
                 actionPrompt: data?.actionPrompt || '',
+                uiCards: mergeUniqueCards(msg.uiCards, doneCards),
               }
               : msg
           )));
         },
+        onEvent: (eventName, payload) => {
+          attachCardsToAssistant(assistantId, eventName, payload);
+        },
         onError: () => {
           setMessages(prev => prev.map(msg => (
             msg.id === assistantId
-              ? { ...msg, content: "I'm sorry, I encountered an error. Please try again." }
+              ? { ...msg, content: "I'm sorry, I encountered an error. Please try again.", isStreaming: false }
               : msg
           )));
         },
@@ -111,7 +404,7 @@ const Dashboard = () => {
       console.error('Error submitting prompt:', error);
       setMessages(prev => prev.map(msg => (
         msg.id === assistantId
-          ? { ...msg, content: "I'm sorry, I encountered an error. Please try again." }
+          ? { ...msg, content: "I'm sorry, I encountered an error. Please try again.", isStreaming: false }
           : msg
       )));
     } finally {
@@ -119,7 +412,8 @@ const Dashboard = () => {
     }
   };
 
-  const handleAction = async (messageId, actionId) => {
+  const handleAction = async (messageId, action = {}) => {
+    const actionId = typeof action === 'string' ? action : action.id;
     if (actionId === 'deny_generate_chapter') {
       setMessages(prev => prev.map(msg => (
         msg.id === messageId ? { ...msg, actions: [], actionPrompt: '' } : msg
@@ -127,9 +421,9 @@ const Dashboard = () => {
       return;
     }
 
-    if(actionId !=='generate_chapter' || actionId !=='create_book')  return;
+    if (actionId !== 'generate_chapter' && actionId !== 'create_book') return;
 
-    const userMessage = { role: 'user', content: 'Generate this chapter.' };
+    const userMessage = { role: 'user', content: actionId === 'create_book' ? 'Create this book.' : 'Generate this chapter.' };
     const assistantId = typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID()
       : `assistant-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -139,7 +433,7 @@ const Dashboard = () => {
         msg.id === messageId ? { ...msg, actions: [], actionPrompt: '' } : msg
       )),
       userMessage,
-      { id: assistantId, role: 'model', content: '', sources: [], actions: [] },
+      { id: assistantId, role: 'model', content: '', streamingContent: '', isStreaming: true, sources: [], actions: [] },
     ]));
 
     try {
@@ -148,26 +442,62 @@ const Dashboard = () => {
         messages: history,
         action: actionId,
         scope: 'dashboard',
+        bookId: selectedBook?.bookId,
+        conversationId: conversationIdRef.current,
         onChunk: (text) => {
           setMessages(prev => prev.map(msg => (
-            msg.id === assistantId ? { ...msg, content: `${msg.content}${text}` } : msg
+            msg.id === assistantId
+              ? { ...msg, streamingContent: appendStreamingText(msg.streamingContent, text), isStreaming: true }
+              : msg
           )));
         },
         onDone: (data) => {
+          const resolvedConversationId = extractConversationId(data);
+          const effectiveConversationId = resolvedConversationId || conversationIdRef.current;
+          if (resolvedConversationId) {
+            setConversationId(resolvedConversationId);
+          }
+          if (effectiveConversationId) {
+            const historyEntry = {
+              conversationId: effectiveConversationId,
+              title: activeConversationMeta?.title || (actionId === 'create_book' ? 'Create book workflow' : 'Chapter generation workflow'),
+              preview: data?.text || (actionId === 'create_book' ? 'Book creation requested.' : 'Chapter generation requested.'),
+              updatedAt: Date.now(),
+            };
+            upsertConversationHistory({
+              scope: 'dashboard',
+              size: HISTORY_PAGE_SIZE,
+              item: historyEntry,
+            });
+            syncHistoryFromCache();
+            setActiveConversationMeta((current) => (
+              current?.conversationId === effectiveConversationId
+                ? { ...current, ...historyEntry }
+                : historyEntry
+            ));
+          }
+          const doneCards = extractUiCards('done', data);
           setMessages(prev => prev.map(msg => (
             msg.id === assistantId
               ? {
                 ...msg,
-                content: data?.text || msg.content,
+                content: data?.text || msg.content || msg.streamingContent || '',
+                isStreaming: false,
                 sources: data?.sources || msg.sources,
+                actions: data?.actions || [],
+                actionPrompt: data?.actionPrompt || '',
+                uiCards: mergeUniqueCards(msg.uiCards, doneCards),
               }
               : msg
           )));
         },
+        onEvent: (eventName, payload) => {
+          attachCardsToAssistant(assistantId, eventName, payload);
+        },
         onError: () => {
           setMessages(prev => prev.map(msg => (
             msg.id === assistantId
-              ? { ...msg, content: "I'm sorry, I couldn't generate the chapter. Please try again." }
+              ? { ...msg, content: "I'm sorry, I couldn't generate the chapter. Please try again.", isStreaming: false }
               : msg
           )));
         },
@@ -176,7 +506,150 @@ const Dashboard = () => {
       console.error('Generate chapter error:', error);
       setMessages(prev => prev.map(msg => (
         msg.id === assistantId
-          ? { ...msg, content: "I'm sorry, I couldn't generate the chapter. Please try again." }
+          ? { ...msg, content: "I'm sorry, I couldn't generate the chapter. Please try again.", isStreaming: false }
+          : msg
+      )));
+    }
+  };
+
+  const handleCardAction = async (messageId, card, action) => {
+    const actionId = action?.id || 'action';
+    const actionKey = buildUiActionStateKey(card?.id, actionId);
+    if (!action?.endpoint && !action?.link && !action?.bodyTemplate && !action?.body) {
+      if (actionId === 'generate_chapter' || actionId === 'create_book' || actionId === 'deny_generate_chapter') {
+        await handleAction(messageId, action);
+        return;
+      }
+      setMessages(prev => prev.map((msg) => (
+        msg.id === messageId
+          ? {
+            ...msg,
+            uiActionState: {
+              ...(msg.uiActionState || {}),
+              [actionKey]: { status: 'error', message: 'No endpoint configured for this action.' },
+            },
+          }
+          : msg
+      )));
+      return;
+    }
+    setMessageActionState(messageId, card?.id, actionId, { status: 'pending', message: '' });
+
+    try {
+      const result = await executeChatUiAction({
+        action,
+        card,
+        context: {
+          conversationId: conversationIdRef.current,
+          bookId: selectedBook?.bookId || '',
+          source: 'dashboard',
+          messageId,
+          cardId: card?.id,
+          interactionId: card?.payload?.interactionId || '',
+          runId: card?.payload?.runId || '',
+          responsePath: card?.payload?.responsePath || '',
+          hitlContext: card?.payload?.context || {},
+        },
+        onEvent: (eventName, payload) => {
+          attachCardsToAssistant(messageId, eventName, payload);
+        },
+      });
+      const resultCards = extractUiCards('action_result', result?.payload || {});
+      const hasCards = resultCards.length > 0;
+      setMessages(prev => prev.map((msg) => (
+        msg.id === messageId
+          ? {
+            ...msg,
+            content: hasCards ? msg.content : appendResultText(msg.content, result?.message),
+            uiCards: mergeUniqueCards(msg.uiCards, resultCards),
+            uiActionState: {
+              ...(msg.uiActionState || {}),
+              [actionKey]: { status: 'success', message: result?.message || 'Acknowledged.' },
+            },
+          }
+          : msg
+      )));
+    } catch (error) {
+      setMessages(prev => prev.map((msg) => (
+        msg.id === messageId
+          ? {
+            ...msg,
+            uiActionState: {
+              ...(msg.uiActionState || {}),
+              [actionKey]: { status: 'error', message: error?.message || 'Action failed.' },
+            },
+          }
+          : msg
+      )));
+    }
+  };
+
+  const handleHitlDecision = async (messageId, card, option, selectedIndex) => {
+    const optionId = option?.id || String(selectedIndex + 1);
+    const actionKey = buildUiActionStateKey(card?.id, optionId);
+    setMessageActionState(messageId, card?.id, optionId, { status: 'pending', message: '' });
+
+    try {
+      const result = await executeChatUiAction({
+        action: {
+          id: optionId,
+          label: option?.label || `Option ${selectedIndex + 1}`,
+          method: 'POST',
+          endpoint: card?.payload?.responsePath || '',
+          bodyTemplate: {
+            action: 'human_in_loop_response',
+            interactionId: '{{interactionId}}',
+            runId: '{{runId}}',
+            conversationId: '{{conversationId}}',
+            source: 'dashboard',
+            selectedIndex: '{{selectedIndex}}',
+            selectedOption: '{{selectedOption}}',
+            context: '{{hitlContext}}',
+          },
+        },
+        card,
+        context: {
+          conversationId: conversationIdRef.current,
+          bookId: selectedBook?.bookId || '',
+          source: 'dashboard',
+          messageId,
+          cardId: card?.id,
+          interactionId: card?.payload?.interactionId || '',
+          runId: card?.payload?.runId || '',
+          responsePath: card?.payload?.responsePath || '',
+          selectedIndex,
+          selectedOption: option || {},
+          hitlContext: card?.payload?.context || {},
+        },
+        onEvent: (eventName, payload) => {
+          attachCardsToAssistant(messageId, eventName, payload);
+        },
+      });
+      const resultCards = extractUiCards('hitl_decision', result?.payload || {});
+      const hasCards = resultCards.length > 0;
+      setMessages(prev => prev.map((msg) => (
+        msg.id === messageId
+          ? {
+            ...msg,
+            content: hasCards ? msg.content : appendResultText(msg.content, result?.message),
+            uiCards: mergeUniqueCards(msg.uiCards, resultCards),
+            uiActionState: {
+              ...(msg.uiActionState || {}),
+              [actionKey]: { status: 'success', message: result?.message || 'Decision recorded.' },
+            },
+          }
+          : msg
+      )));
+    } catch (error) {
+      setMessages(prev => prev.map((msg) => (
+        msg.id === messageId
+          ? {
+            ...msg,
+            uiActionState: {
+              ...(msg.uiActionState || {}),
+              [actionKey]: { status: 'error', message: error?.message || 'Decision failed.' },
+            },
+          }
           : msg
       )));
     }
@@ -206,8 +679,102 @@ const Dashboard = () => {
 
   return (
     <div className={`relative flex flex-col h-[calc(100vh-4rem)] overflow-hidden ${dashboardMode === 'talk' ? 'dashboard-talk-page' : 'bg-white'}`}>
-      <div className="absolute right-4 top-4 z-30 sm:right-8">
-        <DashboardModeSwitch mode={dashboardMode} onModeChange={setDashboardMode} />
+      <div ref={historyPanelRef} className="absolute right-4 top-4 z-20 sm:right-8">
+        <div className="dashboard-top-controls">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={`dashboard-history-toggle ${isHistoryOpen ? 'dashboard-history-toggle-active' : ''}`}
+            onClick={toggleHistoryMenu}
+            title="Conversation history"
+            aria-expanded={isHistoryOpen}
+            aria-label="Conversation history"
+          >
+            <History className="h-4 w-4" />
+          </Button>
+          <DashboardModeSwitch mode={dashboardMode} onModeChange={setDashboardMode} />
+        </div>
+
+        {isHistoryOpen && (
+          <div className="dashboard-history-popover" role="dialog" aria-label="Conversation history">
+            <div className="dashboard-history-popover-head">
+              <div>
+                <div className="dashboard-history-title">Recent conversations</div>
+                <div className="dashboard-history-subtitle">Page size: {HISTORY_PAGE_SIZE}</div>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="appOutline"
+                className="h-7 px-2 text-[11px]"
+                onClick={handleNewConversation}
+              >
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                New
+              </Button>
+            </div>
+
+            <div className="dashboard-history-list" onScroll={handleHistoryScroll}>
+              {historyLoading ? (
+                <div className="dashboard-history-state">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading history...
+                </div>
+              ) : historyError ? (
+                <div className="dashboard-history-state dashboard-history-state-error">
+                  {historyError}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="appOutline"
+                    className="h-7 px-2 text-[11px] mt-2"
+                    onClick={() => loadHistoryPage(1, { force: true })}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              ) : historyItems.length === 0 ? (
+                <div className="dashboard-history-state">No conversations yet. Start a new one.</div>
+              ) : (
+                historyItems.map((entry) => {
+                  const entryConversationId = String(entry?.conversationId || entry?.id || '').trim();
+                  const isActive = Boolean(conversationId) && conversationId === entryConversationId;
+                  const isSelecting = historySelectionLoadingId === entryConversationId;
+                  return (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      className={`dashboard-history-item ${isActive ? 'dashboard-history-item-active' : ''}`}
+                      disabled={isSelecting}
+                      onClick={() => handleSelectConversation(entry)}
+                    >
+                      <div className="dashboard-history-item-title">{entry.title || 'Untitled conversation'}</div>
+                      {entry.preview ? (
+                        <div className="dashboard-history-item-preview">{entry.preview}</div>
+                      ) : null}
+                      <div className="dashboard-history-item-meta">
+                        {isSelecting ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Loading...
+                          </span>
+                        ) : (entry.updatedAt ? formatHistoryTime(entry.updatedAt) : 'Recently updated')}
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+
+              {historyLoadingMore ? (
+                <div className="dashboard-history-state dashboard-history-state-inline">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Loading more...
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )}
       </div>
 
       {dashboardMode === 'talk' ? (
@@ -228,7 +795,7 @@ const Dashboard = () => {
           <div className={`flex-1 overflow-y-auto p-4 sm:p-8 transition-opacity duration-500 ${isChatStarted ? 'opacity-100' : 'opacity-0'}`}>
             <div className="max-w-3xl mx-auto space-y-6 pb-48">
               {messages.map((msg, idx) => (
-                <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div key={msg.id || idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div
                     className={`
                       max-w-[80%] rounded-2xl px-6 py-4 text-lg leading-relaxed
@@ -237,7 +804,11 @@ const Dashboard = () => {
                         : 'bg-white text-app-gray-900 border border-app-gray-100 shadow-sm rounded-bl-sm'}
                     `}
                   >
-                    <div className="whitespace-pre-wrap">{msg.content}</div>
+                    <MessageContent
+                      content={msg.content}
+                      streamingContent={msg.streamingContent}
+                      isStreaming={msg.isStreaming}
+                    />
                     {msg.sources && msg.sources.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-gray-100 text-sm text-gray-500">
                         <p className="font-medium mb-1">Sources:</p>
@@ -262,7 +833,7 @@ const Dashboard = () => {
                               type="button"
                               size="sm"
                               variant={action.id === 'generate_chapter' || action.id === 'create_book' ? 'appPrimary' : 'appOutline'}
-                              onClick={() => handleAction(msg.id, action.id)}
+                              onClick={() => handleAction(msg.id, action)}
                               className="h-8 px-3 text-xs"
                             >
                               {action.label}
@@ -271,20 +842,17 @@ const Dashboard = () => {
                         </div>
                       </div>
                     )}
+                    {msg.uiCards && msg.uiCards.length > 0 && (
+                      <StreamUiCards
+                        cards={msg.uiCards}
+                        actionState={msg.uiActionState || {}}
+                        onAction={(card, action) => handleCardAction(msg.id, card, action)}
+                        onDecision={(card, option, index) => handleHitlDecision(msg.id, card, option, index)}
+                      />
+                    )}
                   </div>
                 </div>
               ))}
-              {isSubmitting && (
-                <div className="flex justify-start">
-                  <div className="bg-white border border-app-gray-100 rounded-2xl rounded-bl-sm px-6 py-4 shadow-sm">
-                    <div className="flex gap-1">
-                      <div className="w-2 h-2 bg-app-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <div className="w-2 h-2 bg-app-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <div className="w-2 h-2 bg-app-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                    </div>
-                  </div>
-                </div>
-              )}
               <div ref={messagesEndRef} />
             </div>
           </div>
@@ -324,6 +892,25 @@ const Dashboard = () => {
                             type="button"
                             onClick={() => setSelectedBook(null)}
                             className="ml-1 hover:bg-app-iris/20 rounded-full p-0.5 transition-colors"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {conversationId && (
+                      <div className="px-6 pb-2">
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-app-violet/10 text-app-violet rounded-lg text-sm">
+                          <History className="h-3.5 w-3.5" />
+                          <span className="font-medium truncate max-w-[280px]">
+                            {activeConversationMeta?.title || 'Continuing selected conversation'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleNewConversation}
+                            className="ml-1 hover:bg-app-violet/20 rounded-full p-0.5 transition-colors"
+                            title="Start new conversation"
                           >
                             <X className="h-3.5 w-3.5" />
                           </button>

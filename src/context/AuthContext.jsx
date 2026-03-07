@@ -12,7 +12,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import {
   httpsCallable
 } from 'firebase/functions';
@@ -50,7 +50,15 @@ export const AuthProvider = ({ children }) => {
   const { toast } = useToast();
 
   useEffect(() => {
+    let unsubscribeUserSnapshot = null;
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (unsubscribeUserSnapshot) {
+        console.log('🧹 Cleaning up previous user snapshot listener');
+        unsubscribeUserSnapshot();
+        unsubscribeUserSnapshot = null;
+      }
+
       console.log('🔐 Auth State Changed:', user ? `User ${user.uid}` : 'No User');
       setUser(user);
       setLoading(false);
@@ -68,14 +76,14 @@ export const AuthProvider = ({ children }) => {
         console.log('🔗 Setting up snapshot listener for:', userRef.path);
 
         // Simple snapshot listener - it will automatically detect when the doc is created
-        const unsubscribeSnapshot = onSnapshot(userRef,
+        unsubscribeUserSnapshot = onSnapshot(userRef,
           (docSnap) => {
             console.log('📄 User Snapshot update:', { exists: docSnap.exists(), id: docSnap.id });
 
             if (docSnap.exists()) {
               const userData = docSnap.data();
               console.log('✅ User data found:', userData);
-              setAppUser({
+              const baseUser = {
                 uid: user.uid,
                 ...userData,
                 emailVerified: typeof userData.emailVerified === 'boolean' ? userData.emailVerified : !!user.emailVerified,
@@ -84,7 +92,8 @@ export const AuthProvider = ({ children }) => {
                   ...(userData.notificationCounters || {}),
                 },
                 billing: userData.billing || createDefaultBilling(),
-              });
+              };
+              setAppUser(baseUser);
               setAppLoading(false);
             } else {
               // Document doesn't exist yet - just wait, the snapshot will update when it's created
@@ -112,10 +121,6 @@ export const AuthProvider = ({ children }) => {
           }
         );
 
-        return () => {
-          console.log('🧹 Cleaning up user snapshot listener');
-          unsubscribeSnapshot();
-        };
       } else {
         console.log('👋 User logged out or no session, clearing appUser');
         setAppUser(null);
@@ -123,7 +128,13 @@ export const AuthProvider = ({ children }) => {
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      if (unsubscribeUserSnapshot) {
+        console.log('🧹 Cleaning up user snapshot listener');
+        unsubscribeUserSnapshot();
+      }
+      unsubscribe();
+    };
   }, []);
 
   const signup = async (name, email, password) => {

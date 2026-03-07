@@ -9,6 +9,7 @@ const { assertAndIncrementCounter, resolveUserPlanLimits } = require('./utils/li
 
 const { extractTextFromHtml, generateEmbeddings } = require('./utils/embeddingsClient');
 const { updateChapterPageSummary } = require('./utils/chapterUtils');
+const { validatePageContentLimits } = require('./utils/pageContentValidation');
 
 // Firebase Admin initialized in index.js
 const db = admin.firestore();
@@ -64,6 +65,8 @@ exports.createPage = onCall(
             if (!chapterDoc.exists) {
                 throw new HttpsError('not-found', 'Chapter not found.');
             }
+
+            validatePageContentLimits({ note, content });
 
             const { tier, limits } = await resolveUserPlanLimits(db, userId);
             const pagePerChapterLimit = Number(limits?.pagesPerChapter);

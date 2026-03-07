@@ -16,6 +16,7 @@ import {
 import BlockEditor from '@/components/BlockEditor';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import { stripHtml, convertToEmulatorURL, textToHtml } from '@/lib/pageUtils';
+import { validatePageContentLimits } from '@/lib/pageContentValidation';
 import GenerateImagePrompt from '@/components/PageEditor/GenerateImagePrompt';
 import TemplatePage from '@/components/PageEditor/TemplatePage';
 import { pageTemplates } from '@/constants/pageTemplates';
@@ -23,6 +24,7 @@ import { pageBlockApiService } from '@/services/pageBlockApiService';
 
 const MEDIA_PICKER_CONTEXT_EDITOR = 'editor';
 const MEDIA_PICKER_CONTEXT_TEMPLATE = 'template';
+const MEDIA_PICKER_CONTEXT_INLINE = 'inline';
 
 const PageEditor = forwardRef(({
   bookId,
@@ -39,7 +41,6 @@ const PageEditor = forwardRef(({
   onDraftChange,
   onBlocksChange,
   onRequestReflow,
-  onNearOverflowAtEnd,
   onUserInput,
   onFocus,
   onReplacePageId,
@@ -64,7 +65,6 @@ const PageEditor = forwardRef(({
   const [toolbarOpen, setToolbarOpen] = useState(false);
   const [genImgOpen, setGenImgOpen] = useState(false);
   const [genImgPrompt, setGenImgPrompt] = useState('');
-  const [genImgAnchor, setGenImgAnchor] = useState({ left: 16, top: 16 });
   const [genImgUseContext, setGenImgUseContext] = useState(true);
   const [genImgLoading, setGenImgLoading] = useState(false);
   const [reflectionRewritePrompts, setReflectionRewritePrompts] = useState({
@@ -91,6 +91,7 @@ const PageEditor = forwardRef(({
   const toolbarRef = useRef(null);
   const editorContainerRef = useRef(null);
   const genImgInputRef = useRef(null);
+  const mediaPickerCloseReasonRef = useRef('idle');
 
   // Track last saved blocks for reconciliation (to detect deleted album images)
   const previousBlocksRef = useRef(null);
@@ -944,6 +945,18 @@ const PageEditor = forwardRef(({
     const templatePageName = (normalizedContent.title || '').trim() || 'Untitled Page';
     const shortNote = templatePageName;
     const note = buildTemplateNote(normalizedContent) || textToHtml(shortNote);
+    const validationResult = validatePageContentLimits({ note, content: normalizedContent });
+    if (!validationResult.isValid) {
+      if (!silent) {
+        toast({
+          title: 'Page limit exceeded',
+          description: validationResult.error,
+          variant: 'destructive',
+        });
+      }
+      setIsSaving(false);
+      return false;
+    }
 
     try {
       if (page.id.startsWith('temp_')) {
@@ -1026,6 +1039,18 @@ const PageEditor = forwardRef(({
     }
     setIsSaving(true);
     const htmlToSave = await getCurrentHTML();
+    const validationResult = validatePageContentLimits({ note: htmlToSave });
+    if (!validationResult.isValid) {
+      if (!silent) {
+        toast({
+          title: 'Page limit exceeded',
+          description: validationResult.error,
+          variant: 'destructive',
+        });
+      }
+      setIsSaving(false);
+      return false;
+    }
     const plain = stripHtml(htmlToSave);
     const shortNote = plain.substring(0, 40) + (plain.length > 40 ? '...' : '');
 
@@ -1117,33 +1142,25 @@ const PageEditor = forwardRef(({
     // Track user input timestamp
     onUserInput?.(page.id);
 
-    // Only intercept character keys and Enter (skip Backspace).
+    // Track content fill status while typing.
     if (e.key === 'Backspace') return;
     if (e.key.length > 1) return;
-
-    // Check if cursor is at end of page and page is near full
-    const atEndOfPage = quillRef.current?.isCursorAtEndOfPage?.();
-    console.log('atEndOfPage ' + 'Key', atEndOfPage, e.key);
-    if (!atEndOfPage) return;
-
-    const scrollH = contentMeasureRef.current?.scrollHeight ?? 0;
-    const clientH = pageRootRef.current?.clientHeight ?? 0;
-    const nearOverflow = clientH > 0 && scrollH >= clientH - 24;
-
-    if (nearOverflow && onNearOverflowAtEnd) {
-      // Trigger fast-path: create/focus next page
-      // DO NOT preventDefault - let the character appear on this page first.
-      // e.preventDefault();
-      // e.stopPropagation();
-      console.log('Triggering overflow jump (allowing char insert first)');
-      onNearOverflowAtEnd(page.id);
-    }
+    requestAnimationFrame(updateLimitStatusFromMeasure);
   };
 
   const handleFileSelect = async (event) => {
     if (readOnly) return;
     const files = Array.from(event.target.files || []);
     if (files.length === 0) return;
+
+    if (mediaPickerContext === MEDIA_PICKER_CONTEXT_INLINE && files.length > 1) {
+      toast({
+        title: 'Select one image',
+        description: 'Inline image mode supports one image at a time.',
+        variant: 'warning',
+      });
+      return;
+    }
 
     // Limit to 5 media items per /media insertion (Option C)
     if (files.length > 5) {
@@ -1155,6 +1172,7 @@ const PageEditor = forwardRef(({
       return;
     }
 
+    mediaPickerCloseReasonRef.current = 'insert';
     setMediaPickerOpen(false);
 
     if (fileInputRef.current) {
@@ -1233,9 +1251,15 @@ const PageEditor = forwardRef(({
             type: mediaType,
           };
 
-          // Insert as BlockNote media block
-          if (quillRef.current?.insertMediaBlocks) {
-            quillRef.current.insertMediaBlocks([mediaData]);
+          const isInlineContext = mediaPickerContext === MEDIA_PICKER_CONTEXT_INLINE;
+          const mediaToInsert = isInlineContext
+            ? [{ ...mediaData, previewWidth: 154 }]
+            : [mediaData];
+
+          if (isInlineContext && quillRef.current?.hasPendingDropzone?.() && quillRef.current?.replaceDropzoneWithMedia) {
+            quillRef.current.replaceDropzoneWithMedia(mediaToInsert);
+          } else if (quillRef.current?.insertMediaBlocks) {
+            quillRef.current.insertMediaBlocks(mediaToInsert);
           }
 
           setUploadProgress(prev => {
@@ -1264,9 +1288,15 @@ const PageEditor = forwardRef(({
         type: mediaType,
       };
 
-      // Insert as BlockNote media block
-      if (quillRef.current?.insertMediaBlocks) {
-        quillRef.current.insertMediaBlocks([mediaData]);
+      const isInlineContext = mediaPickerContext === MEDIA_PICKER_CONTEXT_INLINE;
+      const mediaToInsert = isInlineContext
+        ? [{ ...mediaData, previewWidth: 154 }]
+        : [mediaData];
+
+      if (isInlineContext && quillRef.current?.hasPendingDropzone?.() && quillRef.current?.replaceDropzoneWithMedia) {
+        quillRef.current.replaceDropzoneWithMedia(mediaToInsert);
+      } else if (quillRef.current?.insertMediaBlocks) {
+        quillRef.current.insertMediaBlocks(mediaToInsert);
       }
 
       // Track usage for album assets (so they can't be deleted while in use)
@@ -1283,7 +1313,7 @@ const PageEditor = forwardRef(({
         console.error('Failed to track usage:', trackError);
       }
 
-      toast({ title: 'Asset added', description: `${imageData.name} inserted from library.` });
+      toast({ title: 'Asset added', description: `${mediaData.name} inserted from library.` });
     } catch (error) {
       console.error('Failed to attach asset', error);
       toast({ title: 'Attach failed', description: error.message || 'Could not attach asset.', variant: 'destructive' });
@@ -1305,6 +1335,15 @@ const PageEditor = forwardRef(({
   const handleSaveSelectedAssets = async () => {
     if (readOnly) return;
     if (selectedAssets.length === 0) return;
+
+    if (mediaPickerContext === MEDIA_PICKER_CONTEXT_INLINE && selectedAssets.length > 1) {
+      toast({
+        title: 'Select one image',
+        description: 'Inline image mode supports one image at a time.',
+        variant: 'warning',
+      });
+      return;
+    }
 
     // Option C: Limit to 5 media items per /media insertion
     if (selectedAssets.length > 5) {
@@ -1346,6 +1385,7 @@ const PageEditor = forwardRef(({
       });
 
       setSelectedAssets([]);
+      mediaPickerCloseReasonRef.current = 'insert';
       setMediaPickerOpen(false);
       return;
     }
@@ -1359,9 +1399,15 @@ const PageEditor = forwardRef(({
       type: asset.type === 'video' ? 'video' : 'image',
     }));
 
-    // Insert all media as blocks at once
-    if (quillRef.current?.insertMediaBlocks) {
-      quillRef.current.insertMediaBlocks(mediaToInsert);
+    const isInlineContext = mediaPickerContext === MEDIA_PICKER_CONTEXT_INLINE;
+    const mediaToInsertWithLayout = isInlineContext
+      ? mediaToInsert.map((item) => ({ ...item, previewWidth: 154 }))
+      : mediaToInsert;
+
+    if (isInlineContext && quillRef.current?.hasPendingDropzone?.() && quillRef.current?.replaceDropzoneWithMedia) {
+      quillRef.current.replaceDropzoneWithMedia(mediaToInsertWithLayout);
+    } else if (quillRef.current?.insertMediaBlocks) {
+      quillRef.current.insertMediaBlocks(mediaToInsertWithLayout);
     }
 
     // Track usage for all album assets
@@ -1386,6 +1432,7 @@ const PageEditor = forwardRef(({
     });
 
     setSelectedAssets([]);
+    mediaPickerCloseReasonRef.current = 'insert';
     setMediaPickerOpen(false);
   };
 
@@ -1458,26 +1505,12 @@ const PageEditor = forwardRef(({
   };
 
   // NEW: Handle /media command from editor - opens media picker dialog
-  const handleMediaRequest = () => {
-    openMediaPicker(MEDIA_PICKER_CONTEXT_EDITOR);
+  const handleMediaRequest = (context = MEDIA_PICKER_CONTEXT_EDITOR) => {
+    openMediaPicker(context);
   };
 
-  const openGenImagePrompt = (payload = {}) => {
+  const openGenImagePrompt = () => {
     if (readOnly) return;
-    const anchorRect = payload?.anchorRect;
-    const container = editorContainerRef.current;
-
-    if (container && anchorRect) {
-      const containerRect = container.getBoundingClientRect();
-      const leftRaw = anchorRect.left - containerRect.left;
-      const maxLeft = Math.max(12, containerRect.width - 360);
-      const left = Math.min(Math.max(12, leftRaw), maxLeft);
-      const top = anchorRect.bottom - containerRect.top + 8;
-      setGenImgAnchor({ left, top });
-    } else {
-      setGenImgAnchor({ left: 16, top: 16 });
-    }
-
     quillRef.current?.saveCursorPosition?.();
     setGenImgPrompt('');
     setGenImgUseContext(true);
@@ -1726,7 +1759,7 @@ const PageEditor = forwardRef(({
             </>
           )}
 
-          <div ref={contentMeasureRef} className={isTemplatePage ? 'min-h-full overflow-visible flex flex-col' : 'h-full overflow-hidden flex flex-col'}>
+          <div ref={contentMeasureRef} className={isTemplatePage ? 'min-h-full overflow-visible flex flex-col' : 'h-full overflow-y-auto overflow-x-hidden flex flex-col'}>
                 <div className="flex justify-center items-center mb-6 relative">
                   {chapterTitle && (
                 <div className="page-editor-chapter-title text-xs font-semibold text-violet-600 uppercase tracking-wider mb-1">
@@ -1749,6 +1782,13 @@ const PageEditor = forwardRef(({
             <Dialog open={mediaPickerOpen} onOpenChange={(open) => {
               setMediaPickerOpen(open);
               if (!open) {
+                const shouldClearInlineDropzone =
+                  mediaPickerCloseReasonRef.current !== 'insert' &&
+                  mediaPickerContext === MEDIA_PICKER_CONTEXT_INLINE;
+                if (shouldClearInlineDropzone && quillRef.current?.hasPendingDropzone?.()) {
+                  quillRef.current.clearPendingDropzone?.();
+                }
+                mediaPickerCloseReasonRef.current = 'idle';
                 setSelectedAssets([]);
                 setMediaPickerContext(MEDIA_PICKER_CONTEXT_EDITOR);
               }
@@ -2047,7 +2087,7 @@ const PageEditor = forwardRef(({
                 <div className={isTemplatePage ? '' : 'flex-grow h-full'}>
                   <div
                     ref={editorContainerRef}
-                    className={isTemplatePage ? 'bg-transparent relative' : 'h-full bg-transparent overflow-hidden relative'}
+                    className={isTemplatePage ? 'bg-transparent relative' : 'h-full bg-transparent relative'}
                     onKeyDownCapture={handleKeyDownCapture}
                     onMouseDownCapture={() => {
                       logContentMeasure('editor mousedown');
@@ -2081,7 +2121,6 @@ const PageEditor = forwardRef(({
                         {!readOnly && (
                           <GenerateImagePrompt
                             open={genImgOpen}
-                            anchor={genImgAnchor}
                             prompt={genImgPrompt}
                             onPromptChange={setGenImgPrompt}
                             onCancel={closeGenImagePrompt}
@@ -2390,24 +2429,6 @@ const PageEditor = forwardRef(({
                       Rewrite
                     </Button>
                   </div>
-                  {/* CSS Override to prevent Editor from scrolling internally. 
-                      We want the page to be a FIXED viewport where content overflows 
-                      (and is caught by our reflow logic), rather than a scrollable window. 
-                  */}
-                  <style>{`
-                    .bn-editor {
-                      overflow: visible !important; 
-                      height: 100% !important;
-                    }
-                    .bn-block-outer {
-                      /* Ensure blocks don't trap scroll either */
-                    }
-                    /* Hide scrollbars just in case */
-                    ::-webkit-scrollbar {
-                      width: 0px;
-                      background: transparent;
-                    }
-                  `}</style>
                   {pageIndex < totalPages - 1 ? (
                     <Button
                       variant="appSuccess"

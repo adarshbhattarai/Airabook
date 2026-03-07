@@ -14,7 +14,13 @@ service firebase.storage {
         (
           get(/databases/(default)/documents/books/$(bookId)).data.ownerId == request.auth.uid ||
           (
+            get(/databases/(default)/documents/books/$(bookId)).data.members != null &&
+            get(/databases/(default)/documents/books/$(bookId)).data.members[request.auth.uid] == 'Owner'
+          ) ||
+          (
+            get(/databases/(default)/documents/books/$(bookId)).data.members != null &&
             get(/databases/(default)/documents/books/$(bookId)).data.members[request.auth.uid] == 'Co-author' &&
+            get(/databases/(default)/documents/books/$(bookId)).data.memberPermissions != null &&
             get(/databases/(default)/documents/books/$(bookId)).data.memberPermissions[request.auth.uid] != null &&
             get(/databases/(default)/documents/books/$(bookId)).data.memberPermissions[request.auth.uid].canManageMedia == true
           )
@@ -24,7 +30,13 @@ service firebase.storage {
     function canWriteStandaloneAlbumMedia(bookId) {
       return !exists(/databases/(default)/documents/books/$(bookId)) &&
         exists(/databases/(default)/documents/albums/$(bookId)) &&
-        get(/databases/(default)/documents/albums/$(bookId)).data.accessPermission.ownerId == request.auth.uid;
+        (
+          (
+            get(/databases/(default)/documents/albums/$(bookId)).data.accessPermission != null &&
+            get(/databases/(default)/documents/albums/$(bookId)).data.accessPermission.ownerId == request.auth.uid
+          ) ||
+          get(/databases/(default)/documents/albums/$(bookId)).data.ownerId == request.auth.uid
+        );
     }
 
     function isMediaPath(path) {
@@ -33,24 +45,24 @@ service firebase.storage {
 
     match /{userId}/{bookId}/{chapterId}/{pageId}/media/{mediaType}/{fileName=**} {
       allow read: if true;
-      // Clients can upload/update only; delete is server-only via callable/Admin SDK.
-      allow write: if isAdmin() || (
+      // Clients can create/update only; delete is server-only via callable/Admin SDK.
+      allow create, update: if isAdmin() || (
         isSignedIn() &&
-        request.resource != null &&
         request.auth.uid == userId &&
         (canWriteBookMedia(bookId) || canWriteStandaloneAlbumMedia(bookId))
       );
+      allow delete: if isAdmin();
     }
 
     match /{userId}/{allPaths=**} {
       allow read: if true;
       // All non-media paths remain user-writable for create/update only.
-      allow write: if isAdmin() || (
+      allow create, update: if isAdmin() || (
         isSignedIn() &&
-        request.resource != null &&
         request.auth.uid == userId &&
         !isMediaPath(allPaths)
       );
+      allow delete: if isAdmin();
     }
   }
 }
