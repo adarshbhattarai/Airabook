@@ -117,6 +117,15 @@ const BlockEditor = forwardRef(
     // Track saved cursor position for external media insertion (from dropzone click)
     const savedCursorBlockIdRef = useRef(null);
 
+    const isDropzoneBlock = useCallback((block) => {
+      return block?.type === "image" && block?.props?.url === DROPZONE_MARKER;
+    }, []);
+
+    const sanitizeBlocks = useCallback((blocks) => {
+      if (!Array.isArray(blocks)) return [];
+      return blocks.filter((block) => !isDropzoneBlock(block));
+    }, [isDropzoneBlock]);
+
     const getSelectionRect = useCallback(() => {
       if (editor?.getTextCursorPosition && editor?.domElement) {
         const pos = editor.getTextCursorPosition();
@@ -187,7 +196,7 @@ const BlockEditor = forwardRef(
               caption: "Click to add inline image",
               previewWidth: 154, // 30% width for centered inline images
               textAlignment: "center",
-              name: JSON.stringify({ isDropzone: true, isInline: true })
+              name: ""
             }
           };
 
@@ -395,11 +404,11 @@ const BlockEditor = forwardRef(
       },
       getHTML: async () => {
         if (!editor) return "";
-        return await editor.blocksToFullHTML(editor.document);
+        return await editor.blocksToFullHTML(sanitizeBlocks(editor.document));
       },
       getBlocks: () => {
         if (!editor) return [];
-        return cloneBlocks(editor.document);
+        return cloneBlocks(sanitizeBlocks(editor.document));
       },
       setBlocks: (blocks, options = {}) => {
         if (!editor) return;
@@ -407,7 +416,7 @@ const BlockEditor = forwardRef(
         if (silent) {
           suppressChangeRef.current = true;
         }
-        editor.replaceBlocks(editor.document, blocks || []);
+        editor.replaceBlocks(editor.document, sanitizeBlocks(blocks));
         if (silent) unsuppressSoon();
       },
       focus: () => {
@@ -597,11 +606,12 @@ const BlockEditor = forwardRef(
           if (Array.isArray(initialBlocks)) {
             suppressChangeRef.current = true;
             // Ensure at least one empty paragraph block exists for the editor to be interactive
-            const blocksToLoad = initialBlocks.length > 0 ? initialBlocks : [{ type: "paragraph", content: [] }];
+            const cleanedInitialBlocks = sanitizeBlocks(initialBlocks);
+            const blocksToLoad = cleanedInitialBlocks.length > 0 ? cleanedInitialBlocks : [{ type: "paragraph", content: [] }];
             editor.replaceBlocks(editor.document, blocksToLoad);
             unsuppressSoon();
           } else if (initialContent) {
-            const blocks = await editor.tryParseHTMLToBlocks(initialContent);
+            const blocks = sanitizeBlocks(await editor.tryParseHTMLToBlocks(initialContent));
             suppressChangeRef.current = true;
             // Ensure at least one empty paragraph block exists
             const blocksToLoad = blocks.length > 0 ? blocks : [{ type: "paragraph", content: [] }];
@@ -612,18 +622,19 @@ const BlockEditor = forwardRef(
         };
         loadContent();
       }
-    }, [editor, initialContent, initialBlocks, isLoaded]);
+    }, [editor, initialContent, initialBlocks, isLoaded, sanitizeBlocks]);
 
     // Handle changes
     const handleChange = async () => {
       if (!editor || !isLoaded) return;
       if (suppressChangeRef.current) return;
+      const safeBlocks = sanitizeBlocks(editor.document);
 
       if (onBlocksChange) {
-        onBlocksChange(cloneBlocks(editor.document));
+        onBlocksChange(cloneBlocks(safeBlocks));
       }
       if (onChange) {
-        const html = await editor.blocksToFullHTML(editor.document);
+        const html = await editor.blocksToFullHTML(safeBlocks);
         onChange(html);
       }
     };

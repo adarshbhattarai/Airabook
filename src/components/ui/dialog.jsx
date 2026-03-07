@@ -31,10 +31,10 @@ export const DialogOverlay = React.forwardRef(({ className, ...props }, ref) => 
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 // We center Content by wrapping it in a fullscreen flex container
-export const DialogContent = React.forwardRef(({ className, children, ...props }, ref) => (
+export const DialogContent = React.forwardRef(({ className, overlayClassName, children, ...props }, ref) => (
   <DialogPortal>
     {/* Overlay behind */}
-    <DialogOverlay />
+    <DialogOverlay className={overlayClassName} />
 
     {/* Centering wrapper */}
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
