@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ArrowRight, ImagePlus, Sparkles } from 'lucide-react';
 import { streamAirabookAI } from '@/lib/aiStream';
+import MessageContent from '@/components/chat/MessageContent';
 import {
   extractConversationId,
   extractUiCards,
@@ -11,6 +12,8 @@ import {
 } from '@/lib/chatUiEvents';
 import { executeChatUiAction } from '@/services/chatUiActionService';
 import StreamUiCards from '@/components/chat/StreamUiCards';
+
+const appendStreamingText = (currentText, nextText) => `${currentText || ''}${nextText || ''}`;
 
 const ChapterChatBox = ({
   inputValue,
@@ -68,7 +71,7 @@ const ChapterChatBox = ({
     setMessages(prev => [
       ...prev,
       { role: 'user', content: userQuery },
-      { id: assistantId, role: 'assistant', content: '', actions: [] },
+      { id: assistantId, role: 'assistant', content: '', streamingContent: '', isStreaming: true, actions: [] },
     ]);
     setInput('');
     setIsLoading(true);
@@ -85,7 +88,9 @@ const ChapterChatBox = ({
         conversationId: conversationIdRef.current,
         onChunk: (text) => {
           setMessages(prev => prev.map(msg => (
-            msg.id === assistantId ? { ...msg, content: `${msg.content}${text}` } : msg
+            msg.id === assistantId
+              ? { ...msg, streamingContent: appendStreamingText(msg.streamingContent, text), isStreaming: true }
+              : msg
           )));
         },
         onDone: (data) => {
@@ -98,7 +103,8 @@ const ChapterChatBox = ({
             msg.id === assistantId
               ? {
                 ...msg,
-                content: data?.text || msg.content,
+                content: data?.text || msg.content || msg.streamingContent || '',
+                isStreaming: false,
                 actions: data?.actions || [],
                 actionPrompt: data?.actionPrompt || '',
                 uiCards: mergeUniqueCards(msg.uiCards, doneCards),
@@ -112,7 +118,7 @@ const ChapterChatBox = ({
         onError: () => {
           setMessages(prev => prev.map(msg => (
             msg.id === assistantId
-              ? { ...msg, content: 'Sorry, I hit an error while responding. Please try again.' }
+              ? { ...msg, content: 'Sorry, I hit an error while responding. Please try again.', isStreaming: false }
               : msg
           )));
         },
@@ -121,7 +127,7 @@ const ChapterChatBox = ({
       console.error('RAG Query Error:', error);
       setMessages(prev => prev.map(msg => (
         msg.id === assistantId
-          ? { ...msg, content: 'Sorry, I hit an error while responding. Please try again.' }
+          ? { ...msg, content: 'Sorry, I hit an error while responding. Please try again.', isStreaming: false }
           : msg
       )));
     } finally {
@@ -150,7 +156,7 @@ const ChapterChatBox = ({
         msg.id === messageId ? { ...msg, actions: [], actionPrompt: '' } : msg
       )),
       userMessage,
-      { id: assistantId, role: 'assistant', content: '', actions: [] },
+      { id: assistantId, role: 'assistant', content: '', streamingContent: '', isStreaming: true, actions: [] },
     ]));
 
     try {
@@ -164,7 +170,9 @@ const ChapterChatBox = ({
         conversationId: conversationIdRef.current,
         onChunk: (text) => {
           setMessages(prev => prev.map(msg => (
-            msg.id === assistantId ? { ...msg, content: `${msg.content}${text}` } : msg
+            msg.id === assistantId
+              ? { ...msg, streamingContent: appendStreamingText(msg.streamingContent, text), isStreaming: true }
+              : msg
           )));
         },
         onPageDone: (data) => {
@@ -184,7 +192,8 @@ const ChapterChatBox = ({
             msg.id === assistantId
               ? {
                 ...msg,
-                content: data?.text || msg.content,
+                content: data?.text || msg.content || msg.streamingContent || '',
+                isStreaming: false,
                 actions: data?.actions || [],
                 actionPrompt: data?.actionPrompt || '',
                 uiCards: mergeUniqueCards(msg.uiCards, doneCards),
@@ -198,7 +207,7 @@ const ChapterChatBox = ({
         onError: () => {
           setMessages(prev => prev.map(msg => (
             msg.id === assistantId
-              ? { ...msg, content: 'Sorry, I could not generate the chapter. Please try again.' }
+              ? { ...msg, content: 'Sorry, I could not generate the chapter. Please try again.', isStreaming: false }
               : msg
           )));
         },
@@ -207,7 +216,7 @@ const ChapterChatBox = ({
       console.error('Generate chapter error:', error);
       setMessages(prev => prev.map(msg => (
         msg.id === assistantId
-          ? { ...msg, content: 'Sorry, I could not generate the chapter. Please try again.' }
+          ? { ...msg, content: 'Sorry, I could not generate the chapter. Please try again.', isStreaming: false }
           : msg
       )));
     }
@@ -405,7 +414,11 @@ const ChapterChatBox = ({
               ? 'bg-app-iris text-white rounded-br-none'
               : 'bg-app-gray-100 text-foreground rounded-bl-none'
             }`}>
-              <p>{msg.content}</p>
+              <MessageContent
+                content={msg.content}
+                streamingContent={msg.streamingContent}
+                isStreaming={msg.isStreaming}
+              />
               {msg.actions && msg.actions.length > 0 && (
                 <div className="mt-2 rounded-lg border border-border/30 bg-white/70 px-2 py-2 text-xs text-foreground">
                   <p className="font-semibold text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -438,15 +451,6 @@ const ChapterChatBox = ({
             </div>
           </div>
         ))}
-        {isLoading && (
-          <div className="flex justify-start">
-            <div className="bg-app-gray-100 text-foreground rounded-2xl rounded-bl-none px-3 py-2 text-sm flex items-center gap-1">
-              <div className="w-1.5 h-1.5 bg-app-gray-300 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <div className="w-1.5 h-1.5 bg-app-gray-300 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-              <div className="w-1.5 h-1.5 bg-app-gray-300 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="mt-3">

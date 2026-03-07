@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Send, Sparkles, BookText, X, History, Plus, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { streamAirabookAI } from '@/lib/aiStream';
+import MessageContent from '@/components/chat/MessageContent';
 import {
   extractConversationId,
   extractUiCards,
@@ -77,6 +78,8 @@ const appendResultText = (baseText, extraText) => {
   if (current.includes(text)) return current;
   return current ? `${current}\n\n${text}` : text;
 };
+
+const appendStreamingText = (currentText, nextText) => `${currentText || ''}${nextText || ''}`;
 
 const Dashboard = () => {
   const location = useLocation();
@@ -314,7 +317,15 @@ const Dashboard = () => {
     const assistantId = typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID()
       : `assistant-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const assistantMessage = { id: assistantId, role: 'model', content: '', sources: [], actions: [] };
+    const assistantMessage = {
+      id: assistantId,
+      role: 'model',
+      content: '',
+      streamingContent: '',
+      isStreaming: true,
+      sources: [],
+      actions: [],
+    };
     setMessages(prev => [...prev, userMessage, assistantMessage]);
     setPrompt('');
     setIsChatStarted(true);
@@ -333,7 +344,9 @@ const Dashboard = () => {
         bookContext: selectedBook ? { bookId: selectedBook.bookId, title: selectedBook.title } : null,
         onChunk: (text) => {
           setMessages(prev => prev.map(msg => (
-            msg.id === assistantId ? { ...msg, content: `${msg.content}${text}` } : msg
+            msg.id === assistantId
+              ? { ...msg, streamingContent: appendStreamingText(msg.streamingContent, text), isStreaming: true }
+              : msg
           )));
         },
         onDone: (data) => {
@@ -366,7 +379,8 @@ const Dashboard = () => {
             msg.id === assistantId
               ? {
                 ...msg,
-                content: data?.text || msg.content,
+                content: data?.text || msg.content || msg.streamingContent || '',
+                isStreaming: false,
                 sources: data?.sources || msg.sources,
                 actions: data?.actions || [],
                 actionPrompt: data?.actionPrompt || '',
@@ -381,7 +395,7 @@ const Dashboard = () => {
         onError: () => {
           setMessages(prev => prev.map(msg => (
             msg.id === assistantId
-              ? { ...msg, content: "I'm sorry, I encountered an error. Please try again." }
+              ? { ...msg, content: "I'm sorry, I encountered an error. Please try again.", isStreaming: false }
               : msg
           )));
         },
@@ -390,7 +404,7 @@ const Dashboard = () => {
       console.error('Error submitting prompt:', error);
       setMessages(prev => prev.map(msg => (
         msg.id === assistantId
-          ? { ...msg, content: "I'm sorry, I encountered an error. Please try again." }
+          ? { ...msg, content: "I'm sorry, I encountered an error. Please try again.", isStreaming: false }
           : msg
       )));
     } finally {
@@ -419,7 +433,7 @@ const Dashboard = () => {
         msg.id === messageId ? { ...msg, actions: [], actionPrompt: '' } : msg
       )),
       userMessage,
-      { id: assistantId, role: 'model', content: '', sources: [], actions: [] },
+      { id: assistantId, role: 'model', content: '', streamingContent: '', isStreaming: true, sources: [], actions: [] },
     ]));
 
     try {
@@ -432,7 +446,9 @@ const Dashboard = () => {
         conversationId: conversationIdRef.current,
         onChunk: (text) => {
           setMessages(prev => prev.map(msg => (
-            msg.id === assistantId ? { ...msg, content: `${msg.content}${text}` } : msg
+            msg.id === assistantId
+              ? { ...msg, streamingContent: appendStreamingText(msg.streamingContent, text), isStreaming: true }
+              : msg
           )));
         },
         onDone: (data) => {
@@ -465,7 +481,8 @@ const Dashboard = () => {
             msg.id === assistantId
               ? {
                 ...msg,
-                content: data?.text || msg.content,
+                content: data?.text || msg.content || msg.streamingContent || '',
+                isStreaming: false,
                 sources: data?.sources || msg.sources,
                 actions: data?.actions || [],
                 actionPrompt: data?.actionPrompt || '',
@@ -480,7 +497,7 @@ const Dashboard = () => {
         onError: () => {
           setMessages(prev => prev.map(msg => (
             msg.id === assistantId
-              ? { ...msg, content: "I'm sorry, I couldn't generate the chapter. Please try again." }
+              ? { ...msg, content: "I'm sorry, I couldn't generate the chapter. Please try again.", isStreaming: false }
               : msg
           )));
         },
@@ -489,7 +506,7 @@ const Dashboard = () => {
       console.error('Generate chapter error:', error);
       setMessages(prev => prev.map(msg => (
         msg.id === assistantId
-          ? { ...msg, content: "I'm sorry, I couldn't generate the chapter. Please try again." }
+          ? { ...msg, content: "I'm sorry, I couldn't generate the chapter. Please try again.", isStreaming: false }
           : msg
       )));
     }
@@ -787,7 +804,11 @@ const Dashboard = () => {
                         : 'bg-white text-app-gray-900 border border-app-gray-100 shadow-sm rounded-bl-sm'}
                     `}
                   >
-                    <div className="whitespace-pre-wrap">{msg.content}</div>
+                    <MessageContent
+                      content={msg.content}
+                      streamingContent={msg.streamingContent}
+                      isStreaming={msg.isStreaming}
+                    />
                     {msg.sources && msg.sources.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-gray-100 text-sm text-gray-500">
                         <p className="font-medium mb-1">Sources:</p>
@@ -832,17 +853,6 @@ const Dashboard = () => {
                   </div>
                 </div>
               ))}
-              {isSubmitting && (
-                <div className="flex justify-start">
-                  <div className="bg-white border border-app-gray-100 rounded-2xl rounded-bl-sm px-6 py-4 shadow-sm">
-                    <div className="flex gap-1">
-                      <div className="w-2 h-2 bg-app-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <div className="w-2 h-2 bg-app-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <div className="w-2 h-2 bg-app-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                    </div>
-                  </div>
-                </div>
-              )}
               <div ref={messagesEndRef} />
             </div>
           </div>
