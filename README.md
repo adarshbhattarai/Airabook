@@ -432,7 +432,7 @@ Airabook/
 **Solution**:
 - Use a real Firebase Web API key (even for emulators)
 - Copy the API key from Firebase Console → Project Settings → Your apps
-- API keys are safe to commit - they're public by design
+- Firebase public API keys are safe to commit - they're public by design
 
 #### 3. Project ID Mismatch
 
@@ -666,4 +666,3 @@ Once you're ready to go live, you will need to exchange your test keys for your 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
