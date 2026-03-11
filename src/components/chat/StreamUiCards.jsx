@@ -79,6 +79,7 @@ const formatLimitValue = (value) => {
 
 const asArray = (value) => (Array.isArray(value) ? value : []);
 const asString = (value) => (value === null || value === undefined ? '' : String(value));
+const buildCardTypeSlug = (cardType) => String(cardType || 'notice').toLowerCase().replace(/_/g, '-');
 
 const ActionButtons = ({
   card,
@@ -111,8 +112,12 @@ const ActionButtons = ({
               </Button>
               {state?.message ? (
                 <div
-                  className={`text-[11px] ${
-                    isSuccess ? 'text-emerald-700' : (isError ? 'text-red-700' : 'text-muted-foreground')
+                  className={`stream-ui-card-feedback text-[11px] ${
+                    isSuccess
+                      ? 'stream-ui-card-feedback-success text-emerald-700'
+                      : (isError
+                        ? 'stream-ui-card-feedback-error text-red-700'
+                        : 'text-muted-foreground')
                   }`}
                 >
                   {state.message}
@@ -153,7 +158,13 @@ const HitlOptions = ({
               {isPending ? 'Submitting...' : option.label}
             </Button>
             {state?.message ? (
-              <div className={`text-[11px] ${state?.status === 'success' ? 'text-emerald-700' : 'text-red-700'}`}>
+              <div
+                className={`stream-ui-card-feedback text-[11px] ${
+                  state?.status === 'success'
+                    ? 'stream-ui-card-feedback-success text-emerald-700'
+                    : 'stream-ui-card-feedback-error text-red-700'
+                }`}
+              >
                 {state.message}
               </div>
             ) : null}
@@ -166,24 +177,24 @@ const HitlOptions = ({
 
 const LimitDetails = ({ payload = {} }) => (
   <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
-    <div className="rounded-md border border-amber-200 bg-white px-2 py-1">
+    <div className="stream-ui-card-inset rounded-md border border-amber-200 bg-white px-2 py-1">
       <div className="text-amber-700">Type</div>
       <div className="font-medium text-amber-900">{formatLimitValue(payload.limitType)}</div>
     </div>
-    <div className="rounded-md border border-amber-200 bg-white px-2 py-1">
+    <div className="stream-ui-card-inset rounded-md border border-amber-200 bg-white px-2 py-1">
       <div className="text-amber-700">Plan</div>
       <div className="font-medium text-amber-900">{formatLimitValue(payload.planTier)}</div>
     </div>
-    <div className="rounded-md border border-amber-200 bg-white px-2 py-1">
+    <div className="stream-ui-card-inset rounded-md border border-amber-200 bg-white px-2 py-1">
       <div className="text-amber-700">Current</div>
       <div className="font-medium text-amber-900">{formatLimitValue(payload.currentCount)}</div>
     </div>
-    <div className="rounded-md border border-amber-200 bg-white px-2 py-1">
+    <div className="stream-ui-card-inset rounded-md border border-amber-200 bg-white px-2 py-1">
       <div className="text-amber-700">Allowed</div>
       <div className="font-medium text-amber-900">{formatLimitValue(payload.maxAllowed)}</div>
     </div>
     {payload.blockedOperation ? (
-      <div className="col-span-2 rounded-md border border-amber-200 bg-white px-2 py-1">
+      <div className="stream-ui-card-inset col-span-2 rounded-md border border-amber-200 bg-white px-2 py-1">
         <div className="text-amber-700">Blocked operation</div>
         <div className="font-medium text-amber-900">{formatLimitValue(payload.blockedOperation)}</div>
       </div>
@@ -249,7 +260,7 @@ const PageContentDetails = ({ payload = {} }) => {
       {title ? <div><span className="font-semibold">Title:</span> {title}</div> : null}
       {payload.pageId ? <div><span className="font-semibold">Page ID:</span> {payload.pageId}</div> : null}
       {content ? (
-        <div className="rounded border border-current/20 bg-white/60 p-2 whitespace-pre-wrap max-h-48 overflow-y-auto">
+        <div className="stream-ui-card-inset rounded border border-current/20 bg-white/60 p-2 whitespace-pre-wrap max-h-48 overflow-y-auto">
           {content}
         </div>
       ) : null}
@@ -269,7 +280,7 @@ const MediaDetails = ({ payload = {} }) => {
         const label = asString(item?.name || item?.title || item?.storagePath || `Item ${index + 1}`);
         const type = asString(item?.type || '').toLowerCase();
         return (
-          <div key={`${label}-${index}`} className="rounded border border-current/20 bg-white/70 p-1">
+          <div key={`${label}-${index}`} className="stream-ui-card-inset rounded border border-current/20 bg-white/70 p-1">
             {url ? (
               type.includes('video') ? (
                 <video src={url} className="h-20 w-full rounded object-cover" controls preload="metadata" />
@@ -277,7 +288,7 @@ const MediaDetails = ({ payload = {} }) => {
                 <img src={url} alt={label} className="h-20 w-full rounded object-cover" />
               )
             ) : (
-              <div className="h-20 w-full rounded bg-white flex items-center justify-center text-[10px] opacity-70">No preview</div>
+              <div className="stream-ui-card-inset h-20 w-full rounded bg-white flex items-center justify-center text-[10px] opacity-70">No preview</div>
             )}
             <div className="mt-1 truncate text-[10px]">{label}</div>
           </div>
@@ -334,9 +345,13 @@ const StreamUiCards = ({
         };
         const Icon = meta.icon;
         const payload = card?.payload || {};
+        const cardTypeSlug = buildCardTypeSlug(cardType);
 
         return (
-          <div key={card.id || `${cardType}-${index}`} className={`rounded-lg border px-3 py-2 text-xs ${meta.shell}`}>
+          <div
+            key={card.id || `${cardType}-${index}`}
+            className={`stream-ui-card stream-ui-card-${cardTypeSlug} rounded-lg border px-3 py-2 text-xs ${meta.shell}`}
+          >
             <div className="flex items-center gap-2">
               <Icon className="h-3.5 w-3.5" />
               <div className="font-semibold uppercase tracking-wide text-[10px]">{meta.title}</div>
@@ -347,7 +362,7 @@ const StreamUiCards = ({
 
             {cardType === 'LIMIT_REACHED' ? <LimitDetails payload={payload} /> : null}
             {cardType === 'HITL_REQUEST' ? (
-              <div className="mt-1 text-[11px] text-blue-800">
+              <div className="stream-ui-card-subtitle mt-1 text-[11px] text-blue-800">
                 {payload.subtitle || (payload.timeoutSec ? `Timeout: ${payload.timeoutSec}s` : '')}
               </div>
             ) : null}
@@ -365,7 +380,7 @@ const StreamUiCards = ({
               : null}
 
             {payload?.acknowledged ? (
-              <div className="mt-2 inline-flex items-center gap-1 text-[11px] text-emerald-700">
+              <div className="stream-ui-card-status mt-2 inline-flex items-center gap-1 text-[11px] text-emerald-700">
                 <CheckCircle2 className="h-3 w-3" />
                 Acknowledged
               </div>

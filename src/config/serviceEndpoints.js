@@ -1,3 +1,5 @@
+import { getBackendApiUrl, getSpringApiUrl } from '@/config/runtimeConfig';
+
 const normalizeBaseUrl = (baseUrl) => {
   if (!baseUrl) return '';
   return baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
@@ -8,8 +10,8 @@ const normalizePath = (path) => {
   return path.startsWith('/') ? path.slice(1) : path;
 };
 
-const backendBaseUrl = normalizeBaseUrl(import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:8000');
-const springBaseUrl = normalizeBaseUrl(import.meta.env.VITE_SPRING_API_URL || backendBaseUrl);
+const backendBaseUrl = normalizeBaseUrl(getBackendApiUrl());
+const springBaseUrl = normalizeBaseUrl(getSpringApiUrl());
 
 export const SERVICE_ENDPOINTS = {
   spring: {

@@ -1,4 +1,5 @@
 import { auth } from '@/lib/firebase';
+import { getBackendApiUrl } from '@/config/runtimeConfig';
 
 /**
  * API Service for making HTTP requests to backend services
@@ -17,11 +18,11 @@ class ApiService {
      * @returns {string} Base URL for API requests
      */
     getBaseURL() {
-        const backendUrl = import.meta.env.VITE_BACKEND_API_URL;
+        const backendUrl = getBackendApiUrl();
         console.log('VITE_BACKEND_API_URL:', backendUrl);
         if (!backendUrl) {
-            console.warn('⚠️ VITE_BACKEND_API_URL not configured, using default localhost');
-            return 'http://localhost:8000';
+            console.warn('⚠️ Backend API URL not configured');
+            return '';
         }
 
         console.log('🌐 API Service initialized with URL:', backendUrl);
