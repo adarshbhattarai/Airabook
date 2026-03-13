@@ -1,5 +1,7 @@
 # Firebase Functions - Quick Reference
 
+Spring-backed planner, chat, and voice orchestration now live in `/Users/adeshbhattarai/code/AiraAI/Agent`. Use this `functions/` folder for Firebase-hosted logic, but inspect the Spring repo when a feature depends on those APIs.
+
 ## 🚀 Getting Started
 
 ### Local Development

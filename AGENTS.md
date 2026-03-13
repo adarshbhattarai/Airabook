@@ -1,31 +1,72 @@
-# Repository Guidelines
+# AGENTS.md
 
-## Project Structure & Module Organization
-- `src/`: React app (`components/`, `pages/`, `context/`, `lib/` for Firebase init/helpers); entry at `src/main.jsx`. Use the `@/` alias from `jsconfig.json` instead of deep relatives.
-- `functions/`: Firebase Cloud Functions, admin helpers, and local test scripts; keep privileged logic here, not in `src/`. Deploys run from this folder when invoked by Firebase CLI.
-- `public/` serves static assets; `dist/` is Vite build output (gitignored). `scripts/` holds emulator/Stripe helpers. Root configs: `firebase.json`, `firestore.rules`, `storage.rules`.
+Use this file as the starting map for the Airabook frontend repository.
 
-## Build, Test, and Development Commands
-- Local with emulators: `npm run emulators:local` then `npm start` (alias `npm run local`).
-- Local against dev backend: `npm run dev`.
-- Builds: `npm run build:dev`, `build:qa`, `build:go`, `build:prod` (or `npm run build` for default production). Preview with `npm run preview` or `preview:qa`/`preview:go`.
-- Emulator utilities: `npm run emulators:export` / `emulators:import` to persist data; seed fixtures via `npm run seed:data`.
-- Cloud Functions checks: from project root `npm run test:auth`; deploy functions+hosting with `npm run deploy:dev|qa|go|prod`.
+Open the smallest relevant file first, then inspect code.
 
-## Coding Style & Naming Conventions
-- React + Tailwind with 2-space indentation, single quotes, semicolons, functional components, and hooks. Keep Tailwind classes in JSX; avoid ad-hoc global CSS outside `src/index.css`.
-- Components use `PascalCase` filenames (`BookDetail.jsx`); hooks/utils use `camelCase`. Prefer the `@/` alias.
-- Lint with the React App ESLint config: `npx eslint src` before committing JS/JSX changes.
+## Read First
+- `/Users/adeshbhattarai/code/Airabook/ARCHITECTURE.md`: frontend architecture, Firebase layout, and cross-repo boundaries.
+- `/Users/adeshbhattarai/code/Airabook/README.md`: environment setup, local dev, and deployment flow.
+- `/Users/adeshbhattarai/code/Airabook/SELF_UPDATE_WORKFLOW.md`: how to refresh frontend context and memory after meaningful changes.
+- `/Users/adeshbhattarai/code/AiraAI/Agent/AGENTS.md`: backend agent map for the Spring Boot + Spring AI repo.
 
-## Testing Guidelines
-- Primary loop is emulator smoke testing: `npm run emulators:local` → `npm start` → exercise auth, book/notes CRUD, media upload, routing.
-- Use `npm run test:auth` for function auth sanity and `npm run seed:data` to stage sample data before manual checks.
-- Add automated tests alongside features (`src/__tests__/` for UI; `functions/` for backend). Name tests after the behavior under test.
+## Repository Identity
+- Frontend/UI repo for Airabook.
+- Source of truth for React UI, browser routing, Firebase Hosting config, Firestore rules, Storage rules, and Firebase Cloud Functions.
+- Backend Spring Boot and Spring AI code lives in `/Users/adeshbhattarai/code/AiraAI/Agent`.
 
-## Commit & Pull Request Guidelines
-- Commit messages: imperative and scoped (e.g., `Add book cover cropper`, `Harden firestore media rules`); keep summaries concise.
-- PRs should state intent, environment used (emulators vs `dev/qa/go/prod`), and any data/migration steps. Include screenshots or recordings for UI changes and link related issues.
+## Repo Map
+- `src/`: React/Vite application.
+- `src/components/`: reusable UI, chat, planner, dashboard, page editor, and navigation components.
+- `src/pages/`: route-level screens.
+- `src/services/`: browser-side API clients and integration helpers.
+- `src/config/`: runtime and endpoint configuration.
+- `src/lib/`: Firebase init, AI stream helpers, validation, utilities.
+- `functions/`: Firebase Cloud Functions, Genkit-related code, server-side helpers, flows, tools, and tests.
+- `scripts/`: emulator, Stripe, and local helper scripts.
+- Root docs: environment setup, Firebase guides, debugging notes, and migration docs.
 
-## Security & Configuration Tips
-- Never commit `.env.*.local` files or service account secrets. Update `firestore.rules` and `storage.rules` with feature changes and validate through emulators before deploying.
-- Confirm the `--mode` flag and Firebase alias (`local`, `dev`, `qa`, `go`, `prod`) when switching environments to avoid cross-project writes.
+## Cross-Repo Boundary
+Use this repo for:
+- React components, layouts, routes, and user interactions
+- Firebase Auth/Firestore/Storage client usage
+- Firebase Functions code and Genkit/serverless flows
+- environment files, Hosting, rules, emulator workflows
+
+Use `/Users/adeshbhattarai/code/AiraAI/Agent` for:
+- Spring Boot REST and WebSocket APIs
+- Spring AI Alibaba planner/chat/voice orchestration
+- Java-side agent tools, prompts, graph workflows, and HITL routing
+
+When a feature touches both repos, inspect both before changing behavior.
+
+## High-Signal Files
+- `src/main.jsx`: React entrypoint
+- `src/App.jsx`: route tree and authenticated app shell wiring
+- `src/config/runtimeConfig.js`: environment-driven runtime config
+- `src/config/serviceEndpoints.js`: Spring endpoint mapping and planner/conversation URLs
+- `src/services/ApiService.js`: authenticated browser calls into backend APIs
+- `functions/index.js`: exported Firebase functions and disabled/active Genkit edges
+- `functions/airabookaiStream.js`: streaming AI function path
+- `functions/agents/agentServices.js`: server-side agent helper layer
+- `functions/flows/`: Genkit flow definitions
+
+## Working Rules
+- Prefer the `@/` alias instead of deep relative imports.
+- Keep privileged logic in `functions/`, not `src/`.
+- If the UI calls Spring endpoints, trace the contract through `src/config/serviceEndpoints.js` and the backend repo.
+- If a feature depends on auth or per-user data, follow the full flow through Firebase Auth, browser service layer, and backend/Firebase function boundary.
+- Update docs when routes, API boundaries, environment rules, or feature ownership change.
+- After meaningful changes, run `scripts/refresh_frontend_context.sh`.
+
+## Build And Verification
+- Emulator-first flow: `npm run emulators:local` then `npm start`
+- Real dev frontend: `npm run dev`
+- Auth sanity: `npm run test:auth`
+- Environment deploys: `npm run deploy:dev|qa|go|prod`
+
+## Change Checklist
+- Is the change in the correct repo: Airabook vs backend Spring repo?
+- If a frontend screen calls Spring, did the request/response contract get checked in both repos?
+- If a change affects auth, rules, or permissions, were emulators or environment docs updated?
+- If a feature crosses UI + functions + Spring API, are all three seams documented?
