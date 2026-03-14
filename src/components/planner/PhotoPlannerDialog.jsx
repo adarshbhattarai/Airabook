@@ -105,6 +105,12 @@ const normalizeChapterPlanKey = (chapterId, title = '') => {
   return `new:${slug}`;
 };
 
+const getDefaultPlannerAlbumId = (accessibleAlbums = [], bookId = '') => {
+  if (!Array.isArray(accessibleAlbums) || accessibleAlbums.length === 0) return null;
+  const currentBookAlbum = accessibleAlbums.find((album) => album?.id === bookId);
+  return currentBookAlbum?.id || accessibleAlbums[0]?.id || null;
+};
+
 const safeParseJson = (value, fallback) => {
   if (typeof value !== 'string') return fallback;
   try {
@@ -285,6 +291,10 @@ const PhotoPlannerDialog = ({
     () => chapterPlans.find((plan) => plan.key === activeChapterPlanKey) || null,
     [chapterPlans, activeChapterPlanKey]
   );
+  const selectedAlbum = useMemo(
+    () => accessibleAlbums.find((album) => album?.id === selectedAlbumId) || null,
+    [accessibleAlbums, selectedAlbumId]
+  );
   const combinedDistributionPrompt = useMemo(() => {
     if (distributionMode === 'auto') {
       return distributionModePrompt.trim();
@@ -367,15 +377,16 @@ const PhotoPlannerDialog = ({
     setHitlCountdown(0);
     setHitlResponding(false);
 
-    setSelectedAlbumId(accessibleAlbums.length > 0 ? accessibleAlbums[0].id : null);
-  }, [isOpen, source, seed, defaultChapterId, chapters, accessibleAlbums]);
+    setSelectedAlbumId(getDefaultPlannerAlbumId(accessibleAlbums, bookId));
+  }, [isOpen, source, seed, defaultChapterId, chapters, accessibleAlbums, bookId]);
 
   useEffect(() => {
     if (!isOpen) return;
     if (selectedAlbumId) return;
-    if (accessibleAlbums.length === 0) return;
-    setSelectedAlbumId(accessibleAlbums[0].id);
-  }, [isOpen, selectedAlbumId, accessibleAlbums]);
+    const defaultAlbumId = getDefaultPlannerAlbumId(accessibleAlbums, bookId);
+    if (!defaultAlbumId) return;
+    setSelectedAlbumId(defaultAlbumId);
+  }, [isOpen, selectedAlbumId, accessibleAlbums, bookId]);
 
   useEffect(() => () => {
     if (hitlTimerRef.current) {
@@ -988,6 +999,7 @@ const PhotoPlannerDialog = ({
     const result = await uploadPlannerMediaFiles({
       user,
       bookId,
+      selectedAlbumId,
       files: nextFiles,
       onFileProgress: (fileName, progress) => {
         setUploadProgress((prev) => ({ ...prev, [fileName]: progress }));
@@ -1006,9 +1018,13 @@ const PhotoPlannerDialog = ({
     }
 
     if (result.errors.length > 0) {
+      const errorSummary = result.errors
+        .slice(0, 2)
+        .map((entry) => `${entry.fileName}: ${entry.message}`)
+        .join(' ');
       toast({
         title: 'Some uploads failed',
-        description: result.errors.map((entry) => entry.fileName).join(', '),
+        description: errorSummary,
         variant: 'destructive',
       });
     }
@@ -1306,6 +1322,9 @@ const PhotoPlannerDialog = ({
                     <UploadCloud className="h-10 w-10 mx-auto text-app-iris mb-2" />
                     <p className="text-sm font-semibold text-app-gray-800">Upload media</p>
                     <p className="text-xs text-app-gray-600 mt-1">Images and videos are supported.</p>
+                    <p className="text-xs text-app-gray-500 mt-2">
+                      Upload destination: {selectedAlbum?.name || 'Current book album'}
+                    </p>
                     <Button
                       type="button"
                       variant="appPrimary"

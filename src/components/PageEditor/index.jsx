@@ -47,7 +47,8 @@ const PageEditor = forwardRef(({
   onRequestPageDelete,
   layoutMode = 'standard',
   standardPageHeightPx,
-  readOnly = false
+  readOnly = false,
+  canUploadMedia = true
 }, ref) => {
   const [isSaving, setIsSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({});
@@ -89,9 +90,15 @@ const PageEditor = forwardRef(({
   const pageRootRef = useRef(null);
   const contentMeasureRef = useRef(null);
   const toolbarRef = useRef(null);
+  const modelDropdownRef = useRef(null);
+  const aiStyleDropdownRef = useRef(null);
+  const modelDropdownTriggerRef = useRef(null);
+  const aiStyleDropdownTriggerRef = useRef(null);
   const editorContainerRef = useRef(null);
   const genImgInputRef = useRef(null);
   const mediaPickerCloseReasonRef = useRef('idle');
+  const [modelDropdownPlacement, setModelDropdownPlacement] = useState('top');
+  const [aiStyleDropdownPlacement, setAiStyleDropdownPlacement] = useState('top');
 
   // Track last saved blocks for reconciliation (to detect deleted album images)
   const previousBlocksRef = useRef(null);
@@ -104,6 +111,16 @@ const PageEditor = forwardRef(({
   const [loadingAlbums, setLoadingAlbums] = useState(false);
   const [selectedAssets, setSelectedAssets] = useState([]);
   const [mediaPickerContext, setMediaPickerContext] = useState(MEDIA_PICKER_CONTEXT_EDITOR);
+
+  const ensureMediaUploadAllowed = React.useCallback(() => {
+    if (canUploadMedia) return true;
+    toast({
+      title: 'Media permission required',
+      description: 'You can edit this page, but only the owner or a co-author with Manage media can upload new files. You can still choose existing assets from the asset registry.',
+      variant: 'destructive',
+    });
+    return false;
+  }, [canUploadMedia, toast]);
 
   const template = page?.type ? pageTemplates[page.type] : null;
   const isTemplatePage = !!template;
@@ -237,6 +254,73 @@ const PageEditor = forwardRef(({
       document.removeEventListener('keydown', handleKey);
     };
   }, [toolbarOpen]);
+
+  const resolveDropdownPlacement = React.useCallback((triggerEl, menuHeight = 220) => {
+    const rect = triggerEl?.getBoundingClientRect();
+    if (!rect) return 'top';
+    const spaceAbove = rect.top;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    if (spaceBelow >= menuHeight || spaceBelow >= spaceAbove) {
+      return 'bottom';
+    }
+    return 'top';
+  }, []);
+
+  const getDropdownPositionClasses = React.useCallback(
+    (placement) => placement === 'bottom'
+      ? 'top-full mt-2 origin-top'
+      : 'bottom-full mb-2 origin-bottom',
+    []
+  );
+
+  const toggleModelDropdown = React.useCallback(() => {
+    setShowModelDropdown((current) => {
+      const next = !current;
+      if (next) {
+        setModelDropdownPlacement(resolveDropdownPlacement(modelDropdownTriggerRef.current, 140));
+        setShowAiStyleDropdown(false);
+      }
+      return next;
+    });
+  }, [resolveDropdownPlacement]);
+
+  const toggleAiStyleDropdown = React.useCallback(() => {
+    setShowAiStyleDropdown((current) => {
+      const next = !current;
+      if (next) {
+        setAiStyleDropdownPlacement(resolveDropdownPlacement(aiStyleDropdownTriggerRef.current, 220));
+        setShowModelDropdown(false);
+      }
+      return next;
+    });
+  }, [resolveDropdownPlacement]);
+
+  useEffect(() => {
+    if (!showModelDropdown && !showAiStyleDropdown) return undefined;
+
+    const handleClickAway = (event) => {
+      const target = event.target;
+      if (modelDropdownRef.current?.contains(target) || aiStyleDropdownRef.current?.contains(target)) {
+        return;
+      }
+      setShowModelDropdown(false);
+      setShowAiStyleDropdown(false);
+    };
+
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') {
+        setShowModelDropdown(false);
+        setShowAiStyleDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickAway);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickAway);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [showModelDropdown, showAiStyleDropdown]);
 
   useEffect(() => {
     if (!genImgOpen) return undefined;
@@ -602,6 +686,7 @@ const PageEditor = forwardRef(({
 
   const uploadTemplateMediaItem = async (file) => {
     if (!file || !user) return null;
+    if (!ensureMediaUploadAllowed()) return null;
     const isVideo = file.type.startsWith('video');
     const isImage = file.type.startsWith('image');
     if (!isVideo && !isImage) {
@@ -822,6 +907,13 @@ const PageEditor = forwardRef(({
     },
     getContentClientHeight: () => {
       return pageRootRef.current?.clientHeight ?? 0;
+    },
+    scrollToStart: () => {
+      if (contentMeasureRef.current) {
+        contentMeasureRef.current.scrollTo({ top: 0, behavior: 'auto' });
+        return true;
+      }
+      return false;
     },
     // Cursor APIs (forwarded from BlockEditor)
     getSelection: () => {
@@ -1118,12 +1210,26 @@ const PageEditor = forwardRef(({
   };
 
   const updateLimitStatusFromMeasure = () => {
-    const scrollH = contentMeasureRef.current?.scrollHeight ?? 0;
-    const clientH = pageRootRef.current?.clientHeight ?? 0;
-    if (clientH <= 0) return;
-    const ratio = scrollH / clientH;
-    if (ratio > 1.0) setLimitStatus('full');
-    else if (ratio > 0.9) setLimitStatus('warning');
+    const measureRoot = contentMeasureRef.current;
+    const editorContentEl = measureRoot?.querySelector('.bn-editor');
+    let contentHeight = 0;
+
+    if (editorContentEl) {
+      const range = document.createRange();
+      range.selectNodeContents(editorContentEl);
+      const rect = range.getBoundingClientRect();
+      const computedStyle = window.getComputedStyle(editorContentEl);
+      const paddingTop = Number.parseFloat(computedStyle.paddingTop || '0') || 0;
+      const paddingBottom = Number.parseFloat(computedStyle.paddingBottom || '0') || 0;
+      contentHeight = rect.height + paddingTop + paddingBottom;
+    }
+
+    const scrollH = Math.max(0, contentHeight, measureRoot?.scrollTop ?? 0);
+    const recommendedH = pageHeightPx || 0;
+    if (recommendedH <= 0) return;
+    const ratio = scrollH / recommendedH;
+    if (ratio > 1.02) setLimitStatus('full');
+    else if (ratio > 0.96) setLimitStatus('warning');
     else setLimitStatus('ok');
   };
 
@@ -1150,6 +1256,12 @@ const PageEditor = forwardRef(({
 
   const handleFileSelect = async (event) => {
     if (readOnly) return;
+    if (!ensureMediaUploadAllowed()) {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
     const files = Array.from(event.target.files || []);
     if (files.length === 0) return;
 
@@ -1190,6 +1302,7 @@ const PageEditor = forwardRef(({
 
   const openFileDialog = () => {
     if (readOnly) return;
+    if (!ensureMediaUploadAllowed()) return;
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
       fileInputRef.current.click();
@@ -1199,6 +1312,7 @@ const PageEditor = forwardRef(({
   const handleUpload = (file) => {
     if (readOnly) return;
     if (!file || !user) return;
+    if (!ensureMediaUploadAllowed()) return;
 
     // Determine media type from file
     const isVideo = file.type.startsWith('video');
@@ -1499,7 +1613,7 @@ const PageEditor = forwardRef(({
   const openMediaPicker = (context = MEDIA_PICKER_CONTEXT_EDITOR, tab = 'upload') => {
     if (readOnly) return;
     setMediaPickerContext(context);
-    setMediaPickerTab(tab);
+    setMediaPickerTab(!canUploadMedia && tab === 'upload' ? 'library' : tab);
     setSelectedAssets([]);
     setMediaPickerOpen(true);
   };
@@ -1585,7 +1699,12 @@ const PageEditor = forwardRef(({
   const callRewrite = async (styleToUse) => {
     if (aiBusy) return;
 
-    const style = styleToUse || 'Improve clarity';
+    const style = String(styleToUse ?? '').trim();
+    if (!style) {
+      toast({ title: 'Add AI instruction', description: 'Please enter an instruction before rewriting.', variant: 'warning' });
+      return;
+    }
+
     const currentContent = await getCurrentHTML();
 
     const text = stripHtml(currentContent);
@@ -1651,7 +1770,7 @@ const PageEditor = forwardRef(({
   const layoutStyles = {
     a4: 'bg-white shadow-2xl p-[5%] page-sheet group',
     scrapbook: 'bg-white shadow-2xl p-[5%] page-sheet group',
-    standard: 'w-full flex flex-col max-w-5xl mx-auto p-8 group'
+    standard: 'page-sheet page-sheet-standard w-full flex flex-col max-w-[76rem] mx-auto px-6 sm:px-8 pt-7 pb-10 group'
   };
 
   const PAGE_SIZES_MM = {
@@ -1701,11 +1820,15 @@ const PageEditor = forwardRef(({
   const scaledWidth = pageSizePx.width ? Math.round(pageSizePx.width * pageScale) : null;
   const scaledHeight = pageSizePx.height ? Math.round(pageSizePx.height * pageScale) : null;
   const fallbackHeightPx = 420;
+  const recommendedPageHeightPx = pageHeightPx || fallbackHeightPx;
   const standardHeightStyle = pageHeightPx
-    ? (isTemplatePage ? { minHeight: `${pageHeightPx}px` } : { height: `${pageHeightPx}px` })
+    ? { minHeight: `${pageHeightPx}px` }
     : { minHeight: `${fallbackHeightPx}px` };
   const saveButtonLabel = pageIndex < totalPages - 1 ? 'Save Page' : 'Save + New';
+  const hasAiInstruction = aiStyle.trim().length > 0;
   const showSidePageNav = !readOnly && isBabyTemplatePage && totalPages > 1 && typeof onNavigate === 'function';
+  const showPageOverflowCue = !readOnly && !isTemplatePage && limitStatus === 'full';
+  const overflowCueLabel = 'Recommended page length reached';
   const handlePrimarySaveAction = async () => {
     if (pageIndex < totalPages - 1) {
       await handleSave();
@@ -1759,7 +1882,7 @@ const PageEditor = forwardRef(({
             </>
           )}
 
-          <div ref={contentMeasureRef} className={isTemplatePage ? 'min-h-full overflow-visible flex flex-col' : 'h-full overflow-y-auto overflow-x-hidden flex flex-col'}>
+          <div ref={contentMeasureRef} className={isTemplatePage ? 'min-h-full overflow-visible flex flex-col' : 'min-h-full overflow-visible flex flex-col page-writing-scroll'}>
                 <div className="flex justify-center items-center mb-6 relative">
                   {chapterTitle && (
                 <div className="page-editor-chapter-title text-xs font-semibold text-violet-600 uppercase tracking-wider mb-1">
@@ -1804,8 +1927,12 @@ const PageEditor = forwardRef(({
                 <div className="flex gap-2 mb-4">
                   <Button
                     variant={mediaPickerTab === 'upload' ? 'appPrimary' : 'outline'}
-                    onClick={() => setMediaPickerTab('upload')}
+                    onClick={() => {
+                      if (!ensureMediaUploadAllowed()) return;
+                      setMediaPickerTab('upload');
+                    }}
                     className="media-picker-tab-btn flex-1"
+                    disabled={!canUploadMedia}
                   >
                     Upload from computer
                   </Button>
@@ -2080,14 +2207,14 @@ const PageEditor = forwardRef(({
             )}
 
             {/* Notes + controls */}
-            <div className={`space-y-4 flex-grow flex flex-col ${isTemplatePage ? '' : 'h-full'}`}>
-              <div className={`flex-grow flex flex-col ${isTemplatePage ? '' : 'h-full'}`}>
+            <div className={`space-y-4 flex-grow flex flex-col ${isTemplatePage ? '' : 'min-h-full'}`}>
+              <div className={`flex-grow flex flex-col ${isTemplatePage ? '' : 'min-h-full'}`}>
                 <div className="flex items-center justify-between mb-1"></div>
 
-                <div className={isTemplatePage ? '' : 'flex-grow h-full'}>
+                <div className={isTemplatePage ? '' : 'flex-grow min-h-full'}>
                   <div
                     ref={editorContainerRef}
-                    className={isTemplatePage ? 'bg-transparent relative' : 'h-full bg-transparent relative'}
+                    className={isTemplatePage ? 'bg-transparent relative' : `min-h-full bg-transparent relative page-writing-canvas ${!readOnly ? `page-writing-canvas-${limitStatus}` : ''}`}
                     onKeyDownCapture={handleKeyDownCapture}
                     onMouseDownCapture={() => {
                       logContentMeasure('editor mousedown');
@@ -2114,6 +2241,7 @@ const PageEditor = forwardRef(({
                           onOpenMediaPicker={() => openMediaPicker(MEDIA_PICKER_CONTEXT_TEMPLATE)}
                           onOpenPreview={openPreview}
                           readOnly={readOnly}
+                          canUploadMedia={canUploadMedia}
                         />
                       </div>
                     ) : (
@@ -2147,6 +2275,15 @@ const PageEditor = forwardRef(({
                           onGenImageRequest={openGenImagePrompt}
                           readOnly={readOnly}
                         />
+                        {showPageOverflowCue && (
+                          <div
+                            className={`page-overflow-cue page-overflow-cue-${limitStatus}`}
+                            aria-hidden="true"
+                            style={{ top: `${Math.max(120, recommendedPageHeightPx - 84)}px` }}
+                          >
+                            <div className="page-overflow-cue-pill">{overflowCueLabel}</div>
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
@@ -2247,19 +2384,20 @@ const PageEditor = forwardRef(({
                     </Button>
                     <div className="h-4 w-px bg-gray-200 mx-1" />
 
-                    <div className="relative flex items-center">
+                    <div ref={modelDropdownRef} className="relative flex items-center">
                       <Button
+                        ref={modelDropdownTriggerRef}
                         type="button"
                         variant="ghost"
                         size="sm"
-                        onClick={() => setShowModelDropdown(!showModelDropdown)}
+                        onClick={toggleModelDropdown}
                         className="h-8 px-2 text-xs font-medium text-gray-600"
                       >
                         {aiModel}
                         <ChevronDown className="h-3 w-3 ml-1" />
                       </Button>
                       {showModelDropdown && (
-                        <div className="editor-menu-popover absolute bottom-full left-0 mb-2 w-36 bg-white border rounded-md shadow-lg py-1 z-30">
+                        <div className={`editor-menu-popover absolute left-0 w-36 z-30 ${getDropdownPositionClasses(modelDropdownPlacement)}`}>
                           {['gpt-4o'].map(model => (
                             <button
                               key={model}
@@ -2267,7 +2405,7 @@ const PageEditor = forwardRef(({
                                 setAiModel(model);
                                 setShowModelDropdown(false);
                               }}
-                              className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
+                              className="editor-menu-item w-full text-left px-3 py-2 text-xs"
                             >
                               {model}
                             </button>
@@ -2276,44 +2414,47 @@ const PageEditor = forwardRef(({
                       )}
                     </div>
 
-                    <Input
-                      value={aiStyle}
-                      onChange={(e) => setAiStyle(e.target.value)}
-                      placeholder="AI instruction..."
-                      className="editor-ai-input h-8 w-28 sm:w-40 text-xs bg-white"
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setShowAiStyleDropdown(!showAiStyleDropdown)}
-                      className="ml-1 h-8 px-2"
-                    >
-                      <ChevronDown className="h-4 w-4" />
-                    </Button>
+                    <div ref={aiStyleDropdownRef} className="relative flex items-center gap-1">
+                      <Input
+                        value={aiStyle}
+                        onChange={(e) => setAiStyle(e.target.value)}
+                        placeholder="AI instruction..."
+                        className="editor-ai-input h-8 w-28 sm:w-40 text-xs bg-white"
+                      />
+                      <Button
+                        ref={aiStyleDropdownTriggerRef}
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={toggleAiStyleDropdown}
+                        className="h-8 px-2"
+                      >
+                        <ChevronDown className="h-4 w-4" />
+                      </Button>
 
-                    {showAiStyleDropdown && (
-                      <div className="editor-menu-popover absolute bottom-full left-0 mb-2 w-48 bg-white border rounded-md shadow-lg py-1 z-30">
-                        {['Improve clarity', 'Make it concise', 'Fix grammar', 'Expand this'].map(style => (
-                          <button
-                            key={style}
-                            onClick={() => {
-                              setAiStyle(style);
-                              setShowAiStyleDropdown(false);
-                            }}
-                            className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
-                          >
-                            {style}
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                      {showAiStyleDropdown && (
+                        <div className={`editor-menu-popover absolute left-0 w-48 z-30 ${getDropdownPositionClasses(aiStyleDropdownPlacement)}`}>
+                          {['Improve clarity', 'Make it concise', 'Fix grammar', 'Expand this'].map(style => (
+                            <button
+                              key={style}
+                              onClick={() => {
+                                setAiStyle(style);
+                                setShowAiStyleDropdown(false);
+                              }}
+                              className="editor-menu-item w-full text-left px-3 py-2 text-xs"
+                            >
+                              {style}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <Button
                       variant="secondary"
                       size="sm"
                       className="editor-rewrite-btn h-8 whitespace-nowrap bg-white shadow-sm border border-gray-100"
                       onClick={() => callRewrite(aiStyle)}
-                      disabled={aiBusy}
+                      disabled={aiBusy || !hasAiInstruction}
                     >
                       <Sparkles className="h-4 w-4 mr-1 text-app-iris" />
                       Rewrite
@@ -2347,110 +2488,116 @@ const PageEditor = forwardRef(({
                 </div>
               </div>
             ) : !readOnly ? (
-              <div className="editor-action-bar editor-action-bar-floating absolute bottom-0 left-0 right-0 mx-auto rounded-full border border-gray-200 bg-white/95 px-4 py-2 shadow-sm opacity-0 translate-y-3 transition-all duration-200 pointer-events-none group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto z-20 w-[calc(100%-2rem)] mb-2">
-                <div className="flex items-center gap-2 w-full">
-                  <div className="relative flex items-center gap-2 min-w-0 flex-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-50"
-                      onClick={() => onRequestPageDelete?.(page, pageIndex)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                    <div className="relative flex items-center">
+              <div ref={toolbarRef} className="mt-4 pb-6 w-full relative z-20">
+                <div className="editor-action-bar editor-action-bar-docked w-full rounded-full border border-gray-200 bg-white/95 px-4 py-2 shadow-sm">
+                  <div className="flex flex-wrap items-center gap-2 w-full">
+                    <div className="relative flex items-center gap-2 min-w-0 flex-1 flex-wrap">
                       <Button
-                        type="button"
-                        variant="outline"
+                        variant="ghost"
                         size="sm"
-                        onClick={() => setShowModelDropdown(!showModelDropdown)}
-                        className="h-8 px-2 text-xs"
+                        className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-50"
+                        onClick={() => onRequestPageDelete?.(page, pageIndex)}
                       >
-                        {aiModel}
-                        <ChevronDown className="h-3 w-3 ml-1" />
+                        <Trash2 className="h-4 w-4" />
                       </Button>
-                      {showModelDropdown && (
-                        <div className="editor-menu-popover absolute bottom-full left-0 mb-2 w-36 bg-white border rounded-md shadow-lg py-1 z-30">
-                          {['gpt-4o'].map(model => (
-                            <button
-                              key={model}
-                              onClick={() => {
-                                setAiModel(model);
-                                setShowModelDropdown(false);
-                              }}
-                              className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
-                            >
-                              {model}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <Input
-                      value={aiStyle}
-                      onChange={(e) => setAiStyle(e.target.value)}
-                      placeholder="AI instruction..."
-                      className="editor-ai-input h-8 w-28 sm:w-40 md:w-56 text-xs"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowAiStyleDropdown(!showAiStyleDropdown)}
-                      className="ml-1 h-8 px-2"
-                    >
-                      <ChevronDown className="h-4 w-4" />
-                    </Button>
-
-                    {showAiStyleDropdown && (
-                      <div className="editor-menu-popover absolute bottom-full right-0 mb-2 w-48 bg-white border rounded-md shadow-lg py-1 z-30">
-                        {['Improve clarity', 'Make it concise', 'Fix grammar', 'Expand this'].map(style => (
-                          <button
-                            key={style}
-                            onClick={() => {
-                              setAiStyle(style);
-                              setShowAiStyleDropdown(false);
-                            }}
-                            className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
-                          >
-                            {style}
-                          </button>
-                        ))}
+                      <div ref={modelDropdownRef} className="relative flex items-center">
+                        <Button
+                          ref={modelDropdownTriggerRef}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={toggleModelDropdown}
+                          className="h-8 px-2 text-xs"
+                        >
+                          {aiModel}
+                          <ChevronDown className="h-3 w-3 ml-1" />
+                        </Button>
+                        {showModelDropdown && (
+                          <div className={`editor-menu-popover absolute left-0 w-36 z-30 ${getDropdownPositionClasses(modelDropdownPlacement)}`}>
+                            {['gpt-4o'].map(model => (
+                              <button
+                                key={model}
+                                onClick={() => {
+                                  setAiModel(model);
+                                  setShowModelDropdown(false);
+                                }}
+                                className="editor-menu-item w-full text-left px-3 py-2 text-xs"
+                              >
+                                {model}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
+                      <div ref={aiStyleDropdownRef} className="relative flex items-center gap-1">
+                        <Input
+                          value={aiStyle}
+                          onChange={(e) => setAiStyle(e.target.value)}
+                          placeholder="AI instruction..."
+                          className="editor-ai-input h-8 w-28 sm:w-40 md:w-56 text-xs"
+                        />
+                        <Button
+                          ref={aiStyleDropdownTriggerRef}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={toggleAiStyleDropdown}
+                          className="h-8 px-2"
+                        >
+                          <ChevronDown className="h-4 w-4" />
+                        </Button>
+
+                        {showAiStyleDropdown && (
+                          <div className={`editor-menu-popover absolute left-0 w-48 z-30 ${getDropdownPositionClasses(aiStyleDropdownPlacement)}`}>
+                            {['Improve clarity', 'Make it concise', 'Fix grammar', 'Expand this'].map(style => (
+                              <button
+                                key={style}
+                                onClick={() => {
+                                  setAiStyle(style);
+                                  setShowAiStyleDropdown(false);
+                                }}
+                                className="editor-menu-item w-full text-left px-3 py-2 text-xs"
+                              >
+                                {style}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="editor-rewrite-btn h-8 whitespace-nowrap"
+                        onClick={() => callRewrite(aiStyle)}
+                        disabled={aiBusy || !hasAiInstruction}
+                      >
+                        <Sparkles className="h-4 w-4 mr-1" />
+                        Rewrite
+                      </Button>
+                    </div>
+                    {pageIndex < totalPages - 1 ? (
+                      <Button
+                        variant="appSuccess"
+                        size="sm"
+                        className="editor-save-btn h-8 whitespace-nowrap min-w-[110px]"
+                        onClick={handleSave}
+                      >
+                        Save Page
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="appSuccess"
+                        size="sm"
+                        className="editor-save-btn h-8 whitespace-nowrap min-w-[110px]"
+                        onClick={async () => {
+                          await handleSave();
+                          onAddPage?.(true, '', page.id);
+                        }}
+                      >
+                        Save + New
+                      </Button>
                     )}
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="editor-rewrite-btn h-8 whitespace-nowrap"
-                      onClick={() => callRewrite(aiStyle)}
-                      disabled={aiBusy}
-                    >
-                      <Sparkles className="h-4 w-4 mr-1" />
-                      Rewrite
-                    </Button>
                   </div>
-                  {pageIndex < totalPages - 1 ? (
-                    <Button
-                      variant="appSuccess"
-                      size="sm"
-                      className="editor-save-btn h-8 whitespace-nowrap min-w-[110px]"
-                      onClick={handleSave}
-                    >
-                      Save Page
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="appSuccess"
-                      size="sm"
-                      className="editor-save-btn h-8 whitespace-nowrap min-w-[110px]"
-                      onClick={async () => {
-                        await handleSave();
-                        onAddPage?.(true, '', page.id);
-                      }}
-                    >
-                      Save + New
-                    </Button>
-                  )}
                 </div>
               </div>
             ) : null}

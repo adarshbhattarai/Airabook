@@ -611,6 +611,175 @@ a:focus-visible {
   box-shadow: inset 0 1px 0 rgba(209, 255, 227, 0.08), 0 20px 40px rgba(0, 0, 0, 0.32) !important;
 }
 
+.page-editor-surface.page-sheet-standard {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 1.75rem;
+  background:
+    radial-gradient(circle at 88% 2%, rgba(226, 232, 240, 0.52), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(248, 250, 252, 0.9) 100%);
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.16);
+}
+
+.page-writing-scroll {
+  padding-bottom: 1.25rem;
+  overflow: visible;
+}
+
+.page-writing-canvas {
+  min-height: clamp(380px, 58vh, 980px);
+  border-radius: 1.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.95)),
+    repeating-linear-gradient(
+      to bottom,
+      rgba(148, 163, 184, 0.14) 0,
+      rgba(148, 163, 184, 0.14) 1px,
+      transparent 1px,
+      transparent 38px
+    );
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 10px 22px rgba(15, 23, 42, 0.1);
+  padding: clamp(1rem, 2.2vw, 1.8rem);
+  overflow: hidden;
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.page-writing-canvas .app-block-editor-root {
+  min-height: 100%;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.page-writing-canvas .app-blocknote,
+.page-writing-canvas .app-blocknote .bn-container,
+.page-writing-canvas .app-blocknote .bn-editor {
+  min-height: 100%;
+}
+
+.page-writing-canvas-warning {
+  border-color: rgba(245, 158, 11, 0.34);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 10px 22px rgba(15, 23, 42, 0.1), 0 0 0 1px rgba(245, 158, 11, 0.08);
+}
+
+.page-writing-canvas-full {
+  border-color: rgba(249, 115, 22, 0.42);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 10px 22px rgba(15, 23, 42, 0.1), 0 0 0 1px rgba(249, 115, 22, 0.12);
+}
+
+.page-overflow-cue {
+  pointer-events: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  padding: 4.75rem 1.25rem 1rem;
+  z-index: 2;
+}
+
+.page-overflow-cue::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 100%;
+  background: linear-gradient(to top, rgba(248, 250, 252, 0.98) 0%, rgba(248, 250, 252, 0.84) 28%, rgba(248, 250, 252, 0) 100%);
+}
+
+.page-overflow-cue-pill {
+  position: relative;
+  z-index: 1;
+  border-radius: 9999px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(255, 255, 255, 0.88);
+  color: rgba(71, 85, 105, 0.92);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 0.45rem 0.8rem;
+  text-transform: uppercase;
+}
+
+.page-overflow-cue-warning .page-overflow-cue-pill {
+  border-color: rgba(245, 158, 11, 0.28);
+  color: rgba(146, 64, 14, 0.92);
+}
+
+.page-overflow-cue-full .page-overflow-cue-pill {
+  border-color: rgba(249, 115, 22, 0.32);
+  color: rgba(154, 52, 18, 0.95);
+}
+
+.theme-matrix .page-editor-surface.page-sheet-standard,
+.theme-dark .page-editor-surface.page-sheet-standard {
+  background:
+    radial-gradient(circle at 88% 2%, rgba(110, 247, 200, 0.16), transparent 34%),
+    linear-gradient(180deg, rgba(10, 24, 17, 0.94) 0%, rgba(7, 18, 12, 0.98) 100%) !important;
+  border-color: rgba(110, 247, 200, 0.34) !important;
+  box-shadow: inset 0 1px 0 rgba(209, 255, 227, 0.09), 0 24px 48px rgba(0, 0, 0, 0.35) !important;
+}
+
+.theme-matrix .page-writing-canvas,
+.theme-dark .page-writing-canvas {
+  border-color: rgba(110, 247, 200, 0.3) !important;
+  background:
+    linear-gradient(to bottom, rgba(10, 24, 17, 0.92), rgba(7, 17, 12, 0.96)),
+    repeating-linear-gradient(
+      to bottom,
+      rgba(110, 247, 200, 0.1) 0,
+      rgba(110, 247, 200, 0.1) 1px,
+      transparent 1px,
+      transparent 38px
+    ) !important;
+  box-shadow: inset 0 1px 0 rgba(209, 255, 227, 0.08), 0 16px 34px rgba(0, 0, 0, 0.3) !important;
+}
+
+.theme-matrix .page-writing-canvas-warning,
+.theme-dark .page-writing-canvas-warning {
+  border-color: rgba(250, 204, 21, 0.42) !important;
+  box-shadow: inset 0 1px 0 rgba(209, 255, 227, 0.08), 0 16px 34px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(250, 204, 21, 0.1) !important;
+}
+
+.theme-matrix .page-writing-canvas-full,
+.theme-dark .page-writing-canvas-full {
+  border-color: rgba(251, 146, 60, 0.48) !important;
+  box-shadow: inset 0 1px 0 rgba(209, 255, 227, 0.08), 0 16px 34px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(251, 146, 60, 0.14) !important;
+}
+
+.theme-matrix .page-writing-canvas .app-block-editor-root,
+.theme-dark .page-writing-canvas .app-block-editor-root {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.theme-matrix .page-overflow-cue::before,
+.theme-dark .page-overflow-cue::before {
+  background: linear-gradient(to top, rgba(7, 17, 12, 0.98) 0%, rgba(7, 17, 12, 0.84) 28%, rgba(7, 17, 12, 0) 100%);
+}
+
+.theme-matrix .page-overflow-cue-pill,
+.theme-dark .page-overflow-cue-pill {
+  background: rgba(9, 22, 16, 0.9);
+  border-color: rgba(110, 247, 200, 0.26);
+  color: rgba(171, 244, 210, 0.84);
+  box-shadow: inset 0 1px 0 rgba(209, 255, 227, 0.08), 0 10px 22px rgba(0, 0, 0, 0.28);
+}
+
+.theme-matrix .page-overflow-cue-warning .page-overflow-cue-pill,
+.theme-dark .page-overflow-cue-warning .page-overflow-cue-pill {
+  border-color: rgba(250, 204, 21, 0.28);
+  color: rgba(253, 224, 71, 0.94);
+}
+
+.theme-matrix .page-overflow-cue-full .page-overflow-cue-pill,
+.theme-dark .page-overflow-cue-full .page-overflow-cue-pill {
+  border-color: rgba(251, 146, 60, 0.3);
+  color: rgba(253, 186, 116, 0.96);
+}
+
 .theme-matrix .page-editor-chapter-title,
 .theme-dark .page-editor-chapter-title {
   color: #8ff2c4 !important;
@@ -652,7 +821,9 @@ a:focus-visible {
 }
 
 .theme-matrix .editor-action-bar-floating,
-.theme-dark .editor-action-bar-floating {
+.theme-dark .editor-action-bar-floating,
+.theme-matrix .editor-action-bar-docked,
+.theme-dark .editor-action-bar-docked {
   box-shadow: inset 0 1px 0 rgba(209, 255, 227, 0.08), 0 10px 24px rgba(0, 0, 0, 0.32) !important;
 }
 
@@ -666,6 +837,32 @@ a:focus-visible {
 .theme-matrix .editor-ai-input::placeholder,
 .theme-dark .editor-ai-input::placeholder {
   color: rgba(171, 244, 210, 0.6) !important;
+}
+
+.editor-menu-popover {
+  border: 1px solid rgba(203, 213, 225, 0.8);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.12), 0 2px 8px rgba(15, 23, 42, 0.06);
+  padding: 0.35rem;
+}
+
+.editor-menu-item {
+  border-radius: 0.8rem;
+  color: #0f172a;
+  font-weight: 500;
+  line-height: 1.35;
+  transition: background-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.editor-menu-item:hover {
+  background: rgba(99, 102, 241, 0.08);
+  color: #312e81;
+}
+
+.editor-menu-item:active {
+  transform: scale(0.99);
 }
 
 .theme-matrix .editor-menu-popover,

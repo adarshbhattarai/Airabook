@@ -1,4 +1,4 @@
-import { POPUP_STYLES } from './plugins/visual-editor/visual-editor-config.js';
+import { POPUP_STYLES } from './visual-editor-config.js';
 
 const PLUGIN_APPLY_EDIT_API_URL = '/api/apply-edit';
 

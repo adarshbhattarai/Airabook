@@ -1,5 +1,6 @@
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { storage } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { firestore, storage } from '@/lib/firebase';
 import { convertToEmulatorURL } from '@/lib/pageUtils';
 
 const getMediaType = (file) => {
@@ -35,24 +36,65 @@ const getVideoDurationSec = (file) => new Promise((resolve) => {
   video.src = objectUrl;
 });
 
-const uploadPlannerMediaFile = async ({ user, bookId, file, onProgress }) => {
+const getPlannerUploadErrorMessage = (error) => {
+  if (error?.code === 'storage/unauthorized') {
+    return 'You do not have permission to upload to this album.';
+  }
+  return error?.message || 'Upload failed';
+};
+
+const resolvePlannerUploadTarget = async ({ user, bookId, selectedAlbumId }) => {
+  const targetAlbumId = selectedAlbumId || bookId;
+  if (!user?.uid || !targetAlbumId) {
+    throw new Error('A signed-in user and upload album are required.');
+  }
+
+  const [albumSnap, bookSnap] = await Promise.all([
+    getDoc(doc(firestore, 'albums', targetAlbumId)),
+    getDoc(doc(firestore, 'books', targetAlbumId)),
+  ]);
+
+  if (bookSnap.exists()) {
+    const bookData = bookSnap.data() || {};
+    const isOwner = bookData.ownerId === user.uid || bookData.members?.[user.uid] === 'Owner';
+    const isCoAuthorWithMediaAccess = bookData.members?.[user.uid] === 'Co-author'
+      && !!bookData.memberPermissions?.[user.uid]?.canManageMedia;
+
+    if (!isOwner && !isCoAuthorWithMediaAccess) {
+      throw new Error('You need owner access or co-author media permission to upload to this book album.');
+    }
+  } else if (albumSnap.exists()) {
+    const albumData = albumSnap.data() || {};
+    const albumOwnerId = albumData.accessPermission?.ownerId || albumData.ownerId || '';
+    if (albumOwnerId !== user.uid) {
+      throw new Error('Only the album owner can upload media to this asset.');
+    }
+  } else {
+    throw new Error('The selected album no longer exists.');
+  }
+
+  return targetAlbumId;
+};
+
+const uploadPlannerMediaFile = async ({ user, bookId, selectedAlbumId, file, onProgress }) => {
   const mediaType = getMediaType(file);
   if (!mediaType) {
     throw new Error(`Unsupported media type for ${file?.name || 'file'}`);
   }
 
+  const targetAlbumId = await resolvePlannerUploadTarget({ user, bookId, selectedAlbumId });
   const uniqueFileName = `${Date.now()}_${file.name}`;
   // Align planner uploads with book album media conventions.
   // Path format expected by mediaProcessor: {uid}/{bookId}/{chapterId}/{pageId}/media/{type}/{filename}
   // For album-level uploads, use _album_ placeholders for chapter/page.
-  const storagePath = `${user.uid}/${bookId}/_album_/_album_/media/${mediaType}/${uniqueFileName}`;
+  const storagePath = `${user.uid}/${targetAlbumId}/_album_/_album_/media/${mediaType}/${uniqueFileName}`;
   const storageRef = ref(storage, storagePath);
 
   const metadata = {
     customMetadata: {
       originalName: file.name,
-      bookId,
-      albumId: bookId,
+      bookId: targetAlbumId,
+      albumId: targetAlbumId,
       mediaType,
       source: 'photo_planner',
     },
@@ -80,7 +122,7 @@ const uploadPlannerMediaFile = async ({ user, bookId, file, onProgress }) => {
             storagePath,
             name: file.name,
             type: mediaType,
-            albumId: bookId,
+            albumId: targetAlbumId,
             ...(typeof durationSec === 'number' ? { durationSec } : {}),
           });
         } catch (error) {
@@ -91,7 +133,7 @@ const uploadPlannerMediaFile = async ({ user, bookId, file, onProgress }) => {
   });
 };
 
-export const uploadPlannerMediaFiles = async ({ user, bookId, files = [], onFileProgress }) => {
+export const uploadPlannerMediaFiles = async ({ user, bookId, selectedAlbumId, files = [], onFileProgress }) => {
   const uploaded = [];
   const errors = [];
 
@@ -106,6 +148,7 @@ export const uploadPlannerMediaFiles = async ({ user, bookId, files = [], onFile
       const item = await uploadPlannerMediaFile({
         user,
         bookId,
+        selectedAlbumId,
         file,
         onProgress: (progress) => onFileProgress?.(file.name, progress),
       });
@@ -113,7 +156,7 @@ export const uploadPlannerMediaFiles = async ({ user, bookId, files = [], onFile
     } catch (error) {
       errors.push({
         fileName: file.name,
-        message: error?.message || 'Upload failed',
+        message: getPlannerUploadErrorMessage(error),
       });
     }
   }

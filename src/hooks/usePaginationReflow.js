@@ -10,6 +10,17 @@ const cloneBlocks = (blocks) => {
 
 const nextAnimationFrame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
 
+const isBlockEmpty = (block) => {
+  if (!block) return true;
+  if (block.type === 'image' || block.type === 'video') return false;
+  if (Array.isArray(block.content)) {
+    const text = block.content.map((part) => part?.text || '').join('').trim();
+    return text.length === 0;
+  }
+  if (typeof block.text === 'string') return block.text.trim().length === 0;
+  return true;
+};
+
 /**
  * Centralized pagination reflow engine.
  *
@@ -107,6 +118,7 @@ export function usePaginationReflow({
         note: '',
         media: [],
         order: newOrder,
+        isReflowTemp: true,
       };
 
       workingPages.splice(afterIdx + 1, 0, newPage);
@@ -235,9 +247,15 @@ export function usePaginationReflow({
       for (let i = workingPages.length - 1; i > 0; i--) {
         const p = workingPages[i];
         if (!p?.id?.startsWith('temp_')) break;
+        // Only auto-remove temp pages created by reflow, never user-created pages.
+        if (!p?.isReflowTemp) break;
+
+        const isReady = await waitForPageReady(p.id);
+        if (!isReady) break;
 
         const blocks = pageApi.getBlocks(p.id) || [];
-        if (Array.isArray(blocks) && blocks.length > 0) break;
+        const hasContent = Array.isArray(blocks) && blocks.some((block) => !isBlockEmpty(block));
+        if (hasContent) break;
 
         const removeId = p.id;
         workingPages.splice(i, 1);
@@ -252,7 +270,7 @@ export function usePaginationReflow({
         await nextAnimationFrame();
       }
     },
-    [canRemoveTempPages, pageApi, setPageDrafts, setPages]
+    [canRemoveTempPages, pageApi, setPageDrafts, setPages, waitForPageReady]
   );
 
   const runReflow = React.useCallback(
