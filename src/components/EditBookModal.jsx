@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { Loader2, ImageIcon, X } from 'lucide-react';
-import { storage, functions } from '@/lib/firebase'; // Corrected import path
+import { auth, storage, functions } from '@/lib/firebase'; // Corrected import path
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
 import { useAuth } from '@/context/AuthContext';
@@ -67,6 +67,7 @@ const EditBookModal = ({ isOpen, onClose, book, onUpdate, onOpenPhotoPlanner }) 
 
             // Handle Image Upload
             if (coverImageFile) {
+                await auth.currentUser?.getIdToken(true);
                 const filename = `${Date.now()}_${coverImageFile.name}`;
                 const storageRef = ref(storage, `${user.uid}/covers/${filename}`);
                 const metadata = {

@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState, useEffect, useRef } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Send, Sparkles, BookText, X, History, Plus, Loader2 } from 'lucide-react';
@@ -23,6 +23,7 @@ import DashboardModeSwitch from '@/components/dashboard/DashboardModeSwitch';
 import DashboardTalkView from '@/components/dashboard/DashboardTalkView';
 import Talk3DErrorBoundary from '@/components/dashboard/talk3d/Talk3DErrorBoundary';
 import useWebGLSupport from '@/components/dashboard/talk3d/useWebGLSupport';
+import { getVoiceAssistantUpgradeMessage, hasVoiceAssistantAccess } from '@/lib/billing';
 import {
   fetchConversationHistory,
   fetchConversationById,
@@ -262,6 +263,8 @@ const Dashboard = () => {
     return item;
   }) : [];
   const voiceBookId = selectedBook?.bookId || books[0]?.bookId || null;
+  const canUseVoiceAssistant = hasVoiceAssistantAccess(appUser?.billing);
+  const voiceUpgradeMessage = getVoiceAssistantUpgradeMessage(appUser?.billing);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -303,6 +306,19 @@ const Dashboard = () => {
       document.removeEventListener('keydown', handleEscape);
     };
   }, [isHistoryOpen]);
+
+  useEffect(() => {
+    if (!canUseVoiceAssistant && dashboardMode === 'talk') {
+      setDashboardMode('chat');
+    }
+  }, [canUseVoiceAssistant, dashboardMode]);
+
+  const handleDashboardModeChange = useCallback((nextMode) => {
+    if (nextMode === 'talk' && !canUseVoiceAssistant) {
+      return;
+    }
+    setDashboardMode(nextMode);
+  }, [canUseVoiceAssistant]);
 
   const submitPrompt = async (promptText, options = {}) => {
     const isSurprise = options.isSurprise || false;
@@ -693,7 +709,11 @@ const Dashboard = () => {
           >
             <History className="h-4 w-4" />
           </Button>
-          <DashboardModeSwitch mode={dashboardMode} onModeChange={setDashboardMode} />
+          <DashboardModeSwitch
+            mode={dashboardMode}
+            onModeChange={handleDashboardModeChange}
+            lockedModes={canUseVoiceAssistant ? {} : { talk: voiceUpgradeMessage }}
+          />
         </div>
 
         {isHistoryOpen && (

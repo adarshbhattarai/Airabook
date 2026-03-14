@@ -149,16 +149,8 @@ const { deleteMediaAsset, deleteAlbumAssets } = require("./deleteMedia");
 const { trackMediaUsage, untrackMediaUsage } = require("./mediaUsage");
 const { createUserDoc } = require("./createUserDoc");
 const { resolveUserPlanLimits } = require("./utils/limits");
-
-const GENKIT_DISABLED_MESSAGE = "This Firebase Genkit endpoint is disabled. Use the Spring API instead.";
-const createGenkitDisabledCallable = (name) =>
-  onCall({ region: "us-central1", cors: true }, async () => {
-    throw new HttpsError("failed-precondition", `${name} is disabled. ${GENKIT_DISABLED_MESSAGE}`);
-  });
-
-const generateImageDisabled = createGenkitDisabledCallable("generateImage");
-const queryBookFlowDisabled = createGenkitDisabledCallable("queryBookFlow");
-const generateChapterSuggestionsDisabled = createGenkitDisabledCallable("generateChapterSuggestions");
+const { generateImage } = require("./generateImage");
+const { queryBookFlow, generateChapterSuggestions } = require("./genkit");
 
 
 exports.helloWorld = onRequest({ region: "us-central1" }, (request, response) => {
@@ -187,9 +179,9 @@ exports.stripeWebhook = stripeWebhook;
 
 exports.createPage = createPage;
 exports.updatePage = updatePage;
-exports.generateImage = generateImageDisabled;
-exports.queryBookFlow = queryBookFlowDisabled;
-exports.generateChapterSuggestions = generateChapterSuggestionsDisabled;
+exports.generateImage = generateImage;
+exports.queryBookFlow = queryBookFlow;
+exports.generateChapterSuggestions = generateChapterSuggestions;
 exports.airabookaiStream = airabookaiStream;
 exports.createUserDoc = createUserDoc;
 exports.onBookDeleted = onBookDeleted;

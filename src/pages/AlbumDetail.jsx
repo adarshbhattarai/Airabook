@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/context/AuthContext';
 import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
-import { firestore, storage } from '@/lib/firebase';
+import { auth, firestore, storage } from '@/lib/firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/lib/firebase';
@@ -384,6 +384,7 @@ const AlbumDetail = () => {
 
       // Upload new cover if selected
       if (editingCover) {
+        await auth.currentUser?.getIdToken(true);
         const storagePath = `${user.uid}/albums/${bookId}/cover_${Date.now()}_${editingCover.name}`;
         const storageRef = ref(storage, storagePath);
         const uploadTask = await uploadBytesResumable(storageRef, editingCover);
@@ -901,7 +902,7 @@ const AlbumDetail = () => {
             <div className="space-y-2">
               <Label>Cover Image</Label>
               <div
-                className="relative w-40 aspect-[3/4] mx-auto bg-gray-100 rounded-lg overflow-hidden border-2 border-dashed border-gray-300 hover:border-app-iris cursor-pointer transition-colors flex items-center justify-center group"
+                className="asset-cover-dropzone relative w-40 aspect-[3/4] mx-auto rounded-lg overflow-hidden border-2 border-dashed border-app-gray-300 bg-gray-100 hover:border-app-iris cursor-pointer transition-colors flex items-center justify-center group"
                 onClick={() => coverInputRef.current?.click()}
               >
                 {coverPreview ? (
@@ -912,7 +913,7 @@ const AlbumDetail = () => {
                     </div>
                   </>
                 ) : (
-                  <div className="text-center text-gray-500">
+                  <div className="asset-cover-dropzone-copy text-center text-app-gray-600">
                     <ImageIcon className="h-8 w-8 mx-auto mb-2 opacity-50" />
                     <span className="text-sm">Click to upload cover</span>
                   </div>

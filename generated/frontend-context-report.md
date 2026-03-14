@@ -1,11 +1,11 @@
 # Frontend Context Report
 
-Generated: 2026-03-14 07:04:04Z
+Generated: 2026-03-14 09:47:59Z
 
 ## Frontend Repo Snapshot
 - Workspace: /Users/adeshbhattarai/code/Airabook
 - Branch: main
-- HEAD: a5eff04
+- HEAD: c36be18
 - Backend repo: /Users/adeshbhattarai/code/AiraAI/Agent
 
 ## Read First
@@ -19,15 +19,16 @@ Generated: 2026-03-14 07:04:04Z
 
 
 ```text
-M  generated/frontend-context-report.md
-M  plugins/visual-editor/edit-mode-script.js
-M  src/components/PageEditor/TemplatePage.jsx
-M  src/components/PageEditor/index.jsx
-M  src/components/planner/PhotoPlannerDialog.jsx
-M  src/hooks/usePaginationReflow.js
-M  src/index.css
-M  src/pages/BookDetail.jsx
-M  src/services/photoPlannerMediaService.js
+ M functions/index.js
+ M generated/frontend-context-report.md
+ M src/components/EditBookModal.jsx
+ M src/components/VoiceAssistantButton.jsx
+ M src/components/dashboard/DashboardModeSwitch.jsx
+ M src/index.css
+ M src/pages/AlbumDetail.jsx
+ M src/pages/Dashboard.jsx
+ M src/pages/Media.jsx
+?? src/lib/billing.js
 ```
 
 ## Backend Snapshot
@@ -41,6 +42,7 @@ M  src/services/photoPlannerMediaService.js
 ```
 
 ## Recent Commits
+- 2026-03-14 c36be18 Update on pages
 - 2026-03-14 a5eff04 Update
 - 2026-03-11 1ccf66e Update
 - 2026-03-08 47a05db Update
@@ -48,7 +50,6 @@ M  src/services/photoPlannerMediaService.js
 - 2026-03-07 a1d7676 Updates for the packages
 - 2026-03-06 5ea13b8 Update
 - 2026-03-01 a05903f Update for backend not connected
-- 2026-03-01 7e4fe0f Update
 
 ## High-Signal Paths
 - /Users/adeshbhattarai/code/Airabook/src/App.jsx
