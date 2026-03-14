@@ -443,18 +443,39 @@ const BookDetail = () => {
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return undefined;
+    const observedEntries = new Map();
+    const pageOrder = new Map(pages.map((page, index) => [page.id, index]));
+
     const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        const pageId = entry.target.getAttribute('data-page-id');
+        if (!pageId) return;
+        observedEntries.set(pageId, entry);
+      });
+
       const containerRect = container.getBoundingClientRect();
-      const visible = entries
-        .filter((entry) => entry.isIntersecting && entry.intersectionRatio > 0.15)
-        .map((entry) => {
-          const pageId = entry.target.getAttribute('data-page-id');
-          const deltaPrimary = isReadOnlyPagesMode
-            ? Math.abs(entry.boundingClientRect.top - containerRect.top)
-            : Math.abs(entry.boundingClientRect.left - containerRect.left);
-          return { entry, pageId, deltaPrimary };
+      const containerPrimaryCenter = isReadOnlyPagesMode
+        ? containerRect.top + (containerRect.height / 2)
+        : containerRect.left + (containerRect.width / 2);
+      const visible = Array.from(observedEntries.entries())
+        .map(([pageId, entry]) => {
+          if (!entry.isIntersecting || entry.intersectionRatio <= 0.15) {
+            return null;
+          }
+
+          const rect = entry.boundingClientRect;
+          const pagePrimaryCenter = isReadOnlyPagesMode
+            ? rect.top + (rect.height / 2)
+            : rect.left + (rect.width / 2);
+
+          return {
+            entry,
+            pageId,
+            centerDelta: Math.abs(pagePrimaryCenter - containerPrimaryCenter),
+            pageIndex: pageOrder.get(pageId) ?? Number.MAX_SAFE_INTEGER,
+          };
         })
-        .filter((item) => !!item.pageId);
+        .filter(Boolean);
 
       if (!visible.length) return;
       const now = Date.now();
@@ -468,10 +489,13 @@ const BookDetail = () => {
         return;
       }
       visible.sort((a, b) => {
+        if (a.centerDelta !== b.centerDelta) {
+          return a.centerDelta - b.centerDelta;
+        }
         if (b.entry.intersectionRatio !== a.entry.intersectionRatio) {
           return b.entry.intersectionRatio - a.entry.intersectionRatio;
         }
-        return a.deltaPrimary - b.deltaPrimary;
+        return a.pageIndex - b.pageIndex;
       });
       setActivePageId(visible[0].pageId);
     }, {
@@ -495,7 +519,8 @@ const BookDetail = () => {
     const compute = () => {
       const h = el.clientHeight || 0;
       const w = el.clientWidth || 0;
-      const clampedHeight = Math.max(900, Math.min(15000, h - 140));
+      // Keep standard pages page-like without pushing the action bar too far below the fold.
+      const clampedHeight = Math.max(560, Math.min(760, h - 220));
       setStandardPageHeightPx(clampedHeight);
       setScrollContainerWidthPx(w);
     };
@@ -522,9 +547,11 @@ const BookDetail = () => {
   useEffect(() => {
     if (selectedPageId) {
       manualPageNavRef.current = { targetId: selectedPageId, expiresAt: Date.now() + 800 };
-      if (scrollToPageHorizontally(selectedPageId, 'smooth')) {
+      if (scrollToPageHorizontally(selectedPageId, 'auto')) {
         setActivePageId(selectedPageId);
-        focusWithRetry(pageRefs, selectedPageId, 'start');
+        requestAnimationFrame(() => {
+          pageRefs.current?.[selectedPageId]?.scrollToStart?.();
+        });
       }
     }
   }, [selectedPageId, scrollToPageHorizontally]);
@@ -647,6 +674,31 @@ const BookDetail = () => {
   // ---------------------------------------------------------------------------
   // ⚡ OPTIMIZATION 3: Lazy Load Pages (On Chapter Selection)
   // ---------------------------------------------------------------------------
+  function mergePersistedAndTempPagesNow(persistedPages = [], existingPages = [], chapterId) {
+    const persistedOrders = new Set(
+      (persistedPages || [])
+        .map((page) => (page?.order == null ? '' : String(page.order)))
+        .filter((order) => order.length > 0)
+    );
+
+    const tempPages = (existingPages || []).filter((page) => {
+      if (!page?.id?.startsWith('temp_') || page.chapterId !== chapterId) return false;
+      const orderKey = page?.order == null ? '' : String(page.order);
+      return !orderKey || !persistedOrders.has(orderKey);
+    });
+
+    const combined = [...persistedPages, ...tempPages];
+    const dedupedById = combined.filter((page, index, list) => (
+      list.findIndex((candidate) => candidate?.id === page?.id) === index
+    ));
+
+    return dedupedById.sort((a, b) => {
+      const left = a?.order == null ? '' : String(a.order);
+      const right = b?.order == null ? '' : String(b.order);
+      return left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' });
+    });
+  }
+
   const fetchPages = useCallback(async (chapterId) => {
     if (!chapterId || !bookId) return;
     console.log(`📄 Lazy loading pages for chapter: ${chapterId}`);
@@ -655,9 +707,12 @@ const BookDetail = () => {
       const pagesRef = collection(firestore, 'books', bookId, 'chapters', chapterId, 'pages');
       const qy = query(pagesRef, orderBy('order'));
       const pagesSnap = await getDocs(qy);
-      const pagesList = pagesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-      setPages(pagesList);
+      const persistedPages = pagesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      let pagesList = [];
+      setPages((prevPages) => {
+        pagesList = mergePersistedAndTempPagesNow(persistedPages, prevPages, chapterId);
+        return pagesList;
+      });
 
       // Auto-select first page if none selected
       if (pagesList.length > 0) {
@@ -719,34 +774,38 @@ const BookDetail = () => {
 
     const unsubscribe = onSnapshot(qy, (snapshot) => {
       console.log('📄 Pages snapshot update received:', snapshot.docs.length, 'pages');
-      const pagesList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const persistedPages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-      setPages(pagesList);
-      setChapters((prevChapters) => prevChapters.map((chapter) => {
-        if (chapter.id !== selectedChapterId) return chapter;
-        return {
-          ...chapter,
-          pagesSummary: pagesList
-            .map((p) => ({
-              pageId: p.id,
-              pageName: p.pageName || '',
-              shortNote: p.shortNote || stripHtml(p.note || '').substring(0, 40) || 'Untitled Page',
-              order: p.order
-            }))
-            .sort((a, b) => {
-              const left = a.order == null ? '' : String(a.order);
-              const right = b.order == null ? '' : String(b.order);
-              return left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' });
-            })
-        };
-      }));
+      setPages((prevPages) => {
+        const pagesList = mergePersistedAndTempPagesNow(persistedPages, prevPages, selectedChapterId);
 
-      // Auto-select first page if none selected
-      if (pagesList.length > 0) {
-        setSelectedPageId(p => pagesList.some(pg => pg.id === p) ? p : pagesList[0].id);
-      } else {
-        setSelectedPageId(null);
-      }
+        setChapters((prevChapters) => prevChapters.map((chapter) => {
+          if (chapter.id !== selectedChapterId) return chapter;
+          return {
+            ...chapter,
+            pagesSummary: pagesList
+              .map((p) => ({
+                pageId: p.id,
+                pageName: p.pageName || '',
+                shortNote: p.shortNote || stripHtml(p.note || '').substring(0, 40) || 'Untitled Page',
+                order: p.order
+              }))
+              .sort((a, b) => {
+                const left = a.order == null ? '' : String(a.order);
+                const right = b.order == null ? '' : String(b.order);
+                return left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' });
+              })
+          };
+        }));
+
+        if (pagesList.length > 0) {
+          setSelectedPageId((p) => pagesList.some((pg) => pg.id === p) ? p : pagesList[0].id);
+        } else {
+          setSelectedPageId(null);
+        }
+
+        return pagesList;
+      });
     }, (error) => {
       console.error('❌ Error in pages snapshot listener:', error);
     });
@@ -1313,7 +1372,7 @@ const BookDetail = () => {
       if (data.pageId?.startsWith('temp_')) {
         removeTempPage(data.pageId);
       } else {
-        await handleDeletePage(data.chapterId, data.pageId, data.pageIndex);
+        handleDeletePage(data.chapterId, data.pageId, data.pageIndex);
       }
     }
     closeModal();
@@ -1336,7 +1395,7 @@ const BookDetail = () => {
     fetchChapters();
   };
 
-  const handleDeletePage = async (chapterId, pageId, pageIndex) => {
+  const handleDeletePage = (chapterId, pageId, pageIndex) => {
     if (isForcedReadRoute) {
       toast({
         title: 'Permission Denied',
@@ -1346,33 +1405,62 @@ const BookDetail = () => {
       return;
     }
 
-    const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', pageId);
+    const previousPages = pages;
+    const previousChapters = chapters;
+    const previousSelectedPageId = selectedPageId;
+    const previousPageDrafts = pageDrafts;
 
+    const newPages = pages.filter((p) => p.id !== pageId);
+    const newChapters = chapters.map((c) => (
+      c.id === chapterId
+        ? { ...c, pagesSummary: (c.pagesSummary || []).filter((p) => p.pageId !== pageId) }
+        : c
+    ));
+
+    setPages(newPages);
+    setChapters(newChapters);
+    setPageDrafts((prev) => {
+      const next = { ...prev };
+      delete next[pageId];
+      return next;
+    });
+
+    if (selectedPageId === pageId) {
+      if (newPages.length > 0) {
+        const newIndex = Math.max(0, pageIndex - 1);
+        setSelectedPageId(newPages[newIndex]?.id || null);
+      } else {
+        setSelectedPageId(null);
+      }
+    }
+
+    const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', pageId);
+    const chapterRef = doc(firestore, 'books', bookId, 'chapters', chapterId);
+    const chapter = chapters.find((c) => c.id === chapterId);
     const batch = writeBatch(firestore);
     batch.delete(pageRef);
 
-    const chapterRef = doc(firestore, 'books', bookId, 'chapters', chapterId);
-    const chapter = chapters.find(c => c.id === chapterId);
     if (chapter) {
-      const updatedPagesSummary = chapter.pagesSummary.filter(p => p.pageId !== pageId);
+      const updatedPagesSummary = (chapter.pagesSummary || []).filter((p) => p.pageId !== pageId);
       batch.update(chapterRef, { pagesSummary: updatedPagesSummary });
     }
 
-    await batch.commit();
-    toast({ title: 'Page has been deleted' });
-
-    const newPages = pages.filter(p => p.id !== pageId);
-    setPages(newPages);
-
-    const newChapters = chapters.map(c => c.id === chapterId ? { ...c, pagesSummary: c.pagesSummary.filter(p => p.pageId !== pageId) } : c);
-    setChapters(newChapters);
-
-    if (newPages.length > 0) {
-      const newIndex = Math.max(0, pageIndex - 1);
-      setSelectedPageId(newPages[newIndex].id);
-    } else {
-      setSelectedPageId(null);
-    }
+    batch.commit()
+      .then(() => {
+        toast({ title: 'Page has been deleted' });
+      })
+      .catch((error) => {
+        console.error('Failed to delete page:', error);
+        setPages(previousPages);
+        setChapters(previousChapters);
+        setSelectedPageId(previousSelectedPageId);
+        setPageDrafts(previousPageDrafts);
+        toast({
+          title: 'Delete failed',
+          description: error?.message || 'Could not delete the page. Please try again.',
+          variant: 'destructive',
+        });
+      });
   };
 
   // ---------- DnD: reorder + cross-chapter move ----------
@@ -1801,31 +1889,27 @@ const BookDetail = () => {
       }
     }
     manualPageNavRef.current = { targetId: pageId, expiresAt: Date.now() + 800 };
+    const query = new URLSearchParams(location.search);
+    query.set('chapter', chapterId);
+    query.set('page', pageId);
+    navigate(`${location.pathname}?${query.toString()}`, { replace: true });
     setSelectedChapterId(chapterId);
     setSelectedPageId(pageId);
-  }, [isSelectedPageDirty, saveSelectedDraft, selectedChapterId, selectedPageId, activePageId]);
+  }, [isSelectedPageDirty, saveSelectedDraft, selectedChapterId, selectedPageId, activePageId, location.pathname, location.search, navigate]);
 
   const requestAddPage = useCallback(async () => {
     if (isSelectedPageDirty) {
-      try {
-        await saveSelectedDraft();
-      } catch (_) {
-        return;
-      }
+      void saveSelectedDraft().catch(() => {});
     }
-    await handleAddPage(true);
+    await handleAddPage(false);
   }, [isSelectedPageDirty, saveSelectedDraft, handleAddPage]);
 
   const requestAddPageAfter = useCallback(async (pageId) => {
     if (!pageId) return;
     if (isSelectedPageDirty) {
-      try {
-        await saveSelectedDraft();
-      } catch (_) {
-        return;
-      }
+      void saveSelectedDraft().catch(() => {});
     }
-    await handleAddPage(true, '', pageId);
+    await handleAddPage(false, '', pageId);
   }, [isSelectedPageDirty, saveSelectedDraft, handleAddPage]);
 
   const handleGoToNextChapter = useCallback(async () => {
@@ -1907,16 +1991,39 @@ const BookDetail = () => {
   }
 
   const handleReplacePageId = (oldId, newPage) => {
-    setPages(prev => prev.map(p => p.id === oldId ? newPage : p));
-    setChapters(prev => prev.map(c => ({
-      ...c,
-      pagesSummary: (c.pagesSummary || []).map(ps => ps.pageId === oldId ? {
-        ...ps,
-        pageId: newPage.id,
-        pageName: newPage.pageName || '',
-        shortNote: stripHtml(newPage.note || '').substring(0, 40)
-      } : ps)
-    })));
+    setPages((prev) => {
+      const replaced = prev.map((p) => (p.id === oldId ? newPage : p));
+      const withInsertedPersisted = replaced.some((p) => p.id === newPage.id)
+        ? replaced
+        : [...replaced, newPage];
+
+      const withoutTempTwin = withInsertedPersisted.filter((p) => {
+        if (!p?.id?.startsWith('temp_')) return true;
+        if (p.id === oldId) return false;
+        if (!newPage?.order) return true;
+        return p.order !== newPage.order;
+      });
+
+      return withoutTempTwin.sort((a, b) => compareOrder(a.order, b.order));
+    });
+
+    const shortNote = stripHtml(newPage.note || '').substring(0, 40) || 'Untitled Page';
+    setChapters((prev) => prev.map((chapterItem) => {
+      if (chapterItem.id !== selectedChapterId) return chapterItem;
+      const replacedSummary = (chapterItem.pagesSummary || [])
+        .filter((ps) => ps.pageId !== oldId)
+        .filter((ps) => ps.pageId !== newPage.id);
+      return {
+        ...chapterItem,
+        pagesSummary: [...replacedSummary, {
+          pageId: newPage.id,
+          pageName: newPage.pageName || '',
+          shortNote,
+          order: newPage.order
+        }].sort((a, b) => compareOrder(a.order, b.order))
+      };
+    }));
+
     setPageDrafts(prev => {
       const val = prev[oldId];
       const next = { ...prev };
@@ -2920,6 +3027,7 @@ const BookDetail = () => {
                                   pageAlign={pageAlign}
                                   standardPageHeightPx={standardPageHeightPx}
                                   readOnly={isForcedReadRoute || !canEdit}
+                                  canUploadMedia={isOwner || collaborationPermissions.canManageMedia}
                                 />
                               </div>
                             ))}

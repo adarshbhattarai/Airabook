@@ -43,6 +43,7 @@ const TemplatePage = ({
   onOpenMediaPicker,
   onOpenPreview,
   readOnly = false,
+  canUploadMedia = true,
 }) => {
   const [uploadingId, setUploadingId] = useState(null);
   const [galleryUploading, setGalleryUploading] = useState(false);
@@ -102,7 +103,7 @@ const TemplatePage = ({
             section={section}
             value={fieldValue}
             onChange={(val) => updateField(section.field, val)}
-            readOnly={readOnly}
+            readOnly={readOnly || !canUploadMedia}
             onImageUpload={handleImageUpload}
             isUploading={uploadingId === section.id}
             themeClass={themeClass}

@@ -26,6 +26,8 @@ Airabook is a full-stack application that enables users to:
 
 The application uses Firebase for backend services (Authentication, Firestore, Storage, Cloud Functions) and Vite for frontend development.
 
+The Spring Boot and Spring AI backend lives in `/Users/adeshbhattarai/code/AiraAI/Agent`. Any frontend feature that depends on planner, chat, voice, or Spring-hosted APIs should be traced in that repository too.
+
 ## Tech Stack
 
 - **Frontend**: React 18, Vite 4
