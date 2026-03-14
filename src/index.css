@@ -591,6 +591,77 @@ a:focus-visible {
   opacity: 0.75;
 }
 
+.theme-matrix .email-verification-notice,
+.theme-dark .email-verification-notice {
+  background:
+    radial-gradient(circle at top left, rgba(46, 203, 141, 0.14), transparent 32%),
+    linear-gradient(180deg, rgba(10, 24, 17, 0.96) 0%, rgba(7, 18, 12, 0.98) 100%) !important;
+  border-color: rgba(110, 247, 200, 0.24) !important;
+  color: #c6fde2 !important;
+  box-shadow: inset 0 1px 0 rgba(209, 255, 227, 0.06);
+}
+
+.theme-matrix .email-verification-notice-action,
+.theme-dark .email-verification-notice-action {
+  border-color: rgba(110, 247, 200, 0.34) !important;
+  background: rgba(9, 22, 16, 0.92) !important;
+  color: #dbffec !important;
+}
+
+.theme-matrix .email-verification-notice-action:hover:not(:disabled),
+.theme-dark .email-verification-notice-action:hover:not(:disabled) {
+  background: rgba(15, 43, 32, 0.98) !important;
+  border-color: rgba(110, 247, 200, 0.52) !important;
+  color: #f0fff8 !important;
+}
+
+.theme-matrix .email-verification-notice-dismiss,
+.theme-dark .email-verification-notice-dismiss {
+  color: #9af3c5 !important;
+}
+
+.theme-matrix .email-verification-notice-dismiss:hover,
+.theme-dark .email-verification-notice-dismiss:hover {
+  background: rgba(46, 203, 141, 0.12) !important;
+  color: #dbffec !important;
+}
+
+.theme-matrix .coauthor-search-results,
+.theme-dark .coauthor-search-results {
+  background: rgba(10, 24, 17, 0.44) !important;
+  border-color: rgba(110, 247, 200, 0.24) !important;
+}
+
+.theme-matrix .coauthor-search-result-item,
+.theme-dark .coauthor-search-result-item {
+  background: transparent !important;
+  transition: background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.theme-matrix .coauthor-search-result-item:hover,
+.theme-dark .coauthor-search-result-item:hover {
+  background: rgba(46, 203, 141, 0.12) !important;
+  box-shadow: inset 0 0 0 1px rgba(110, 247, 200, 0.16);
+}
+
+.theme-matrix .coauthor-search-result-badge-owner,
+.theme-dark .coauthor-search-result-badge-owner {
+  background: rgba(245, 158, 11, 0.18) !important;
+  color: #fde68a !important;
+}
+
+.theme-matrix .coauthor-search-result-badge-member,
+.theme-dark .coauthor-search-result-badge-member {
+  background: rgba(59, 130, 246, 0.22) !important;
+  color: #bfdbfe !important;
+}
+
+.theme-matrix .coauthor-search-result-badge-self,
+.theme-dark .coauthor-search-result-badge-self {
+  background: rgba(148, 163, 184, 0.18) !important;
+  color: #d1fae5 !important;
+}
+
 .theme-matrix .media-picker-dialog,
 .theme-dark .media-picker-dialog {
   background: linear-gradient(180deg, rgba(10, 24, 17, 0.95) 0%, rgba(6, 15, 11, 0.98) 100%) !important;
@@ -925,6 +996,16 @@ a:focus-visible {
 .theme-matrix .editor-save-btn,
 .theme-dark .editor-save-btn {
   box-shadow: inset 0 1px 0 rgba(209, 255, 227, 0.08), 0 10px 22px rgba(0, 0, 0, 0.34) !important;
+}
+
+.theme-matrix .ai-rewrite-preview-surface,
+.theme-dark .ai-rewrite-preview-surface {
+  background:
+    radial-gradient(circle at top left, rgba(46, 203, 141, 0.12), transparent 34%),
+    rgba(9, 22, 16, 0.94) !important;
+  border: 1px solid rgba(110, 247, 200, 0.24);
+  color: #d8ffea !important;
+  box-shadow: inset 0 1px 0 rgba(209, 255, 227, 0.08);
 }
 
 .bn-slash-menu {

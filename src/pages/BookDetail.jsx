@@ -2389,7 +2389,7 @@ const BookDetail = () => {
 
             {/* Search Results */}
             {searchResults.length > 0 && (
-              <div className="border rounded-lg p-2 max-h-48 overflow-y-auto">
+              <div className="coauthor-search-results border rounded-lg p-2 max-h-48 overflow-y-auto">
                 {searchResults.map((searchUser) => {
                   const accessState = getSearchResultAccessState(searchUser.id);
                   const isOwnerResult = accessState === 'owner';
@@ -2408,7 +2408,7 @@ const BookDetail = () => {
                   return (
                     <div
                       key={searchUser.id}
-                      className="flex items-center justify-between p-2 hover:bg-gray-50 rounded"
+                      className="coauthor-search-result-item flex items-center justify-between p-2 rounded"
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         {searchUser.photoURL ? (
@@ -2426,13 +2426,13 @@ const BookDetail = () => {
                           <div className="flex items-center gap-2">
                             <p className="font-medium text-gray-800 truncate">{searchUser.displayName || 'Unknown User'}</p>
                             {isOwnerResult && (
-                              <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">Owner</span>
+                              <span className="coauthor-search-result-badge coauthor-search-result-badge-owner text-[10px] px-2 py-0.5 rounded-full">Owner</span>
                             )}
                             {isCoAuthorResult && (
-                              <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">Already co-author</span>
+                              <span className="coauthor-search-result-badge coauthor-search-result-badge-member text-[10px] px-2 py-0.5 rounded-full">Already co-author</span>
                             )}
                             {isSelfResult && (
-                              <span className="text-[10px] bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full">Your account</span>
+                              <span className="coauthor-search-result-badge coauthor-search-result-badge-self text-[10px] px-2 py-0.5 rounded-full">Your account</span>
                             )}
                           </div>
                           <p className="text-sm text-gray-500 truncate">{searchUser.email}</p>

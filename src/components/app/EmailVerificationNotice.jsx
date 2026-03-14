@@ -54,7 +54,7 @@ const EmailVerificationNotice = () => {
   };
 
   return (
-    <div className="border-b border-amber-200 bg-amber-50 text-amber-900">
+    <div className="email-verification-notice border-b border-amber-200 bg-amber-50 text-amber-900">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 text-sm">
         <div className="flex items-center gap-2 min-w-0">
           <Mail className="h-4 w-4 shrink-0" />
@@ -63,10 +63,21 @@ const EmailVerificationNotice = () => {
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <Button size="sm" variant="outline" onClick={handleResend} disabled={sending}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="email-verification-notice-action"
+            onClick={handleResend}
+            disabled={sending}
+          >
             {sending ? 'Sending...' : 'Resend verification email'}
           </Button>
-          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={handleDismiss}>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="email-verification-notice-dismiss h-8 w-8"
+            onClick={handleDismiss}
+          >
             <X className="h-4 w-4" />
           </Button>
         </div>
