@@ -1,11 +1,28 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
-import { Mic, MicOff, Loader2, Volume2, Brain } from 'lucide-react';
+import { Mic, MicOff, Loader2, Volume2, Brain, Lock } from 'lucide-react';
 import { useVoiceAssistant } from '@/hooks/useVoiceAssistant';
+import { useAuth } from '@/context/AuthContext';
+import { getVoiceAssistantUpgradeMessage, hasVoiceAssistantAccess } from '@/lib/billing';
 import { cn } from '@/lib/utils';
 
-const VoiceAssistantButton = ({ bookId, chapterId, pageId, className = '' }) => {
+const LockedVoiceAssistantButton = ({ className = '', lockedReason }) => (
+  <span className="inline-flex" title={lockedReason}>
+    <Button
+      type="button"
+      variant="outline"
+      disabled
+      className={cn('flex items-center gap-2 h-8 text-xs', className)}
+      aria-label={lockedReason}
+    >
+      <Lock className="h-3 w-3" />
+      Talk
+    </Button>
+  </span>
+);
+
+const EnabledVoiceAssistantButton = ({ bookId, chapterId, pageId, className = '' }) => {
   const { toast } = useToast();
   const [debugOpen, setDebugOpen] = useState(false);
   const lastErrorToastRef = useRef('');
@@ -126,6 +143,25 @@ const VoiceAssistantButton = ({ bookId, chapterId, pageId, className = '' }) => 
         </div>
       )}
     </div>
+  );
+};
+
+const VoiceAssistantButton = ({ bookId, chapterId, pageId, className = '' }) => {
+  const { billing } = useAuth();
+  const canUseVoiceAssistant = hasVoiceAssistantAccess(billing);
+  const lockedReason = getVoiceAssistantUpgradeMessage(billing);
+
+  if (!canUseVoiceAssistant) {
+    return <LockedVoiceAssistantButton className={className} lockedReason={lockedReason} />;
+  }
+
+  return (
+    <EnabledVoiceAssistantButton
+      bookId={bookId}
+      chapterId={chapterId}
+      pageId={pageId}
+      className={className}
+    />
   );
 };
 

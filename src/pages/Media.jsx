@@ -11,8 +11,8 @@ import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/context/AuthContext';
 import AppLoader from '@/components/app/AppLoader';
 import { httpsCallable } from 'firebase/functions';
-import { getStorage, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { functions } from '@/lib/firebase';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { auth, functions, storage } from '@/lib/firebase';
 
 /**
  * Convert storage URL to emulator format if running in emulator mode
@@ -75,7 +75,6 @@ const AssetRegistry = () => {
   const { user, appUser } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const storage = getStorage(); // Initialize Firebase Storage
   const planTier = appUser?.billing?.planTier || 'free';
   const isFreeTier = planTier === 'free';
   const customAlbumCount = albums.filter((album) => album?.type === 'custom').length;
@@ -159,6 +158,14 @@ const AssetRegistry = () => {
   const handleCreateAlbum = async (e) => {
     e.preventDefault();
     if (!newAlbumName.trim()) return;
+    if (!user?.uid) {
+      toast({
+        title: 'Sign-in required',
+        description: 'Please sign in again before creating an asset.',
+        variant: 'destructive',
+      });
+      return;
+    }
     if (freeTierAlbumLimitReached) {
       showFreeTierAlbumLimitToast();
       return;
@@ -170,6 +177,7 @@ const AssetRegistry = () => {
 
       // Upload cover if selected
       if (newAlbumCover) {
+        await auth.currentUser?.getIdToken(true);
         // Use a generic covers folder or temp folder since we don't have album ID yet
         // Or just use the user's root covers folder
         const storagePath = `${user.uid}/covers/${Date.now()}_${newAlbumCover.name}`;
@@ -201,6 +209,11 @@ const AssetRegistry = () => {
       setNewCoverPreview(null);
     } catch (error) {
       console.error('Error creating album:', error);
+      console.error('Create album cover upload context:', {
+        userUid: user?.uid || null,
+        authUid: auth.currentUser?.uid || null,
+        bucket: storage.app.options.storageBucket || null,
+      });
       const isQuotaError = error?.code === 'functions/resource-exhausted'
         || error?.code === 'resource-exhausted'
         || error?.message?.toLowerCase()?.includes('resource-exhausted');
@@ -452,7 +465,7 @@ const AssetRegistry = () => {
               <div className="space-y-2">
                 <Label>Cover Image</Label>
                 <div
-                  className="relative w-40 aspect-[3/4] mx-auto bg-gray-100 rounded-lg overflow-hidden border-2 border-dashed border-gray-300 hover:border-app-iris cursor-pointer transition-colors flex items-center justify-center group"
+                  className="asset-cover-dropzone relative w-40 aspect-[3/4] mx-auto rounded-lg overflow-hidden border-2 border-dashed border-app-gray-300 bg-gray-100 hover:border-app-iris cursor-pointer transition-colors flex items-center justify-center group"
                   onClick={() => coverInputRef.current?.click()}
                 >
                   {newCoverPreview ? (
@@ -463,7 +476,7 @@ const AssetRegistry = () => {
                       </div>
                     </>
                   ) : (
-                    <div className="text-center text-gray-500">
+                    <div className="asset-cover-dropzone-copy text-center text-app-gray-600">
                       <ImageIcon className="h-8 w-8 mx-auto mb-2 opacity-50" />
                       <span className="text-sm">Click to upload cover</span>
                     </div>
