@@ -2063,7 +2063,7 @@ const PageEditor = forwardRef(({
                   </DialogDescription>
                 </DialogHeader>
 
-                <div className="bg-gray-50 p-4 rounded-md text-sm text-gray-800 max-h-[60vh] overflow-y-auto whitespace-pre-wrap">
+                <div className="ai-rewrite-preview-surface bg-gray-50 p-4 rounded-md text-sm text-gray-800 max-h-[60vh] overflow-y-auto whitespace-pre-wrap">
                   {aiPreviewText}
                 </div>
 
@@ -2100,7 +2100,7 @@ const PageEditor = forwardRef(({
                   </DialogDescription>
                 </DialogHeader>
 
-                <div className="bg-gray-50 p-4 rounded-md text-sm text-gray-800 max-h-[60vh] overflow-y-auto whitespace-pre-wrap">
+                <div className="ai-rewrite-preview-surface bg-gray-50 p-4 rounded-md text-sm text-gray-800 max-h-[60vh] overflow-y-auto whitespace-pre-wrap">
                   {blockRewritePreviewText}
                 </div>
 
