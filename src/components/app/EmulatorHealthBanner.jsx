@@ -4,19 +4,18 @@ import { Button } from '@/components/ui/button';
 
 const CHECK_INTERVAL_MS = 15000;
 const CHECK_TIMEOUT_MS = 2500;
+const EMULATOR_HUB_URL = 'http://127.0.0.1:4400/emulators';
 
 const emulatorTargets = [
   {
     id: 'functions',
     label: 'Functions',
     port: 5001,
-    url: 'http://127.0.0.1:5001/',
   },
   {
     id: 'storage',
     label: 'Storage',
     port: 9199,
-    url: 'http://127.0.0.1:9199/',
   },
 ];
 
@@ -28,19 +27,21 @@ const isEmulatorModeEnabled = () => {
   return isLocalHost && import.meta.env.VITE_USE_EMULATOR === 'true';
 };
 
-const probeEndpoint = async (url) => {
+const fetchRegisteredEmulators = async () => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), CHECK_TIMEOUT_MS);
   try {
-    await fetch(`${url}?health=${Date.now()}`, {
+    const response = await fetch(`${EMULATOR_HUB_URL}?health=${Date.now()}`, {
       method: 'GET',
-      mode: 'no-cors',
       cache: 'no-store',
       signal: controller.signal,
     });
-    return true;
+    if (!response.ok) {
+      throw new Error(`Hub request failed with ${response.status}`);
+    }
+    return await response.json();
   } catch (_) {
-    return false;
+    return null;
   } finally {
     clearTimeout(timeoutId);
   }
@@ -56,12 +57,11 @@ const EmulatorHealthBanner = () => {
     if (!enabled) return;
     setIsChecking(true);
     try {
-      const results = await Promise.all(
-        emulatorTargets.map(async (target) => ({
-          ...target,
-          reachable: await probeEndpoint(target.url),
-        })),
-      );
+      const registeredEmulators = await fetchRegisteredEmulators();
+      const results = emulatorTargets.map((target) => ({
+        ...target,
+        reachable: !!registeredEmulators?.[target.id],
+      }));
       setUnreachableTargets(results.filter((target) => !target.reachable));
       setHasChecked(true);
     } finally {

@@ -1,11 +1,11 @@
 # Frontend Context Report
 
-Generated: 2026-03-14 22:36:29Z
+Generated: 2026-03-15 06:40:49Z
 
 ## Frontend Repo Snapshot
 - Workspace: /Users/adeshbhattarai/code/Airabook
 - Branch: main
-- HEAD: 4e94484
+- HEAD: 9fd2c34
 - Backend repo: /Users/adeshbhattarai/code/AiraAI/Agent
 
 ## Read First
@@ -19,24 +19,24 @@ Generated: 2026-03-14 22:36:29Z
 
 
 ```text
+ M AGENTS.md
  M generated/frontend-context-report.md
- M src/components/PageEditor/index.jsx
- M src/components/app/EmailVerificationNotice.jsx
- M src/index.css
- M src/pages/BookDetail.jsx
+ M src/components/app/EmulatorHealthBanner.jsx
+ M storage.rules
+?? MEDIA_STORAGE_AGENT.md
 ```
 
 ## Backend Snapshot
 - Branch: dev-AiraCleanUp
-- HEAD: a34cce0
+- HEAD: 77bc74b
 
 
 ```text
- M agent/src/main/java/com/ethela/agent/config/FirebaseConfig.java
-?? agent/src/test/java/com/ethela/agent/config/FirebaseConfigProjectIsolationTest.java
+Working tree clean.
 ```
 
 ## Recent Commits
+- 2026-03-15 9fd2c34 Update
 - 2026-03-15 4e94484 Update
 - 2026-03-14 c36be18 Update on pages
 - 2026-03-14 a5eff04 Update
@@ -44,7 +44,6 @@ Generated: 2026-03-14 22:36:29Z
 - 2026-03-08 47a05db Update
 - 2026-03-07 b563d2f Update
 - 2026-03-07 a1d7676 Updates for the packages
-- 2026-03-06 5ea13b8 Update
 
 ## High-Signal Paths
 - /Users/adeshbhattarai/code/Airabook/src/App.jsx

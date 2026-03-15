@@ -8,6 +8,7 @@ Open the smallest relevant file first, then inspect code.
 - `/Users/adeshbhattarai/code/Airabook/ARCHITECTURE.md`: frontend architecture, Firebase layout, and cross-repo boundaries.
 - `/Users/adeshbhattarai/code/Airabook/README.md`: environment setup, local dev, and deployment flow.
 - `/Users/adeshbhattarai/code/Airabook/SELF_UPDATE_WORKFLOW.md`: how to refresh frontend context and memory after meaningful changes.
+- `/Users/adeshbhattarai/code/Airabook/MEDIA_STORAGE_AGENT.md`: current Firebase Storage upload/delete/quota workflow, path conventions, and trigger ownership.
 - `/Users/adeshbhattarai/code/AiraAI/Agent/AGENTS.md`: backend agent map for the Spring Boot + Spring AI repo.
 
 ## Repository Identity
