@@ -9,33 +9,49 @@ service firebase.storage {
       return isSignedIn() && request.auth.token.admin == true;
     }
 
+    function bookDoc(bookId) {
+      return firestore.get(/databases/(default)/documents/books/$(bookId));
+    }
+
+    function bookExists(bookId) {
+      return firestore.exists(/databases/(default)/documents/books/$(bookId));
+    }
+
+    function albumDoc(albumId) {
+      return firestore.get(/databases/(default)/documents/albums/$(albumId));
+    }
+
+    function albumExists(albumId) {
+      return firestore.exists(/databases/(default)/documents/albums/$(albumId));
+    }
+
     function canWriteBookMedia(bookId) {
-      return exists(/databases/(default)/documents/books/$(bookId)) &&
+      return bookExists(bookId) &&
         (
-          get(/databases/(default)/documents/books/$(bookId)).data.ownerId == request.auth.uid ||
+          bookDoc(bookId).data.ownerId == request.auth.uid ||
           (
-            get(/databases/(default)/documents/books/$(bookId)).data.members != null &&
-            get(/databases/(default)/documents/books/$(bookId)).data.members[request.auth.uid] == 'Owner'
+            bookDoc(bookId).data.members != null &&
+            bookDoc(bookId).data.members[request.auth.uid] == 'Owner'
           ) ||
           (
-            get(/databases/(default)/documents/books/$(bookId)).data.members != null &&
-            get(/databases/(default)/documents/books/$(bookId)).data.members[request.auth.uid] == 'Co-author' &&
-            get(/databases/(default)/documents/books/$(bookId)).data.memberPermissions != null &&
-            get(/databases/(default)/documents/books/$(bookId)).data.memberPermissions[request.auth.uid] != null &&
-            get(/databases/(default)/documents/books/$(bookId)).data.memberPermissions[request.auth.uid].canManageMedia == true
+            bookDoc(bookId).data.members != null &&
+            bookDoc(bookId).data.members[request.auth.uid] == 'Co-author' &&
+            bookDoc(bookId).data.memberPermissions != null &&
+            bookDoc(bookId).data.memberPermissions[request.auth.uid] != null &&
+            bookDoc(bookId).data.memberPermissions[request.auth.uid].canManageMedia == true
           )
         );
     }
 
     function canWriteStandaloneAlbumMedia(bookId) {
-      return !exists(/databases/(default)/documents/books/$(bookId)) &&
-        exists(/databases/(default)/documents/albums/$(bookId)) &&
+      return !bookExists(bookId) &&
+        albumExists(bookId) &&
         (
           (
-            get(/databases/(default)/documents/albums/$(bookId)).data.accessPermission != null &&
-            get(/databases/(default)/documents/albums/$(bookId)).data.accessPermission.ownerId == request.auth.uid
+            albumDoc(bookId).data.accessPermission != null &&
+            albumDoc(bookId).data.accessPermission.ownerId == request.auth.uid
           ) ||
-          get(/databases/(default)/documents/albums/$(bookId)).data.ownerId == request.auth.uid
+          albumDoc(bookId).data.ownerId == request.auth.uid
         );
     }
 
