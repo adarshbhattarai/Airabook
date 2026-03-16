@@ -2,6 +2,8 @@
 const admin = require("firebase-admin");
 const functions = require("firebase-functions/v1");
 const { FieldValue } = require("firebase-admin/firestore");
+const { consumeCredits, estimateTokensFromText } = require("../payments/creditLedger");
+const { getPlanConfig, normalizePlanTier } = require("../payments/catalog");
 
 // Create HttpsError compatible with both v1 and v2
 class HttpsError extends Error {
@@ -17,20 +19,36 @@ const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 const defaultPlans = {
   free: {
-    apiCalls: 50,
+    apiCalls: 150,
     storageMb: 50,
     books: 3,
     pages: 150,
     chaptersPerBook: 15,
     pagesPerChapter: 5,
   },
-  early: {
-    apiCalls: 70,
-    storageMb: 70,
-    books: 4,
-    pages: 200,
-    chaptersPerBook: 200,
+  creator: {
+    apiCalls: 2500,
+    storageMb: 512,
+    books: 25,
+    pages: 5000,
+    chaptersPerBook: 500,
     pagesPerChapter: 500,
+  },
+  pro: {
+    apiCalls: 7000,
+    storageMb: 2048,
+    books: 100,
+    pages: 20000,
+    chaptersPerBook: 1000,
+    pagesPerChapter: 1000,
+  },
+  premium: {
+    apiCalls: 16000,
+    storageMb: 8192,
+    books: 500,
+    pages: 100000,
+    chaptersPerBook: 2000,
+    pagesPerChapter: 2000,
   },
   god: {
     apiCalls: 1_000_000_000,
@@ -70,13 +88,29 @@ function loadConfig() {
       chaptersPerBook: parseNumber(process.env.PLAN_FREE_CHAPTERS_PER_BOOK, defaultPlans.free.chaptersPerBook),
       pagesPerChapter: parseNumber(process.env.PLAN_FREE_PAGES_PER_CHAPTER, defaultPlans.free.pagesPerChapter),
     },
-    early: {
-      apiCalls: parseNumber(process.env.PLAN_EARLY_API_CALLS, defaultPlans.early.apiCalls),
-      storageMb: parseNumber(process.env.PLAN_EARLY_STORAGE_MB, defaultPlans.early.storageMb),
-      books: parseNumber(process.env.PLAN_EARLY_BOOKS, defaultPlans.early.books),
-      pages: parseNumber(process.env.PLAN_EARLY_PAGES, defaultPlans.early.pages),
-      chaptersPerBook: parseNumber(process.env.PLAN_EARLY_CHAPTERS_PER_BOOK, defaultPlans.early.chaptersPerBook),
-      pagesPerChapter: parseNumber(process.env.PLAN_EARLY_PAGES_PER_CHAPTER, defaultPlans.early.pagesPerChapter),
+    creator: {
+      apiCalls: parseNumber(process.env.PLAN_CREATOR_API_CALLS, defaultPlans.creator.apiCalls),
+      storageMb: parseNumber(process.env.PLAN_CREATOR_STORAGE_MB, defaultPlans.creator.storageMb),
+      books: parseNumber(process.env.PLAN_CREATOR_BOOKS, defaultPlans.creator.books),
+      pages: parseNumber(process.env.PLAN_CREATOR_PAGES, defaultPlans.creator.pages),
+      chaptersPerBook: parseNumber(process.env.PLAN_CREATOR_CHAPTERS_PER_BOOK, defaultPlans.creator.chaptersPerBook),
+      pagesPerChapter: parseNumber(process.env.PLAN_CREATOR_PAGES_PER_CHAPTER, defaultPlans.creator.pagesPerChapter),
+    },
+    pro: {
+      apiCalls: parseNumber(process.env.PLAN_PRO_API_CALLS, defaultPlans.pro.apiCalls),
+      storageMb: parseNumber(process.env.PLAN_PRO_STORAGE_MB, defaultPlans.pro.storageMb),
+      books: parseNumber(process.env.PLAN_PRO_BOOKS, defaultPlans.pro.books),
+      pages: parseNumber(process.env.PLAN_PRO_PAGES, defaultPlans.pro.pages),
+      chaptersPerBook: parseNumber(process.env.PLAN_PRO_CHAPTERS_PER_BOOK, defaultPlans.pro.chaptersPerBook),
+      pagesPerChapter: parseNumber(process.env.PLAN_PRO_PAGES_PER_CHAPTER, defaultPlans.pro.pagesPerChapter),
+    },
+    premium: {
+      apiCalls: parseNumber(process.env.PLAN_PREMIUM_API_CALLS, defaultPlans.premium.apiCalls),
+      storageMb: parseNumber(process.env.PLAN_PREMIUM_STORAGE_MB, defaultPlans.premium.storageMb),
+      books: parseNumber(process.env.PLAN_PREMIUM_BOOKS, defaultPlans.premium.books),
+      pages: parseNumber(process.env.PLAN_PREMIUM_PAGES, defaultPlans.premium.pages),
+      chaptersPerBook: parseNumber(process.env.PLAN_PREMIUM_CHAPTERS_PER_BOOK, defaultPlans.premium.chaptersPerBook),
+      pagesPerChapter: parseNumber(process.env.PLAN_PREMIUM_PAGES_PER_CHAPTER, defaultPlans.premium.pagesPerChapter),
     },
     god: {
       apiCalls: parseNumber(process.env.PLAN_GOD_API_CALLS, defaultPlans.god.apiCalls),
@@ -98,8 +132,8 @@ function tierForUser(userData, uid, cfg = loadConfig()) {
   const email = (userData?.email || "").toLowerCase();
   if (cfg.godUsers.has(email) || cfg.godUsers.has(uid)) return "god";
 
-  const tier = userData?.billing?.planTier;
-  if (tier === "god" || tier === "early" || tier === "free") return tier;
+  const tier = normalizePlanTier(userData?.billing?.planTier || 'free');
+  if (tier === "god" || tier === "creator" || tier === "pro" || tier === "premium" || tier === "free") return tier;
   return "free";
 }
 
@@ -130,6 +164,7 @@ function buildInitialQuotaCounters() {
       windowStart: FieldValue.serverTimestamp(),
     },
     storageBytesUsed: 0,
+    lastStorageCreditChargeAt: null,
     books: 0,
     pages: 0,
   };
@@ -153,28 +188,26 @@ async function withUserTransaction(db, uid, handler) {
 }
 
 async function consumeApiCallQuota(db, uid, amount = 1) {
-  return withUserTransaction(db, uid, ({ tx, userRef, userData, tier, limits, now }) => {
-    const current = userData.quotaCounters?.apiCalls || {};
-    const windowStartMs = toMillis(current.windowStart) ?? now;
-    const withinWindow = now - windowStartMs < THIRTY_DAYS_MS;
-    const used = withinWindow ? current.used || 0 : 0;
-
-    if (used + amount > limits.apiCalls) {
-      throw new HttpsError("resource-exhausted", "AI monthly limit reached. Please upgrade your plan.");
-    }
-
-    const newWindowStart = withinWindow ? windowStartMs : now;
-    tx.update(userRef, {
-      "quotaCounters.apiCalls": {
-        used: used + amount,
-        windowStart: new Date(newWindowStart),
+  const previewText = 'x'.repeat(Math.max(1, amount) * 250);
+  try {
+    return await consumeCredits(db, uid, {
+      feature: 'ai_text',
+      source: 'legacy_api_call_quota',
+      provider: 'functions',
+      rawUnits: {
+        inputText: previewText,
+        outputText: previewText,
+        inputTokens: estimateTokensFromText(previewText),
+        outputTokens: estimateTokensFromText(previewText),
       },
-      "billing.planTier": tier,
-      "billing.planLabel": userData?.billing?.planLabel || tier,
+      minimumCredits: Math.max(1, amount),
     });
-
-    return { tier, limits, used: used + amount };
-  });
+  } catch (error) {
+    if (error?.code === 'resource-exhausted') {
+      throw new HttpsError('resource-exhausted', 'Credits exhausted. Please upgrade or buy a credit pack.');
+    }
+    throw error;
+  }
 }
 
 async function assertAndIncrementCounter(db, uid, counterKey, amount, limitValue, errorMessage) {
@@ -226,6 +259,7 @@ module.exports = {
   tierForUser,
   resolveUserPlanLimits,
   buildInitialQuotaCounters,
+  estimateTokensFromText,
   consumeApiCallQuota,
   assertAndIncrementCounter,
   assertStorageAllowance,

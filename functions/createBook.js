@@ -4,6 +4,7 @@ const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
 const FieldValue = require("firebase-admin/firestore").FieldValue;
 const { assertAndIncrementCounter, loadConfig, tierForUser } = require("./utils/limits");
+const { consumeCredits, estimateTokensFromText } = require("./payments/creditLedger");
 
 // Firebase Admin should be initialized by index.js
 // If not initialized, initialize with default settings (with console.log since logger might not be ready)
@@ -338,7 +339,7 @@ exports.createBook = onCall(
               100
             )}...`
           );
-          chapters = await generateChaptersFromPrompt(title, prompt);
+          chapters = await generateChaptersFromPrompt(title, prompt, auth.uid);
           bookDescription = `A custom book "${title}" with AI-generated chapters based on your idea.`;
         } else {
           logger.log(
@@ -545,10 +546,23 @@ exports.createBook = onCall(
 );
 
 // --- AI helpers --------------------------------------------------------------
-async function generateChaptersFromPrompt(title, prompt) {
+async function generateChaptersFromPrompt(title, prompt, userId) {
   try {
     logger.log("🤖 Calling AI to generate custom chapters...");
     const instruction = buildChapterGenerationPrompt(title, prompt);
+    if (userId) {
+      await consumeCredits(admin.firestore(), userId, {
+        feature: 'page_draft',
+        source: 'create_book_prompt',
+        provider: 'functions_ai',
+        rawUnits: {
+          inputText: instruction,
+          inputTokens: estimateTokensFromText(instruction),
+          outputTokens: 500,
+        },
+        minimumCredits: 2,
+      });
+    }
     const content = await callAI(instruction, {
       maxTokens: 500,
       temperature: 0.8,

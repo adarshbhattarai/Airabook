@@ -1,18 +1,114 @@
 const { onRequest } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
-const Stripe = require('stripe');
 const { paymentService, PaymentStatus } = require('./paymentService');
+const { userBillingRepository } = require('./userBillingRepository');
+const {
+  creatorMonthlyPriceId,
+  legacyCreatorPriceIds,
+  premiumMonthlyPriceId,
+  proMonthlyPriceId,
+  stripe,
+  stripeSecret,
+} = require('./stripeClient');
 
-const stripeSecret =
-  process.env.STRIPE_SECRET_KEY ||
-  process.env.STRIPE_SECRET ||
-  process.env.STRIPE_API_KEY ||
-  null;
-// Trim webhook secret to remove any whitespace/newlines
 const webhookSecret =
   (process.env.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK || '').trim() || null;
 
-const stripe = stripeSecret ? new Stripe(stripeSecret, { apiVersion: '2024-06-20' }) : null;
+const resolveUserIdFromCustomer = async (customerId) => {
+  if (!customerId) {
+    return null;
+  }
+
+  const directHit = await userBillingRepository.findUserIdByStripeCustomerId(customerId);
+  if (directHit) {
+    return directHit;
+  }
+
+  try {
+    const customer = await stripe.customers.retrieve(customerId);
+    const userId = customer?.deleted ? null : customer?.metadata?.userId || null;
+    return userId || null;
+  } catch (error) {
+    logger.warn('Unable to resolve Stripe customer metadata', {
+      customerId,
+      message: error?.message || 'unknown',
+    });
+    return null;
+  }
+};
+
+const resolveUserIdFromSubscription = async (subscription) => {
+  const metadataUserId = subscription?.metadata?.userId || null;
+  if (metadataUserId) {
+    return metadataUserId;
+  }
+
+  const subscriptionId = subscription?.id || null;
+  const storedUserId = await userBillingRepository.findUserIdByStripeSubscriptionId(subscriptionId);
+  if (storedUserId) {
+    return storedUserId;
+  }
+
+  return await resolveUserIdFromCustomer(subscription?.customer || null);
+};
+
+const resolvePlanTierFromSubscription = (subscription) => {
+  const metadataTier = subscription?.metadata?.planTier || null;
+  if (metadataTier) {
+    return metadataTier;
+  }
+
+  const priceId = subscription?.items?.data?.[0]?.price?.id || null;
+  if (priceId && legacyCreatorPriceIds.includes(priceId)) {
+    return 'creator';
+  }
+  if (priceId && creatorMonthlyPriceId && priceId === creatorMonthlyPriceId) {
+    return 'creator';
+  }
+  if (priceId && proMonthlyPriceId && priceId === proMonthlyPriceId) {
+    return 'pro';
+  }
+  if (priceId && premiumMonthlyPriceId && priceId === premiumMonthlyPriceId) {
+    return 'premium';
+  }
+  return 'creator';
+};
+
+const syncSubscriptionEvent = async (subscription) => {
+  const userId = await resolveUserIdFromSubscription(subscription);
+  if (!userId) {
+    throw new Error(`Could not resolve user for Stripe subscription ${subscription?.id || 'unknown'}.`);
+  }
+
+  await paymentService.syncSubscriptionFromStripe({
+    userId,
+    subscription,
+    customerId: subscription?.customer || null,
+    planTier: resolvePlanTierFromSubscription(subscription),
+  });
+};
+
+const syncSubscriptionFromSession = async (session) => {
+  if (!session?.subscription) {
+    throw new Error('Missing subscription id on Stripe checkout session.');
+  }
+  const subscription = await stripe.subscriptions.retrieve(session.subscription);
+  const userId =
+    session?.metadata?.userId ||
+    session?.client_reference_id ||
+    await resolveUserIdFromSubscription(subscription);
+
+  if (!userId) {
+    throw new Error(`Could not resolve user for checkout session ${session?.id || 'unknown'}.`);
+  }
+
+  await paymentService.syncSubscriptionFromStripe({
+    userId,
+    subscription,
+    customerId: session.customer || subscription.customer || null,
+    planTier: resolvePlanTierFromSubscription(subscription),
+  });
+};
 
 exports.stripeWebhook = onRequest({ 
   region: 'us-central1',
@@ -78,11 +174,30 @@ exports.stripeWebhook = onRequest({
   try {
     switch (event.type) {
       case 'checkout.session.completed':
-        await paymentService.markPaymentCompleted(event.data.object);
+        if (event.data.object?.mode === 'subscription') {
+          await syncSubscriptionFromSession(event.data.object);
+        } else {
+          await paymentService.markPaymentCompleted(event.data.object);
+        }
         break;
       case 'checkout.session.expired':
         await paymentService.markPaymentFailed(event.data.object, PaymentStatus.expired);
         break;
+      case 'customer.subscription.created':
+      case 'customer.subscription.updated':
+      case 'customer.subscription.deleted':
+        await syncSubscriptionEvent(event.data.object);
+        break;
+      case 'invoice.paid':
+      case 'invoice.payment_failed': {
+        const subscriptionId = event.data.object?.subscription || null;
+        if (!subscriptionId) {
+          break;
+        }
+        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+        await syncSubscriptionEvent(subscription);
+        break;
+      }
       case 'checkout.session.async_payment_failed':
       case 'checkout.session.async_payment_succeeded':
         // async succeeded also fires checkout.session.completed so no-op

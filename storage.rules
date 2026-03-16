@@ -25,8 +25,25 @@ service firebase.storage {
       return firestore.exists(/databases/(default)/documents/albums/$(albumId));
     }
 
+    function canWriteBookLinkedAlbumMedia(bookId) {
+      return albumExists(bookId) &&
+        (
+          (
+            albumDoc(bookId).data.accessPermission != null &&
+            albumDoc(bookId).data.accessPermission.ownerId == request.auth.uid
+          ) ||
+          (
+            albumDoc(bookId).data.accessPermission != null &&
+            albumDoc(bookId).data.accessPermission.sharedWith != null &&
+            request.auth.uid in albumDoc(bookId).data.accessPermission.sharedWith
+          ) ||
+          albumDoc(bookId).data.ownerId == request.auth.uid
+        );
+    }
+
     function canWriteBookMedia(bookId) {
-      return bookExists(bookId) &&
+      return (
+        bookExists(bookId) &&
         (
           bookDoc(bookId).data.ownerId == request.auth.uid ||
           (
@@ -40,7 +57,9 @@ service firebase.storage {
             bookDoc(bookId).data.memberPermissions[request.auth.uid] != null &&
             bookDoc(bookId).data.memberPermissions[request.auth.uid].canManageMedia == true
           )
-        );
+        )
+      ) ||
+        canWriteBookLinkedAlbumMedia(bookId);
     }
 
     function canWriteStandaloneAlbumMedia(bookId) {

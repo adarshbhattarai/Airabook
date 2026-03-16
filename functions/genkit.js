@@ -4,7 +4,7 @@ const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 const { FieldValue } = require('firebase-admin/firestore');
 const { generateEmbeddings } = require('./utils/embeddingsClient');
-const { consumeApiCallQuota } = require('./utils/limits');
+const { consumeCredits, estimateTokensFromText } = require('./payments/creditLedger');
 const { defineQueryBookFlow } = require('./flows/queryBookFlow');
 const { defineGenerateChapterSuggestionsFlow } = require('./flows/generateChapterSuggestions');
 
@@ -32,7 +32,17 @@ const queryBookFlow = onCall(
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'User must be authenticated.');
     }
-    await consumeApiCallQuota(db, request.auth.uid, 1);
+    await consumeCredits(db, request.auth.uid, {
+      feature: 'book_query',
+      source: 'query_book_flow',
+      provider: 'genkit',
+      rawUnits: {
+        inputText: JSON.stringify(request.data || {}),
+        inputTokens: estimateTokensFromText(JSON.stringify(request.data || {})),
+        outputTokens: 512,
+      },
+      minimumCredits: 1,
+    });
 
     try {
       // Invoke the flow with auth context
@@ -91,7 +101,21 @@ const generateChapterSuggestions = onCall(
       return { suggestions: cachedSuggestions, cached: true };
     }
 
-    await consumeApiCallQuota(db, request.auth.uid, 1);
+    await consumeCredits(db, request.auth.uid, {
+      feature: 'chapter_suggestions',
+      source: 'generate_chapter_suggestions',
+      provider: 'genkit',
+      rawUnits: {
+        inputText: `${bookId}:${chapterId}:${chapterData?.title || ''}`,
+        inputTokens: estimateTokensFromText(`${bookId}:${chapterId}:${chapterData?.title || ''}`),
+        outputTokens: 384,
+      },
+      minimumCredits: 1,
+      metadata: {
+        bookId,
+        chapterId,
+      },
+    });
 
     try {
       const flowInput = {

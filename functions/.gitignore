@@ -7,11 +7,14 @@ node_modules/
 test.js
 
 .env
+.env.local
+.env.genkit.local
 .env.dev
 .env.prod
 .env.dev2
 .env.go
 .env.qa
+.genkit
 # Runtime config with actual secrets (DO NOT COMMIT)
 .runtimeconfig.json
 

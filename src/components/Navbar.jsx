@@ -12,8 +12,8 @@ const Navbar = () => {
   const navigate = useNavigate();
   const { user, appUser, logout } = useAuth();
 
-  const handleDonate = () => {
-    navigate('/donate');
+  const handleBilling = () => {
+    navigate('/billing');
     setIsOpen(false);
   };
 
@@ -77,10 +77,10 @@ const Navbar = () => {
             ))}
             {!isHiddenPage && (
               <Button
-                onClick={handleDonate}
+                onClick={handleBilling}
                 className="bg-gradient-to-r from-yellow-400 to-orange-400 hover:from-yellow-500 hover:to-orange-500 text-white px-4 py-2 rounded-full shadow-lg hover:shadow-xl transition-all duration-200"
               >
-                💝 Donate
+                Plans & Credits
               </Button>
             )}
             {user ? (
@@ -115,11 +115,11 @@ const Navbar = () => {
           <div className="md:hidden flex items-center gap-2">
             {!isHiddenPage && (
               <Button
-                onClick={handleDonate}
+                onClick={handleBilling}
                 size="sm"
                 className="bg-gradient-to-r from-yellow-400 to-orange-400 text-white rounded-full shadow-md"
               >
-                💝
+                Plans
               </Button>
             )}
             <button

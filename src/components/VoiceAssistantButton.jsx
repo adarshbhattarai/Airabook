@@ -1,11 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
-import { Mic, MicOff, Loader2, Volume2, Brain, Lock } from 'lucide-react';
+import { Mic, MicOff, Loader2, Volume2, Brain, Lock, ChevronDown } from 'lucide-react';
 import { useVoiceAssistant } from '@/hooks/useVoiceAssistant';
+import { useVoiceSelection } from '@/hooks/useVoiceSelection';
 import { useAuth } from '@/context/AuthContext';
 import { getVoiceAssistantUpgradeMessage, hasVoiceAssistantAccess } from '@/lib/billing';
 import { cn } from '@/lib/utils';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 const LockedVoiceAssistantButton = ({ className = '', lockedReason }) => (
   <span className="inline-flex" title={lockedReason}>
@@ -26,6 +34,13 @@ const EnabledVoiceAssistantButton = ({ bookId, chapterId, pageId, className = ''
   const { toast } = useToast();
   const [debugOpen, setDebugOpen] = useState(false);
   const lastErrorToastRef = useRef('');
+  const {
+    voices,
+    selectedVoiceId,
+    setSelectedVoiceId,
+    voiceConfig,
+    isLoading: isVoiceOptionsLoading,
+  } = useVoiceSelection();
 
   const {
     status,
@@ -39,7 +54,7 @@ const EnabledVoiceAssistantButton = ({ bookId, chapterId, pageId, className = ''
     interrupt,
     disconnect,
     partialTranscript,
-  } = useVoiceAssistant({ bookId, chapterId, pageId });
+  } = useVoiceAssistant({ bookId, chapterId, pageId, voice: voiceConfig });
 
   useEffect(() => {
     if (status !== 'error') return;
@@ -94,29 +109,56 @@ const EnabledVoiceAssistantButton = ({ bookId, chapterId, pageId, className = ''
 
   const meterPct = Math.round(Math.min(1, Math.max(0, level)) * 100);
 
+  const disableVoiceSelector = isConnecting || isListening || isThinking || isAssistantSpeaking;
+
   return (
     <div className="relative">
-      <Button
-        type="button"
-        variant="outline"
-        onClick={onClick}
-        disabled={!canStart || isConnecting}
-        className={cn('flex items-center gap-2 h-8 text-xs', className)}
-        title="Talk with Aira (voice)"
-      >
-        <Icon className={`h-3 w-3 ${isConnecting ? 'animate-spin' : ''}`} />
-        {label}
-        {(isListening || isThinking) && (
-          <span className="ml-2 flex items-center gap-1">
-            <span className="h-1.5 w-10 rounded bg-app-gray-100 overflow-hidden">
-              <span
-                className={`block h-full rounded ${vadSpeaking ? 'bg-app-iris' : 'bg-app-gray-300'}`}
-                style={{ width: `${meterPct}%` }}
-              />
+      <div className="flex items-center">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onClick}
+          disabled={!canStart || isConnecting}
+          className={cn('flex items-center gap-2 h-8 rounded-l-none text-xs', className)}
+          title="Talk with Aira (voice)"
+        >
+          <Icon className={`h-3 w-3 ${isConnecting ? 'animate-spin' : ''}`} />
+          {label}
+          {(isListening || isThinking) && (
+            <span className="ml-2 flex items-center gap-1">
+              <span className="h-1.5 w-10 rounded bg-app-gray-100 overflow-hidden">
+                <span
+                  className={`block h-full rounded ${vadSpeaking ? 'bg-app-iris' : 'bg-app-gray-300'}`}
+                  style={{ width: `${meterPct}%` }}
+                />
+              </span>
             </span>
-          </span>
-        )}
-      </Button>
+          )}
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={disableVoiceSelector || isVoiceOptionsLoading}
+              className="h-8 rounded-l-none border-l-0 px-2"
+              title="Choose talk voice"
+              aria-label="Choose talk voice"
+            >
+              <ChevronDown className="h-3.5 w-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuRadioGroup value={selectedVoiceId} onValueChange={setSelectedVoiceId}>
+              {voices.map((voice) => (
+                <DropdownMenuRadioItem key={voice.id} value={voice.id}>
+                  {voice.name}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
 
       {import.meta.env.DEV && debugOpen && (
         <div className="absolute right-0 mt-2 w-64 rounded-lg border border-border bg-card p-2 text-[11px] shadow-lg z-50">

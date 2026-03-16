@@ -1,30 +1,13 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
-const Stripe = require('stripe');
 const { paymentService } = require('./paymentService');
-
-// Load local env when running in the emulator
-try { require('dotenv').config(); } catch (_) { }
-
-// Prefer environment variables; avoid functions.config()
-const stripeSecret =
-  process.env.STRIPE_SECRET_KEY ||
-  process.env.STRIPE_SECRET ||
-  process.env.STRIPE_API_KEY ||
-  null;
-
-
-const appBaseUrl =
-  process.env.STRIPE_PUBLIC_URL ||
-  'http://localhost:5173';
+const { appBaseUrl, stripe, stripeSecret } = require('./stripeClient');
 
 logger.info('Loading Stripe config...', {
   hasStripeSecret: !!stripeSecret,
   appBaseUrl,
   envKeys: Object.keys(process.env).filter((k) => k.startsWith('STRIPE_') || k === 'APP_PUBLIC_URL'),
 });
-
-const stripe = stripeSecret ? new Stripe(stripeSecret, { apiVersion: '2024-06-20' }) : null;
 
 logger.info('Stripe initialized', {
   hasStripe: !!stripe,
@@ -65,7 +48,7 @@ exports.createCheckoutSession = onCall({ region: 'us-central1', cors: true }, as
 
   const amount = normalizeAmount(data.amount);
   const currency = (data.currency || 'usd').toLowerCase();
-  const planTier = data.planTier || 'supporter';
+  const planTier = 'supporter';
   const note = typeof data.note === 'string' ? data.note.slice(0, 280) : null;
 
   if (Number.isNaN(amount) || amount < 100) {
@@ -92,6 +75,7 @@ exports.createCheckoutSession = onCall({ region: 'us-central1', cors: true }, as
       currency,
       planTier,
       note,
+      source: 'billing_support',
     });
     logger.info('Pending payment created', { paymentId });
 
@@ -105,8 +89,9 @@ exports.createCheckoutSession = onCall({ region: 'us-central1', cors: true }, as
       metadata: {
         paymentId,
         userId: auth.uid,
-        planTier,
+        planTier: 'supporter',
         amountCents: amount.toString(),
+        flow: 'support_payment',
       },
       line_items: [
         {
@@ -116,7 +101,7 @@ exports.createCheckoutSession = onCall({ region: 'us-central1', cors: true }, as
             unit_amount: amount,
             product_data: {
               name: `${planConfig.label} - Airabook`,
-              description: note || 'Support the Airabook service',
+              description: note || 'Support Airabook with a one-time contribution',
             },
           },
         },

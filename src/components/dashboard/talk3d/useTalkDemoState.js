@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useVoiceAssistant } from '@/hooks/useVoiceAssistant';
+import { useVoiceSelection } from '@/hooks/useVoiceSelection';
 
 export const TALK_STATUS_COPY = {
   idle: {
@@ -42,6 +43,13 @@ const useTalkDemoState = ({
   pageId,
 } = {}) => {
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const {
+    voices,
+    selectedVoiceId,
+    setSelectedVoiceId,
+    voiceConfig,
+    isLoading: isVoiceOptionsLoading,
+  } = useVoiceSelection();
 
   const {
     status,
@@ -54,7 +62,7 @@ const useTalkDemoState = ({
     stopListening,
     interrupt,
     disconnect,
-  } = useVoiceAssistant({ bookId, chapterId, pageId });
+  } = useVoiceAssistant({ bookId, chapterId, pageId, voice: voiceConfig });
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -133,6 +141,10 @@ const useTalkDemoState = ({
     canStart,
     wsConnected,
     lastError,
+    voices,
+    selectedVoiceId,
+    setSelectedVoiceId,
+    isVoiceOptionsLoading,
   };
 };
 

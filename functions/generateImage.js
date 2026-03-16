@@ -1,7 +1,7 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 const { generateImageForPage } = require('./services/imageGenerationService');
-const { consumeApiCallQuota } = require('./utils/limits');
+const { consumeCredits, estimateTokensFromText } = require('./payments/creditLedger');
 
 const LOCATION = 'us-central1';
 
@@ -60,7 +60,6 @@ exports.generateImage = onCall({ region: LOCATION, cors: true }, async (request)
   }
 
   await assertBookAccess(auth.uid, bookId);
-  await consumeApiCallQuota(db, auth.uid, 1);
 
   let contextText = '';
   if (useContext) {
@@ -70,6 +69,24 @@ exports.generateImage = onCall({ region: LOCATION, cors: true }, async (request)
       contextText = await getPagePlainText(bookId, chapterId, pageId);
     }
   }
+
+  const imageCharge = await consumeCredits(db, auth.uid, {
+    feature: 'image_generation',
+    source: 'generate_image_prompt',
+    provider: 'gemini_2_5_flash_image',
+    rawUnits: {
+      inputText: [prompt, contextText].filter(Boolean).join('\n\n'),
+      inputTokens: estimateTokensFromText([prompt, contextText].filter(Boolean).join('\n\n')),
+      outputImageTokens: 1290,
+    },
+    minimumCredits: 20,
+    metadata: {
+      pageId: pageId || null,
+      bookId: bookId || null,
+      chapterId: chapterId || null,
+      usedContext: Boolean(contextText),
+    },
+  });
 
   try {
     const result = await generateImageForPage({
@@ -84,6 +101,11 @@ exports.generateImage = onCall({ region: LOCATION, cors: true }, async (request)
     return {
       ...result,
       usedContext: Boolean(contextText),
+      billingCharge: {
+        estimatedCostUsd: imageCharge.estimatedCostUsd,
+        creditsCharged: imageCharge.creditsCharged,
+        usageEventId: imageCharge.usageEventId,
+      },
     };
   } catch (error) {
     console.error('generateImage error:', error);

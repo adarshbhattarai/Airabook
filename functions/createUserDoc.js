@@ -3,6 +3,7 @@ const admin = require("firebase-admin");
 const { FieldValue } = require("firebase-admin/firestore");
 const logger = require("firebase-functions/logger");
 const { buildInitialQuotaCounters } = require("./utils/limits");
+const { buildDefaultBillingSnapshot } = require("./payments/paymentService");
 
 // Admin is initialized in index.js
 const DISPLAY_NAME_MAX_LENGTH = 50;
@@ -46,12 +47,6 @@ exports.createUserDoc = onCall(
             // 3. Prepare User Data (Logic from onUserCreate)
             const emailLower = (email || "").toLowerCase();
 
-            const defaultEntitlements = {
-                canReadBooks: true,
-                canWriteBooks: true,
-                canInviteTeam: false,
-            };
-
             const userData = {
                 uid,
                 email: emailLower,
@@ -59,19 +54,17 @@ exports.createUserDoc = onCall(
                 displayName: normalizedDisplayName,
                 displayNameLower: normalizedDisplayName.toLowerCase(),
                 photoURL: picture || null,
+                profile: {
+                    writingContext: "",
+                    agentSpeakingLanguage: "English",
+                    userSpeakingLanguage: "English",
+                    updatedAt: FieldValue.serverTimestamp(),
+                },
                 createdAt: FieldValue.serverTimestamp(),
                 notificationCounters: {
                     pendingInvites: 0,
                 },
-                billing: {
-                    planId: "free",
-                    planLabel: "Free Plan",
-                    planTier: "free",
-                    status: "active",
-                    currentPeriodEnd: null, // Perpetual for free
-                    stripeCustomerId: null,
-                    entitlements: defaultEntitlements
-                },
+                billing: buildDefaultBillingSnapshot(),
                 quotaCounters: buildInitialQuotaCounters(),
             };
 

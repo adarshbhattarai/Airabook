@@ -1,246 +1,416 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { httpsCallable } from 'firebase/functions';
+import { useNavigate } from 'react-router-dom';
 import { functions } from '@/lib/firebase';
-import { getStripe } from '@/lib/stripe';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
-import { Heart, Coffee } from 'lucide-react';
+import {
+  getCreditBalance,
+  getBillingPlanLabel,
+  getIncludedCreditsMonthly,
+  hasSpeechTranslationAccess,
+  hasVoiceAssistantAccess,
+  isBillingRecoverable,
+  isCanceledButStillActive,
+  isCreditDepleted,
+  isProTier,
+  normalizePlanState,
+} from '@/lib/billing';
+import { BILLING_PLANS, COMMON_CREDIT_ESTIMATES, CREDIT_PACKS, HOW_CREDITS_WORK } from '@/lib/billingCatalog';
+import { Crown, Loader2, RefreshCw, Sparkles, Volume2, Wallet } from 'lucide-react';
 
-const presetAmounts = [3, 5, 10];
+const formatDate = (value) => {
+  if (!value) return '';
+  const date = value?.toDate ? value.toDate() : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(date);
+};
 
-const Donate = () => {
-  const { user, appUser } = useAuth();
+const BillingPage = () => {
+  const navigate = useNavigate();
+  const { billing } = useAuth();
   const { toast } = useToast();
-  const [selectedAmount, setSelectedAmount] = useState(presetAmounts[1]);
-  const [customAmount, setCustomAmount] = useState('');
-  const [note, setNote] = useState('Thanks for creating Airäbook! ☕');
-  const [loading, setLoading] = useState(false);
 
-  const resolvedAmount = customAmount ? Number(customAmount) : selectedAmount;
+  const [loadingAction, setLoadingAction] = useState('');
 
-  const handleCheckout = async () => {
-    if (!user) {
-      toast({
-        title: 'Please sign in',
-        description: 'We need to know where to send your thank-you note!',
-        variant: 'destructive',
-      });
-      return;
+  const planState = normalizePlanState(billing);
+  const isProSubscriber = isProTier(billing);
+  const hasVoiceAccess = hasVoiceAssistantAccess(billing);
+  const hasTranslationAccess = hasSpeechTranslationAccess(billing);
+  const planLabel = getBillingPlanLabel(billing);
+  const creditBalance = getCreditBalance(billing);
+  const includedCreditsMonthly = getIncludedCreditsMonthly(billing);
+  const renewsOn = formatDate(billing?.currentPeriodEnd);
+  const showRefresh = isBillingRecoverable(billing) || (!billing?.planTier || planState === 'inactive');
+
+  const statusCopy = useMemo(() => {
+    if (isCanceledButStillActive(billing) && renewsOn) {
+      return `Your Pro access stays active until ${renewsOn}.`;
     }
-
-    if (!resolvedAmount || Number.isNaN(resolvedAmount) || resolvedAmount < 1) {
-      toast({
-        title: 'Choose an amount',
-        description: 'Donation must be at least $1.',
-        variant: 'destructive',
-      });
-      return;
+    if (planState === 'past_due' || planState === 'unpaid') {
+      return 'Your subscription needs attention before Pro features can continue.';
     }
+    if (planState === 'incomplete' || planState === 'inactive') {
+      return 'We are still confirming your billing details.';
+    }
+    if (isProSubscriber && renewsOn) {
+      return `Your plan renews on ${renewsOn}.`;
+    }
+    return 'Upgrade for more monthly credits, voice-enabled writing, storage, and AI-triggered workflows.';
+  }, [isProSubscriber, planState, renewsOn]);
 
-    setLoading(true);
+  const startSubscriptionCheckout = async (tier) => {
+    setLoadingAction(`subscription:${tier}`);
     try {
-      console.log('🛒 Starting donation checkout...', { amount: resolvedAmount });
-      const callable = httpsCallable(functions, 'createCheckoutSession');
-      const amountInCents = Math.round(resolvedAmount * 100);
-      
-      console.log('📞 Calling createCheckoutSession...', { 
-        amountInCents, 
-        user: user?.uid 
+      const callable = httpsCallable(functions, 'createSubscriptionCheckoutSession');
+      const response = await callable({
+        tier,
+        successUrl: `${window.location.origin}/billing/success`,
+        cancelUrl: `${window.location.origin}/billing`,
       });
-      
-      // Add timeout to prevent hanging
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Function call timed out after 30 seconds')), 30000)
-      );
-      
-      const response = await Promise.race([
-        callable({
-          amount: amountInCents,
-          currency: 'usd',
-          note,
-          successUrl: `${window.location.origin}/donate/success`,
-          cancelUrl: `${window.location.origin}/donate`,
-        }),
-        timeoutPromise
-      ]);
 
-      console.log('✅ Function response received:', response);
-      console.log('✅ Response data:', response.data);
-      
-      if (!response || !response.data) {
-        throw new Error('No response from server');
+      if (!response?.data?.checkoutUrl) {
+        throw new Error('Stripe subscription checkout URL was not returned.');
       }
-      
-      if (!response.data?.sessionId) {
-        console.error('❌ No sessionId in response:', response.data);
-        throw new Error('No session ID returned from server. Response: ' + JSON.stringify(response.data));
-      }
-
-      console.log('🔑 Session ID:', response.data.sessionId);
-      
-      // Use the checkout URL directly for reliable redirect
-      // Stripe.js redirectToCheckout sometimes hangs in local development
-      if (response.data.checkoutUrl) {
-        console.log('🔄 Redirecting to Stripe checkout:', response.data.checkoutUrl);
-        window.location.href = response.data.checkoutUrl;
-        // Don't set loading to false - we're redirecting
-        return;
-      }
-      
-      // Fallback: try Stripe.js method if URL not available
-      console.log('⚠️ No checkout URL, trying Stripe.js redirect...');
-      const stripe = await getStripe();
-      console.log('✅ Stripe instance loaded');
-      
-      // Add timeout to prevent hanging
-      const redirectPromise = stripe.redirectToCheckout({
-        sessionId: response.data.sessionId,
-      });
-      
-      const redirectTimeout = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Stripe redirect timed out')), 5000)
-      );
-      
-      const { error: stripeError } = await Promise.race([redirectPromise, redirectTimeout]);
-      
-      if (stripeError) {
-        console.error('❌ Stripe redirect failed:', stripeError);
-        throw new Error(stripeError.message || 'Failed to redirect to checkout');
-      }
+      window.location.href = response.data.checkoutUrl;
     } catch (error) {
-      console.error('❌ Stripe checkout error:', error);
-      console.error('Error details:', {
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        stack: error.stack,
-        name: error.name
-      });
-      
-      // Don't set loading to false if we're redirecting
-      if (error.message?.includes('redirect') || error.code === 'redirect') {
-        console.log('Redirect in progress, not resetting loading state');
-        return;
-      }
-      
       toast({
-        title: 'Unable to start checkout',
-        description: error.message || error.details || 'Please try again.',
+        title: 'Unable to start subscription checkout',
+        description: error?.message || 'Please try again.',
         variant: 'destructive',
       });
-      setLoading(false);
+      setLoadingAction('');
     }
   };
 
-  const hasDonated = appUser?.billing?.planTier;
+  const startCreditPackCheckout = async (packId) => {
+    setLoadingAction(`pack:${packId}`);
+    try {
+      const callable = httpsCallable(functions, 'createCreditPackCheckoutSession');
+      const response = await callable({
+        packId,
+        successUrl: `${window.location.origin}/billing/success`,
+        cancelUrl: `${window.location.origin}/billing`,
+      });
+
+      if (!response?.data?.checkoutUrl) {
+        throw new Error('Stripe credit pack checkout URL was not returned.');
+      }
+      window.location.href = response.data.checkoutUrl;
+    } catch (error) {
+      toast({
+        title: 'Unable to start credit pack checkout',
+        description: error?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+      setLoadingAction('');
+    }
+  };
+
+  const planCards = [
+    {
+      tier: 'free',
+      title: 'Free',
+      price: '$0',
+      subtitle: `${BILLING_PLANS.free.includedCreditsMonthly} starter credits with lightweight workspace limits`,
+      features: [
+        `${BILLING_PLANS.free.books} books, up to ${BILLING_PLANS.free.pages} total pages`,
+        `${BILLING_PLANS.free.storageMb} MB storage cap`,
+        'Basic AI help until credits run out',
+        'Manual writing and reading always available',
+      ],
+    },
+    {
+      tier: 'creator',
+      title: 'Creator',
+      price: '$7/month',
+      subtitle: 'Voice-enabled writing with room for multiple active books',
+      features: [
+        `${BILLING_PLANS.creator.includedCreditsMonthly.toLocaleString()} monthly credits`,
+        `${BILLING_PLANS.creator.books} books, up to ${BILLING_PLANS.creator.pages.toLocaleString()} total pages`,
+        `${BILLING_PLANS.creator.storageMb} MB storage cap`,
+        'Voice-enabled writing, speech translation, and 625 credit rollover',
+      ],
+    },
+    {
+      tier: 'pro',
+      title: 'Pro',
+      price: '$15/month',
+      subtitle: 'For larger libraries and heavier AI-driven production',
+      features: [
+        `${BILLING_PLANS.pro.includedCreditsMonthly.toLocaleString()} monthly credits`,
+        `${BILLING_PLANS.pro.books} books, up to ${BILLING_PLANS.pro.pages.toLocaleString()} total pages`,
+        `${Math.floor(BILLING_PLANS.pro.storageMb / 1024)} GB storage cap`,
+        'Credits apply to AI, voice, images, and automations',
+        '1,750 credit rollover cap',
+      ],
+    },
+    {
+      tier: 'premium',
+      title: 'Premium',
+      price: '$25/month',
+      subtitle: 'For media-rich libraries and the highest-volume usage',
+      features: [
+        `${BILLING_PLANS.premium.includedCreditsMonthly.toLocaleString()} monthly credits`,
+        `${BILLING_PLANS.premium.books} books, up to ${BILLING_PLANS.premium.pages.toLocaleString()} total pages`,
+        `${Math.floor(BILLING_PLANS.premium.storageMb / 1024)} GB storage cap`,
+        'Priority queues and 4,000 credit rollover',
+      ],
+    },
+  ];
+
+  const openBillingPortal = async () => {
+    setLoadingAction('portal');
+    try {
+      const callable = httpsCallable(functions, 'createBillingPortalSession');
+      const response = await callable({
+        returnUrl: `${window.location.origin}/billing`,
+      });
+
+      if (!response?.data?.url) {
+        throw new Error('Stripe billing portal URL was not returned.');
+      }
+      window.location.href = response.data.url;
+    } catch (error) {
+      toast({
+        title: 'Unable to open billing portal',
+        description: error?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+      setLoadingAction('');
+    }
+  };
+
+  const refreshBilling = async () => {
+    setLoadingAction('refresh');
+    try {
+      const callable = httpsCallable(functions, 'refreshBillingState');
+      await callable();
+      toast({
+        title: 'Billing refreshed',
+        description: 'Your latest Stripe billing state has been synced.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Unable to refresh billing',
+        description: error?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingAction('');
+    }
+  };
 
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-12">
-      <div className="max-w-3xl mx-auto space-y-8">
-        <section className="text-center space-y-4">
-          <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-app-iris to-app-violet text-white mb-4">
-            <Heart className="h-8 w-8" />
-          </div>
-          <h1 className="text-[32px] font-semibold text-app-gray-900 leading-tight">
-            Support Airäbook
-          </h1>
-          <p className="text-base text-app-gray-600 leading-relaxed max-w-2xl mx-auto">
-            Airäbook is <strong>free for everyone, forever</strong>. If you find it useful, consider buying us a coffee 
-            to help cover hosting and AI costs. Every bit helps keep the service running! ☕
-          </p>
-          {hasDonated && (
-            <div className="inline-flex items-center gap-2 rounded-pill bg-app-mint/10 px-4 py-2 text-sm font-medium text-app-mint border border-app-mint/20">
-              <Heart className="h-4 w-4 fill-current" />
-              Thank you for your support! You're amazing.
+      <div className="mx-auto max-w-5xl space-y-8">
+        <section className="rounded-[32px] border border-app-gray-200 bg-white p-6 shadow-appSoft sm:p-8">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="space-y-3">
+              <div className="inline-flex items-center gap-2 rounded-full bg-app-iris/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-app-iris">
+                <Sparkles className="h-3.5 w-3.5" />
+                Billing
+              </div>
+              <div>
+                <h1 className="text-3xl font-semibold text-app-gray-900">Plans & Credits</h1>
+                <p className="mt-2 max-w-2xl text-sm leading-relaxed text-app-gray-600">
+                  Each plan has hard workspace caps for books, pages, and storage, plus a monthly
+                  credit pool that meters AI writing, voice usage, storage retention, and
+                  automation.
+                </p>
+              </div>
             </div>
-          )}
+
+            <div className="rounded-2xl border border-app-gray-200 bg-app-gray-50 px-4 py-3">
+              <p className="text-xs uppercase tracking-[0.3em] text-app-gray-600">Current plan</p>
+              <p className="mt-1 text-lg font-semibold text-app-gray-900">{planLabel}</p>
+              <p className="mt-1 text-sm text-app-gray-600">{statusCopy}</p>
+              <p className="mt-2 text-sm font-medium text-app-gray-900">
+                {creditBalance.toLocaleString()} credits remaining
+              </p>
+              <p className="text-xs text-app-gray-600">
+                {includedCreditsMonthly.toLocaleString()} included monthly credits
+              </p>
+            </div>
+          </div>
         </section>
 
-        <div className="bg-white rounded-2xl shadow-appSoft border border-app-gray-100 p-6 sm:p-8 space-y-6">
-          <div>
-            <label className="text-xs font-semibold text-app-gray-600 uppercase tracking-wide mb-3 block">
-              Choose an amount
-            </label>
-            <div className="flex flex-wrap gap-3">
-              {presetAmounts.map((amount) => (
-                <button
-                  key={amount}
-                  type="button"
-                  onClick={() => {
-                    setSelectedAmount(amount);
-                    setCustomAmount('');
-                  }}
-                  className={`px-5 py-2.5 rounded-pill border-2 font-medium transition ${
-                    selectedAmount === amount && !customAmount
-                      ? 'bg-app-iris text-white border-app-iris shadow-md'
-                      : 'border-app-gray-300 text-app-gray-900 hover:border-app-iris'
-                  }`}
-                >
-                  ${amount}
-                </button>
+        <section className="grid gap-6 xl:grid-cols-[1.3fr,0.7fr]">
+          <div className="space-y-6">
+            <div className="grid gap-4 lg:grid-cols-2">
+              {planCards.map((plan) => (
+                <div key={plan.tier} className="rounded-[28px] border border-app-gray-200 bg-white p-6 shadow-appSoft">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="inline-flex items-center gap-2 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-amber-800">
+                        <Crown className="h-3.5 w-3.5" />
+                        {plan.title}
+                      </div>
+                      <h2 className="mt-4 text-2xl font-semibold text-app-gray-900">{plan.price}</h2>
+                      <p className="mt-2 text-sm text-app-gray-600">{plan.subtitle}</p>
+                    </div>
+                    <div className="rounded-2xl bg-app-iris/10 p-3 text-app-iris">
+                      <Volume2 className="h-6 w-6" />
+                    </div>
+                  </div>
+
+                  <ul className="mt-6 space-y-3">
+                    {plan.features.map((feature) => (
+                      <li key={feature} className="text-sm text-app-gray-600">
+                        {feature}
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div className="mt-6 flex flex-wrap gap-3">
+                    {plan.tier === 'free' ? (
+                      <Button type="button" variant="outline" onClick={() => navigate('/login')}>
+                        Start free
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        onClick={() => startSubscriptionCheckout(plan.tier)}
+                        disabled={loadingAction !== '' && loadingAction !== `subscription:${plan.tier}`}
+                      >
+                        {loadingAction === `subscription:${plan.tier}` ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : null}
+                        Choose {plan.title}
+                      </Button>
+                    )}
+                    {normalizePlanState(billing) !== 'inactive' && hasVoiceAccess && plan.tier !== 'free' ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={openBillingPortal}
+                        disabled={loadingAction !== '' && loadingAction !== 'portal'}
+                      >
+                        {loadingAction === 'portal' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Manage
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
               ))}
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-app-gray-600">$</span>
-                <Input
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={customAmount}
-                  onChange={(e) => {
-                    setCustomAmount(e.target.value);
-                  }}
-                  placeholder="Custom"
-                  className="w-28 text-center"
-                />
+            </div>
+
+            <div className="rounded-[28px] border border-app-gray-200 bg-app-gray-50 p-6 shadow-appSoft sm:p-8">
+              <h2 className="text-xl font-semibold text-app-gray-900">How credits work</h2>
+              <div className="mt-4 space-y-3">
+                {HOW_CREDITS_WORK.map((item) => (
+                  <p key={item} className="text-sm leading-relaxed text-app-gray-600">
+                    {item}
+                  </p>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-[28px] border border-app-gray-200 bg-white p-6 shadow-appSoft sm:p-8">
+              <div className="flex items-center gap-3">
+                <div className="rounded-2xl bg-app-iris/10 p-3 text-app-iris">
+                  <Wallet className="h-6 w-6" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-semibold text-app-gray-900">Credit packs</h2>
+                  <p className="text-sm text-app-gray-600">
+                    Buy extra credits without changing your subscription.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                {CREDIT_PACKS.map((pack) => (
+                  <div key={pack.id} className="rounded-2xl border border-app-gray-200 p-4">
+                    <p className="text-sm font-semibold text-app-gray-900">{pack.label}</p>
+                    <p className="mt-1 text-sm text-app-gray-600">{pack.priceLabel}</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="mt-4 w-full"
+                      onClick={() => startCreditPackCheckout(pack.id)}
+                      disabled={loadingAction !== '' && loadingAction !== `pack:${pack.id}`}
+                    >
+                      {loadingAction === `pack:${pack.id}` ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      Buy pack
+                    </Button>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
 
-          <div>
-            <label className="text-xs font-semibold text-app-gray-600 uppercase tracking-wide mb-2 block">
-              Optional message (shown to us)
-            </label>
-            <Textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              className="min-h-[80px]"
-              maxLength={280}
-              placeholder="Thanks for building this!"
-            />
-            <p className="text-xs text-app-gray-600 mt-1 text-right">{note.length}/280</p>
-          </div>
-
-          <div className="pt-4 border-t border-app-gray-200 flex items-center justify-between">
-            <div>
-              <p className="text-xs text-app-gray-600 uppercase tracking-wide">Total</p>
-              <p className="text-3xl font-bold text-app-gray-900">
-                ${(resolvedAmount || 0).toFixed(2)}
-              </p>
+          <div className="space-y-6">
+            <div className="rounded-[28px] border border-app-gray-200 bg-white p-6 shadow-appSoft sm:p-8">
+              <h2 className="text-xl font-semibold text-app-gray-900">Common credit costs</h2>
+              <div className="mt-4 space-y-3">
+                {COMMON_CREDIT_ESTIMATES.map((item) => (
+                  <div key={item.label} className="flex items-center justify-between gap-3 rounded-2xl border border-app-gray-200 px-4 py-3">
+                    <p className="text-sm text-app-gray-700">{item.label}</p>
+                    <p className="text-sm font-semibold text-app-gray-900">{item.credits}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-6 flex flex-wrap gap-3">
+                {showRefresh && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={refreshBilling}
+                    disabled={loadingAction !== '' && loadingAction !== 'refresh'}
+                  >
+                    {loadingAction === 'refresh' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                    Refresh billing
+                  </Button>
+                )}
+                {(hasVoiceAccess || hasTranslationAccess) ? (
+                  <Button
+                    type="button"
+                    onClick={openBillingPortal}
+                    disabled={loadingAction !== '' && loadingAction !== 'portal'}
+                  >
+                    {loadingAction === 'portal' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Manage subscription
+                  </Button>
+                ) : null}
+                {isProSubscriber && renewsOn ? (
+                  <p className="self-center text-sm text-app-gray-600">Renews on {renewsOn}</p>
+                ) : null}
+              </div>
             </div>
-            <Button
-              onClick={handleCheckout}
-              disabled={loading || !resolvedAmount}
-              variant="appSuccess"
-              className="inline-flex items-center gap-2 px-8 py-3 text-base"
-            >
-              <Coffee className="h-5 w-5" />
-              {loading ? 'Processing...' : 'Donate now'}
-            </Button>
-          </div>
-        </div>
 
-        <p className="text-xs text-app-gray-600 text-center leading-relaxed">
-          Your donation helps keep Airäbook online and accessible to everyone. 
-          You'll be redirected to Stripe for secure payment processing.
-        </p>
+            <div className="rounded-[28px] border border-app-gray-200 bg-white p-6 shadow-appSoft sm:p-8">
+              <h2 className="text-xl font-semibold text-app-gray-900">Usage status</h2>
+              <div className="mt-4 space-y-3">
+                <div className="rounded-2xl border border-app-gray-200 px-4 py-3">
+                  <p className="text-sm font-semibold text-app-gray-900">Voice access</p>
+                  <p className="mt-1 text-sm text-app-gray-600">
+                    {hasVoiceAccess ? 'Enabled on your account.' : 'Unlocked on Creator and above when credits are available.'}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-app-gray-200 px-4 py-3">
+                  <p className="text-sm font-semibold text-app-gray-900">Speech translation</p>
+                  <p className="mt-1 text-sm text-app-gray-600">
+                    {hasTranslationAccess ? 'Enabled on your account.' : 'Uses the same credit wallet as voice.'}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-app-gray-200 px-4 py-3">
+                  <p className="text-sm font-semibold text-app-gray-900">Credit state</p>
+                  <p className="mt-1 text-sm text-app-gray-600">
+                    {isCreditDepleted(billing) ? 'Credits are exhausted. Buy a pack or wait for the next cycle.' : `${creditBalance.toLocaleString()} credits remaining.`}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   );
 };
 
-export default Donate;
-
-
+export default BillingPage;

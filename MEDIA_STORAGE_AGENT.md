@@ -2,6 +2,8 @@
 
 Use this file when a task touches Firebase Storage uploads, media deletion, album sync, or storage quota tracking in Airabook.
 
+For local Genkit UI work, keep your Gemini key in `functions/.env.genkit.local` and start the runtime with `npm run genkit:local` from `functions/`.
+
 ## Current Model
 
 The current book/album media pipeline is **direct client upload to Firebase Storage** plus **server-side Firebase Storage triggers** for post-upload and post-delete bookkeeping.
