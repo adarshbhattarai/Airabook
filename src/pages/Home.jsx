@@ -300,20 +300,20 @@ const Home = () => {
             <p className="text-sm uppercase tracking-[0.4em] text-[#3498db]">Support the mission</p>
             <h2 className="text-4xl font-bold text-gray-900 mb-4">Pick a plan that fits</h2>
             <p className="text-gray-600">
-              Free readers keep the memories alive. Supporters keep the servers and AI online.
+              Every tier combines workspace limits for books, pages, and storage with monthly credits for AI, voice, and automation.
             </p>
           </motion.div>
 
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-8">
             {[
               {
-                title: 'Free Explorer',
+                title: 'Free',
                 price: '$0',
-                description: 'Perfect for getting started',
+                description: 'Starter plan with small hard limits and monthly AI credits',
                 features: [
+                  '150 monthly credits',
                   '3 books, up to 150 pages total',
-                  '50 MB of uploads (images, small videos)',
-                  '~50 AI assists/mo (write, rewrite, study)',
+                  '50 MB storage cap',
                   'Chat with your book using RAG'
                 ],
                 accent: 'from-gray-100 to-gray-50',
@@ -322,32 +322,52 @@ const Home = () => {
                 active: true
               },
               {
-                title: 'Pro Plan',
-                price: 'Coming Soon',
-                description: 'For individuals writing more books & using more AI',
+                title: 'Creator',
+                price: '$7/month',
+                description: 'For active writers who want voice tools and room for multiple books',
                 features: [
-                  'Unlimited books & pages',
-                  'Increased upload limits',
-                  'Advanced AI models',
-                  'Priority support'
+                  '2,500 monthly credits',
+                  '25 books, up to 5,000 pages total',
+                  '512 MB storage cap',
+                  'Voice-enabled writing and speech translation',
+                  '625 credit rollover cap'
                 ],
                 accent: 'from-[#3498db] to-[#2c82c9]',
-                buttonText: 'Notify Me',
-                active: false
+                buttonText: 'Choose Creator',
+                link: '/billing',
+                active: true
               },
               {
-                title: 'Enterprise Studio',
-                price: 'Coming Soon',
-                description: 'For schools and teams',
+                title: 'Pro',
+                price: '$15/month',
+                description: 'For larger libraries, heavier AI drafting, and more automation',
                 features: [
-                  'Team management',
-                  'Dedicated support',
-                  'Custom solutions',
-                  'API access'
+                  '7,000 monthly credits',
+                  '100 books, up to 20,000 pages total',
+                  '2 GB storage cap',
+                  'Credits apply to AI, voice, images, and automations',
+                  '1,750 credit rollover cap'
+                ],
+                accent: 'from-[#1abc9c] to-[#16a085]',
+                buttonText: 'Choose Pro',
+                link: '/billing',
+                active: true
+              },
+              {
+                title: 'Premium',
+                price: '$25/month',
+                description: 'For media-rich libraries and the highest-volume creative workflows',
+                features: [
+                  '16,000 monthly credits',
+                  '500 books, up to 100,000 pages total',
+                  '8 GB storage cap',
+                  'Priority processing',
+                  '4,000 credit rollover cap'
                 ],
                 accent: 'from-[#2ecc71] to-[#27ae60]',
-                buttonText: 'Notify Me',
-                active: false
+                buttonText: 'Choose Premium',
+                link: '/billing',
+                active: true
               },
             ].map((plan) => (
               <motion.div

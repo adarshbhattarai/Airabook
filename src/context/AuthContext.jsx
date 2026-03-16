@@ -7,12 +7,11 @@ import {
   sendPasswordResetEmail,
   sendEmailVerification,
   updateProfile,
-  updateEmail,
   updatePassword,
   GoogleAuthProvider,
   signInWithPopup,
 } from 'firebase/auth';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import {
   httpsCallable
 } from 'firebase/functions';
@@ -27,11 +26,28 @@ const defaultEntitlements = {
 };
 
 const createDefaultBilling = () => ({
+  planId: 'free',
   planTier: 'free',
-  planLabel: 'Free Explorer',
-  planState: 'inactive',
-  entitlements: { ...defaultEntitlements },
+  planLabel: 'Free',
+  planState: 'active',
+  status: 'active',
+  cancelAtPeriodEnd: false,
+  currentPeriodEnd: null,
+  stripeCustomerId: null,
+  stripeSubscriptionId: null,
+  stripePriceId: null,
+  billingInterval: null,
   latestPaymentId: null,
+  includedCreditsMonthly: 150,
+  rolloverCap: 0,
+  creditBalance: 150,
+  rolloverCredits: 0,
+  purchasedCredits: 0,
+  usedCreditsThisCycle: 0,
+  lastCreditGrantAt: null,
+  lastCreditGrantPeriod: null,
+  lowCreditState: false,
+  entitlements: { ...defaultEntitlements },
 });
 
 const defaultBilling = createDefaultBilling();
@@ -228,38 +244,13 @@ export const AuthProvider = ({ children }) => {
       normalizedAdditionalData.writingContext = normalizedWritingContext;
     }
 
-    const profileUpdates = {};
-
-    if (normalizedDisplayName !== auth.currentUser.displayName) {
-      profileUpdates.displayName = normalizedDisplayName;
-    }
-
-    if (photoURL && photoURL !== auth.currentUser.photoURL) {
-      profileUpdates.photoURL = photoURL;
-    }
-
-    if (Object.keys(profileUpdates).length > 0) {
-      await updateProfile(auth.currentUser, profileUpdates);
-    }
-
-    if (email && email !== auth.currentUser.email) {
-      await updateEmail(auth.currentUser, email);
-    }
-
-    const userRef = doc(firestore, 'users', auth.currentUser.uid);
-
-    await setDoc(
-      userRef,
-      {
-        displayName: normalizedDisplayName,
-        displayNameLower: normalizedDisplayName.toLowerCase(),
-        email: email || auth.currentUser.email || '',
-        photoURL: photoURL || auth.currentUser.photoURL || '',
-        updatedAt: new Date(),
-        ...normalizedAdditionalData, // Save any additional fields (writingContext, language, etc.)
-      },
-      { merge: true },
-    );
+    const callable = httpsCallable(functions, 'updateUserProfile');
+    await callable({
+      displayName: normalizedDisplayName,
+      email: email || auth.currentUser.email || '',
+      photoURL: photoURL || auth.currentUser.photoURL || '',
+      ...normalizedAdditionalData,
+    });
   };
 
   const changePassword = async (newPassword) => {

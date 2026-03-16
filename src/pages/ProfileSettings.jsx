@@ -1,16 +1,25 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { httpsCallable } from 'firebase/functions';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { AppInput } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
-import { Switch } from '@/components/ui/switch';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from '@/lib/firebase';
+import { functions, storage } from '@/lib/firebase';
 import { defaultAvatars } from '@/constants/avatars';
 import { PROFILE_LIMITS } from '@/constants/profileLimits';
+import { getBillingPlanLabel, getCreditBalance, getIncludedCreditsMonthly, hasVoiceAssistantAccess, isBillingRecoverable, normalizePlanState } from '@/lib/billing';
+
+const SPEAKING_LANGUAGE_OPTIONS = [
+  { value: 'English', label: 'English' },
+  { value: 'Nepali', label: 'Nepali (नेपाली)' },
+  { value: 'Korean', label: 'Korean (한국어)' },
+];
 
 const ProfileSettings = () => {
-  const { user, appUser, updateUserProfile, changePassword } = useAuth();
+  const navigate = useNavigate();
+  const { user, appUser, billing, updateUserProfile, changePassword } = useAuth();
   const { toast } = useToast();
 
   const [displayName, setDisplayName] = useState('');
@@ -18,32 +27,37 @@ const ProfileSettings = () => {
   const [currentAvatar, setCurrentAvatar] = useState('');
   const [customAvatar, setCustomAvatar] = useState('');
   const [writingContext, setWritingContext] = useState('');
-  const [language, setLanguage] = useState('English');
-  const [useLanguageForBooks, setUseLanguageForBooks] = useState(false);
+  const [agentSpeakingLanguage, setAgentSpeakingLanguage] = useState('English');
+  const [userSpeakingLanguage, setUserSpeakingLanguage] = useState('English');
 
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [billingAction, setBillingAction] = useState('');
   const [initialProfile, setInitialProfile] = useState(null);
 
   useEffect(() => {
+    const storedProfile = appUser?.profile || {};
     const activeDisplayName = (appUser?.displayName || user?.displayName || '').slice(0, PROFILE_LIMITS.displayName);
     const activeEmail = appUser?.email || user?.email || '';
-    const activeAvatar = user?.photoURL || '';
-    const activeWritingContext = (appUser?.writingContext || '').slice(0, PROFILE_LIMITS.writingContext);
-    const activeLanguage = appUser?.language || 'English';
-    const activeUseLanguageForBooks = appUser?.useLanguageForBooks || false;
+    const activeAvatar = appUser?.photoURL || user?.photoURL || '';
+    const activeWritingContext = (storedProfile.writingContext || appUser?.writingContext || '').slice(0, PROFILE_LIMITS.writingContext);
+    const legacyLanguage = appUser?.language || 'English';
+    const activeAgentSpeakingLanguage =
+      storedProfile.agentSpeakingLanguage || appUser?.agentSpeakingLanguage || appUser?.userSpeakingLanguage || legacyLanguage;
+    const activeUserSpeakingLanguage =
+      storedProfile.userSpeakingLanguage || appUser?.userSpeakingLanguage || appUser?.agentSpeakingLanguage || legacyLanguage;
 
     setDisplayName(activeDisplayName);
     setEmail(activeEmail);
     setCurrentAvatar(activeAvatar);
     setWritingContext(activeWritingContext);
-    setLanguage(activeLanguage);
-    setUseLanguageForBooks(activeUseLanguageForBooks);
+    setAgentSpeakingLanguage(activeAgentSpeakingLanguage);
+    setUserSpeakingLanguage(activeUserSpeakingLanguage);
     setCustomAvatar('');
     setInitialProfile({
       displayName: activeDisplayName,
       writingContext: activeWritingContext,
-      language: activeLanguage,
-      useLanguageForBooks: activeUseLanguageForBooks,
+      agentSpeakingLanguage: activeAgentSpeakingLanguage,
+      userSpeakingLanguage: activeUserSpeakingLanguage,
       avatar: activeAvatar || '',
     });
   }, [appUser, user]);
@@ -57,13 +71,24 @@ const ProfileSettings = () => {
     return (
       displayName !== initialProfile.displayName ||
       writingContext !== initialProfile.writingContext ||
-      language !== initialProfile.language ||
-      useLanguageForBooks !== initialProfile.useLanguageForBooks ||
+      agentSpeakingLanguage !== initialProfile.agentSpeakingLanguage ||
+      userSpeakingLanguage !== initialProfile.userSpeakingLanguage ||
       (selectedAvatar || '') !== (initialProfile.avatar || '')
     );
-  }, [displayName, writingContext, language, useLanguageForBooks, selectedAvatar, initialProfile]);
+  }, [displayName, writingContext, agentSpeakingLanguage, userSpeakingLanguage, selectedAvatar, initialProfile]);
 
   const [isUploading, setIsUploading] = useState(false);
+  const planState = normalizePlanState(billing);
+  const hasVoiceAccess = hasVoiceAssistantAccess(billing);
+  const billingPlanLabel = getBillingPlanLabel(billing);
+  const creditBalance = getCreditBalance(billing);
+  const includedCreditsMonthly = getIncludedCreditsMonthly(billing);
+  const billingEndDate = billing?.currentPeriodEnd?.toDate
+    ? billing.currentPeriodEnd.toDate()
+    : (billing?.currentPeriodEnd ? new Date(billing.currentPeriodEnd) : null);
+  const formattedBillingEndDate = billingEndDate && !Number.isNaN(billingEndDate.getTime())
+    ? new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(billingEndDate)
+    : '';
 
   const handleAvatarFile = async (event) => {
     const file = event.target.files?.[0];
@@ -106,8 +131,8 @@ const ProfileSettings = () => {
     if (!initialProfile) return;
     setDisplayName(initialProfile.displayName);
     setWritingContext(initialProfile.writingContext);
-    setLanguage(initialProfile.language);
-    setUseLanguageForBooks(initialProfile.useLanguageForBooks);
+    setAgentSpeakingLanguage(initialProfile.agentSpeakingLanguage);
+    setUserSpeakingLanguage(initialProfile.userSpeakingLanguage);
     setCurrentAvatar(initialProfile.avatar || '');
     setCustomAvatar('');
   };
@@ -142,8 +167,9 @@ const ProfileSettings = () => {
         email,
         photoURL: selectedAvatar,
         writingContext,
-        language,
-        useLanguageForBooks,
+        agentSpeakingLanguage,
+        userSpeakingLanguage,
+        language: agentSpeakingLanguage,
       });
 
       toast({
@@ -156,8 +182,8 @@ const ProfileSettings = () => {
       setInitialProfile({
         displayName: normalizedDisplayName,
         writingContext,
-        language,
-        useLanguageForBooks,
+        agentSpeakingLanguage,
+        userSpeakingLanguage,
         avatar: selectedAvatar || '',
       });
     } catch (error) {
@@ -171,10 +197,47 @@ const ProfileSettings = () => {
     }
   };
 
-  const languages = [
-    "English", "Nepalese", "Spanish", "French", "German", "Italian", "Portuguese",
-    "Dutch", "Russian", "Chinese", "Japanese", "Korean", "Hindi", "Arabic",
-  ];
+  const handleManageSubscription = async () => {
+    setBillingAction('portal');
+    try {
+      const callable = httpsCallable(functions, 'createBillingPortalSession');
+      const response = await callable({
+        returnUrl: `${window.location.origin}/settings`,
+      });
+      const url = response?.data?.url;
+      if (!url) {
+        throw new Error('Billing portal URL was not returned.');
+      }
+      window.location.href = url;
+    } catch (error) {
+      toast({
+        title: 'Unable to open billing portal',
+        description: error.message || 'Please try again.',
+        variant: 'destructive',
+      });
+      setBillingAction('');
+    }
+  };
+
+  const handleRefreshBilling = async () => {
+    setBillingAction('refresh');
+    try {
+      const callable = httpsCallable(functions, 'refreshBillingState');
+      await callable();
+      toast({
+        title: 'Billing refreshed',
+        description: 'Your latest billing state has been synced.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Unable to refresh billing',
+        description: error.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setBillingAction('');
+    }
+  };
 
   return (
     <div className="max-w-5xl mx-auto px-4 pb-24 pt-8 space-y-6">
@@ -244,38 +307,51 @@ const ProfileSettings = () => {
                   </p>
                 </div>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-foreground">Preferred Writing Language</label>
+              <div className="space-y-4 rounded-2xl border border-border/70 bg-muted/20 p-4">
+                <div>
+                  <h2 className="text-sm font-semibold text-foreground">Conversation languages</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Choose the language Airabook should speak back to you in, and the language you usually speak during talk mode.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-foreground">You speak in</label>
                     <select
-                      value={language}
-                      onChange={(e) => setLanguage(e.target.value)}
+                      value={userSpeakingLanguage}
+                      onChange={(e) => setUserSpeakingLanguage(e.target.value)}
                       className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                     >
-                    {languages.map((lang) => (
-                      <option key={lang} value={lang}>
-                        {lang}
-                      </option>
+                      {SPEAKING_LANGUAGE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
                       ))}
                     </select>
+                    <p className="text-xs text-muted-foreground">
+                      This helps Airabook expect the right language when you speak.
+                    </p>
                   </div>
-                <div className="space-y-2 flex flex-col justify-end">
-                  <label className="block text-sm font-medium text-foreground">Language preference</label>
-                  <div className="flex items-center gap-3 rounded-2xl border border-border p-3">
-                    <span className={`text-sm ${!useLanguageForBooks ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
-                      Default (English)
-                    </span>
-                    <Switch
-                      checked={useLanguageForBooks}
-                      onCheckedChange={setUseLanguageForBooks}
-                    />
-                    <span className={`text-sm ${useLanguageForBooks ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
-                      Use selected
-                    </span>
-                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-foreground">Airabook replies in</label>
+                    <select
+                      value={agentSpeakingLanguage}
+                      onChange={(e) => setAgentSpeakingLanguage(e.target.value)}
+                      className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    >
+                      {SPEAKING_LANGUAGE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-muted-foreground">
+                      This sets the assistant&apos;s spoken response language.
+                    </p>
                   </div>
                 </div>
               </div>
+            </div>
             </section>
 
           <section className="space-y-6 rounded-3xl border border-border bg-card p-6 shadow-appCard">
@@ -326,6 +402,48 @@ const ProfileSettings = () => {
               </div>
             </section>
         </div>
+
+        <section className="rounded-3xl border border-border bg-card p-6 shadow-appCard">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.4em] text-muted-foreground">
+                Billing
+              </div>
+              <h2 className="mt-3 text-xl font-semibold text-foreground">{billingPlanLabel}</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {hasVoiceAccess
+                  ? 'Pro voice features are active on your account.'
+                  : 'Upgrade to Creator, Pro, or Premium to unlock voice and more monthly credits.'}
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Billing state: <span className="font-medium text-foreground">{planState}</span>
+                {formattedBillingEndDate ? ` · ${billing?.cancelAtPeriodEnd ? 'Ends' : 'Renews'} ${formattedBillingEndDate}` : ''}
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Credits: <span className="font-medium text-foreground">{creditBalance.toLocaleString()}</span>
+                {includedCreditsMonthly ? ` · ${includedCreditsMonthly.toLocaleString()} included monthly` : ''}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              {hasVoiceAccess ? (
+                <Button type="button" onClick={handleManageSubscription} disabled={billingAction !== '' && billingAction !== 'portal'}>
+                  {billingAction === 'portal' ? 'Opening...' : 'Manage subscription'}
+                </Button>
+              ) : (
+                <Button type="button" onClick={() => navigate('/billing')}>
+                  Open billing
+                </Button>
+              )}
+
+              {(isBillingRecoverable(billing) || planState === 'inactive') ? (
+                <Button type="button" variant="outline" onClick={handleRefreshBilling} disabled={billingAction !== '' && billingAction !== 'refresh'}>
+                  {billingAction === 'refresh' ? 'Refreshing...' : 'Refresh billing'}
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        </section>
 
         <div className="sticky bottom-4 left-0 right-0 rounded-2xl border border-border bg-background/95 px-4 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 shadow-[0_-15px_45px_rgba(0,0,0,0.25)] flex flex-wrap items-center justify-between gap-4">
           <span className="text-sm text-muted-foreground">

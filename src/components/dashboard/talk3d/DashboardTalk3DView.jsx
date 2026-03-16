@@ -3,6 +3,7 @@ import { Loader2, Mic, Volume2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import TalkSceneCanvas from '@/components/dashboard/talk3d/TalkSceneCanvas';
 import useTalkDemoState from '@/components/dashboard/talk3d/useTalkDemoState';
+import VoiceIdSelector from '@/components/voice/VoiceIdSelector';
 
 const BASE_THEME_PALETTES = {
   light: {
@@ -116,6 +117,10 @@ const DashboardTalk3DView = ({ bookId, chapterId, pageId }) => {
     isSpeaking,
     prefersReducedMotion,
     canStart,
+    voices,
+    selectedVoiceId,
+    setSelectedVoiceId,
+    isVoiceOptionsLoading,
   } = useTalkDemoState({ bookId, chapterId, pageId });
 
   const [themeMode, setThemeMode] = useState(() => detectThemeMode());
@@ -169,6 +174,14 @@ const DashboardTalk3DView = ({ bookId, chapterId, pageId }) => {
 
         <p className="dashboard-talk-status" aria-live="polite">{statusCopy.label}</p>
         <p className="dashboard-talk-status-sub">{statusCopy.helper}</p>
+        <VoiceIdSelector
+          voices={voices}
+          selectedVoiceId={selectedVoiceId}
+          onChange={setSelectedVoiceId}
+          disabled={isActive}
+          loading={isVoiceOptionsLoading}
+          className="pointer-events-auto relative z-20 mt-3 w-full max-w-xs"
+        />
       </div>
     </div>
   );

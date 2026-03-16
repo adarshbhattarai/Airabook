@@ -175,6 +175,16 @@ function App() {
               }
             />
             <Route
+              path="/billing"
+              element={
+                <PrivateRoute>
+                  <ThemedAppShell>
+                    <Donate />
+                  </ThemedAppShell>
+                </PrivateRoute>
+              }
+            />
+            <Route
               path="/donate"
               element={
                 <PrivateRoute>
@@ -185,14 +195,12 @@ function App() {
               }
             />
             <Route
+              path="/billing/success"
+              element={<DonateSuccess />}
+            />
+            <Route
               path="/donate/success"
-              element={
-                <PrivateRoute>
-                  <ThemedAppShell>
-                    <DonateSuccess />
-                  </ThemedAppShell>
-                </PrivateRoute>
-              }
+              element={<DonateSuccess />}
             />
             <Route
               path="/settings"

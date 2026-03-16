@@ -29,7 +29,7 @@ All functions now detect the project ID automatically:
 ```javascript
 // Before (hardcoded) ❌
 const PROJECT_ID = 'airabook-dev';
-const STORAGE_BUCKET = 'airabook-dev.appspot.com';
+const STORAGE_BUCKET = 'airabook-dev.firebasestorage.app';
 
 // After (dynamic) ✅
 const PROJECT_ID = process.env.GCLOUD_PROJECT || 'airabook-dev';
@@ -94,7 +94,7 @@ console.log(`Is Emulator: ${config.IS_EMULATOR}`);
 ```javascript
 {
   PROJECT_ID: 'airabook-dev',           // Current project ID
-  STORAGE_BUCKET: 'airabook-dev.appspot.com',  // Storage bucket
+  STORAGE_BUCKET: 'airabook-dev.firebasestorage.app',  // Storage bucket
   REGION: 'us-central1',                 // Function region
   ENVIRONMENT: 'development',            // Environment type
   IS_EMULATOR: false                     // Running in emulator?
@@ -146,7 +146,7 @@ firebase functions:log --project dev
 Look for these log messages:
 ```
 🔧 Initializing Firebase Admin for project: airabook-dev
-📦 Storage bucket: airabook-dev.appspot.com
+📦 Storage bucket: airabook-dev.firebasestorage.app
 🤖 AI Client initialized for project: airabook-dev
 ```
 
@@ -169,7 +169,7 @@ If you need to add a new function or module:
 ### ❌ Don't Do This
 ```javascript
 admin.initializeApp({
-  storageBucket: "airabook-dev.appspot.com", // Hardcoded!
+  storageBucket: "airabook-dev.firebasestorage.app", // Hardcoded!
 });
 ```
 
@@ -201,7 +201,7 @@ The frontend also needs dynamic configuration. Use `.env.development`, `.env.qa`
 ```bash
 # .env.development
 VITE_FIREBASE_PROJECT_ID=airabook-dev
-VITE_FIREBASE_STORAGE_BUCKET=airabook-dev.appspot.com
+VITE_FIREBASE_STORAGE_BUCKET=airabook-dev.firebasestorage.app
 
 # .env.qa  
 VITE_FIREBASE_PROJECT_ID=airabook-qa

@@ -18,7 +18,7 @@ export const useVoiceAssistant = ({
   bookId,
   chapterId,
   pageId,
-  voice = { provider: 'google', voiceId: 'default' },
+  voice = { provider: 'elevenlabs', voiceId: '' },
   inputAudio = { format: 'pcm_s16le', sampleRate: 16000, channels: 1 },
   outputAudio = { format: 'pcm_s16le', sampleRate: 24000, channels: 1 },
   url = null,
@@ -212,19 +212,25 @@ export const useVoiceAssistant = ({
       return;
     }
 
-    if (speakingTimerRef.current) clearTimeout(speakingTimerRef.current);
-    speakingTimerRef.current = setTimeout(() => {
+    const settleAssistantSpeakingState = () => {
       const msSince = Date.now() - lastAudioAtRef.current;
-      if (msSince > 550) {
-        if (sessionActiveRef.current) {
-          // Return to listening for the next user turn.
-          startMicCaptureAndStream();
-          setStatus('listening');
-        } else {
-          setStatus('idle');
-        }
+      if (msSince <= 320) {
+        if (speakingTimerRef.current) clearTimeout(speakingTimerRef.current);
+        speakingTimerRef.current = setTimeout(settleAssistantSpeakingState, 120);
+        return;
       }
-    }, 650);
+
+      if (sessionActiveRef.current) {
+        // Return to listening once the backend stops streaming PCM bytes.
+        startMicCaptureAndStream();
+        setStatus('listening');
+      } else {
+        setStatus('idle');
+      }
+    };
+
+    if (speakingTimerRef.current) clearTimeout(speakingTimerRef.current);
+    speakingTimerRef.current = setTimeout(settleAssistantSpeakingState, 380);
   }, [outputAudio.sampleRate, startMicCaptureAndStream]);
 
   const connect = useCallback(async () => {

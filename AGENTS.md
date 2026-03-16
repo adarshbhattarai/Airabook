@@ -9,6 +9,7 @@ Open the smallest relevant file first, then inspect code.
 - `/Users/adeshbhattarai/code/Airabook/README.md`: environment setup, local dev, and deployment flow.
 - `/Users/adeshbhattarai/code/Airabook/SELF_UPDATE_WORKFLOW.md`: how to refresh frontend context and memory after meaningful changes.
 - `/Users/adeshbhattarai/code/Airabook/MEDIA_STORAGE_AGENT.md`: current Firebase Storage upload/delete/quota workflow, path conventions, and trigger ownership.
+- `/Users/adeshbhattarai/code/Airabook/CREDIT_BILLING_AGENT.md`: current subscription tiers, credit wallet, Stripe flows, usage charging, and pricing/business logic.
 - `/Users/adeshbhattarai/code/AiraAI/Agent/AGENTS.md`: backend agent map for the Spring Boot + Spring AI repo.
 
 ## Repository Identity
@@ -51,6 +52,7 @@ When a feature touches both repos, inspect both before changing behavior.
 - `functions/airabookaiStream.js`: streaming AI function path
 - `functions/agents/agentServices.js`: server-side agent helper layer
 - `functions/flows/`: Genkit flow definitions
+- `functions/payments/`: Stripe billing, credit wallet, catalog, and maintenance jobs
 
 ## Working Rules
 - Prefer the `@/` alias instead of deep relative imports.

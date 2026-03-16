@@ -1,16 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '@/lib/firebase';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   LayoutDashboard,
   BookOpen,
   Image as ImageIcon,
-  StickyNote,
   Heart,
   ShieldCheck,
   PanelLeftClose,
   PanelLeftOpen,
-  LogOut
+  BarChart3,
+  Loader2,
 } from 'lucide-react';
 
 const sections = [
@@ -24,17 +28,21 @@ const sections = [
     ],
   },
   {
-    label: 'Support',
+    label: 'Upgrade',
     items: [
-      { name: '💝 Support Us', icon: Heart, to: '/donate' },
+      { name: 'Upgrade', icon: Heart, to: '/billing' },
     ],
   },
 ];
 
 const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile }) => {
-  const { user, logout } = useAuth();
+  const { user, billing } = useAuth();
   const { pathname } = useLocation();
   const [isAdmin, setIsAdmin] = useState(false);
+  const [usageDialogOpen, setUsageDialogOpen] = useState(false);
+  const [usageLoading, setUsageLoading] = useState(false);
+  const [usageSummary, setUsageSummary] = useState(null);
+  const [usageError, setUsageError] = useState('');
 
   useEffect(() => {
     const checkAdmin = async () => {
@@ -58,6 +66,25 @@ const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile }) => 
   } : null;
 
   const displaySections = adminSection ? [...sections, adminSection] : sections;
+
+  const openUsageDialog = async () => {
+    setUsageDialogOpen(true);
+    setUsageLoading(true);
+    setUsageError('');
+
+    try {
+      const callable = httpsCallable(functions, 'getUsageSummary');
+      const response = await callable();
+      setUsageSummary(response?.data || null);
+    } catch (error) {
+      setUsageError(error?.message || 'Unable to load usage summary.');
+    } finally {
+      setUsageLoading(false);
+    }
+  };
+
+  const formatNumber = (value) => Number(value || 0).toLocaleString();
+  const formatMinutes = (seconds) => (Number(seconds || 0) / 60).toFixed(1);
 
   return (
     <div className="flex flex-col h-full">
@@ -128,6 +155,21 @@ const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile }) => 
 
       {/* Footer / User / Toggle */}
       <div className="p-3 border-t border-app-gray-300 space-y-2">
+        <button
+          type="button"
+          onClick={openUsageDialog}
+          className={`flex items-center gap-3 px-3 py-2 text-sm text-app-gray-600 hover:bg-app-gray-50 rounded-xl w-full transition-colors ${collapsed ? 'justify-center' : ''}`}
+          title={collapsed ? 'Usage' : ''}
+        >
+          <BarChart3 className="h-4 w-4 min-w-[16px]" />
+          {!collapsed && (
+            <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
+              <span className="truncate">Usage</span>
+              <span className="text-xs text-app-gray-500">{formatNumber(billing?.creditBalance)} cr</span>
+            </div>
+          )}
+        </button>
+
         {/* Toggle Button (Desktop only) */}
         {!isMobile && (
           <button
@@ -147,6 +189,97 @@ const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile }) => 
           </div>
         )}
       </div>
+
+      <Dialog open={usageDialogOpen} onOpenChange={setUsageDialogOpen}>
+        <DialogContent className="max-w-lg rounded-3xl bg-white p-6 shadow-xl">
+          <DialogHeader>
+            <DialogTitle>Current usage</DialogTitle>
+            <DialogDescription>
+              This shows your current credit-cycle usage. Blank books and blank pages do not consume credits.
+            </DialogDescription>
+          </DialogHeader>
+
+          {usageLoading ? (
+            <div className="flex items-center justify-center py-10 text-app-gray-600">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Loading usage summary...
+            </div>
+          ) : usageError ? (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {usageError}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-app-gray-200 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.2em] text-app-gray-500">Credits used</p>
+                  <p className="mt-1 text-xl font-semibold text-app-gray-900">
+                    {formatNumber(usageSummary?.billing?.usedCreditsThisCycle)}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-app-gray-200 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.2em] text-app-gray-500">Credits left</p>
+                  <p className="mt-1 text-xl font-semibold text-app-gray-900">
+                    {formatNumber(usageSummary?.billing?.creditBalance)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-app-gray-200 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.2em] text-app-gray-500">Input tokens</p>
+                  <p className="mt-1 text-lg font-semibold text-app-gray-900">
+                    {formatNumber(usageSummary?.summary?.inputTokens)}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-app-gray-200 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.2em] text-app-gray-500">Output tokens</p>
+                  <p className="mt-1 text-lg font-semibold text-app-gray-900">
+                    {formatNumber(usageSummary?.summary?.outputTokens)}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-app-gray-200 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.2em] text-app-gray-500">Images generated</p>
+                  <p className="mt-1 text-lg font-semibold text-app-gray-900">
+                    {formatNumber(usageSummary?.summary?.imagesGenerated)}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-app-gray-200 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.2em] text-app-gray-500">Image output tokens</p>
+                  <p className="mt-1 text-lg font-semibold text-app-gray-900">
+                    {formatNumber(usageSummary?.summary?.imageOutputTokens)}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-app-gray-200 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.2em] text-app-gray-500">Voice STT minutes</p>
+                  <p className="mt-1 text-lg font-semibold text-app-gray-900">
+                    {formatMinutes(usageSummary?.summary?.voiceSeconds)}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-app-gray-200 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.2em] text-app-gray-500">TTS characters</p>
+                  <p className="mt-1 text-lg font-semibold text-app-gray-900">
+                    {formatNumber(usageSummary?.summary?.ttsCharacters)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-app-gray-200 px-4 py-3">
+                <p className="text-xs uppercase tracking-[0.2em] text-app-gray-500">This cycle started</p>
+                <p className="mt-1 text-sm text-app-gray-700">
+                  {usageSummary?.summary?.cycleStart ? new Date(usageSummary.summary.cycleStart).toLocaleString() : 'Not available'}
+                </p>
+              </div>
+
+              <div className="flex justify-end">
+                <Button type="button" variant="outline" onClick={() => setUsageDialogOpen(false)}>
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

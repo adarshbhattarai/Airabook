@@ -1,6 +1,6 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
-const { consumeApiCallQuota } = require("./utils/limits");
+const { consumeCredits, estimateTokensFromText } = require("./payments/creditLedger");
 
 // Load env for emulator/local
 try {
@@ -97,7 +97,22 @@ exports.rewriteNote = onCall({ region: LOCATION, cors: true }, async (request) =
       ? Math.max(32, Math.min(1024, numericMax))
       : undefined;
 
-    await consumeApiCallQuota(db, auth.uid, 1);
+    await consumeCredits(db, auth.uid, {
+      feature: 'rewrite',
+      source: 'rewrite_note',
+      provider: 'functions_ai',
+      rawUnits: {
+        inputText: builtPrompt,
+        inputTokens: estimateTokensFromText(builtPrompt),
+        outputTokens: Math.max(64, Number(effectiveMax || 256)),
+      },
+      minimumCredits: 1,
+      metadata: {
+        bookId: bookId || null,
+        chapterId: chapterId || null,
+        pageId: pageId || null,
+      },
+    });
 
     const rewritten = await callAI(builtPrompt, {
       maxTokens: effectiveMax,

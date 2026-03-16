@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Loader2, Mic, Volume2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import useTalkDemoState from '@/components/dashboard/talk3d/useTalkDemoState';
+import VoiceIdSelector from '@/components/voice/VoiceIdSelector';
 
 const TalkCenterVisual = ({
   variant,
@@ -73,6 +74,10 @@ const DashboardTalkView = ({
     isListening,
     isSpeaking,
     canStart,
+    voices,
+    selectedVoiceId,
+    setSelectedVoiceId,
+    isVoiceOptionsLoading,
   } = useTalkDemoState({ bookId, chapterId, pageId });
 
   const MicIcon = useMemo(() => {
@@ -113,6 +118,14 @@ const DashboardTalkView = ({
           {statusCopy.label}
         </p>
         <p className="dashboard-talk-status-sub">{statusCopy.helper}</p>
+        <VoiceIdSelector
+          voices={voices}
+          selectedVoiceId={selectedVoiceId}
+          onChange={setSelectedVoiceId}
+          disabled={isActive}
+          loading={isVoiceOptionsLoading}
+          className="mt-3 w-full max-w-xs"
+        />
       </div>
     </div>
   );

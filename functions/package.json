@@ -5,6 +5,7 @@
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
     "start": "npm run shell",
+    "genkit:local": "bash ./scripts/start-genkit-local.sh",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log"
   },
