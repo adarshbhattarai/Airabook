@@ -13,7 +13,11 @@ import { auth, firestore, storage } from '@/lib/firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/lib/firebase';
-import { ensureStorageUploadAuth, logStorageUploadFailure } from '@/lib/storageUpload';
+import {
+  ensureStorageUploadAuth,
+  getStorageUploadDebugContext,
+  logStorageUploadFailure,
+} from '@/lib/storageUpload';
 import {
   Dialog,
   DialogContent,
@@ -476,6 +480,7 @@ const AlbumDetail = () => {
         userUid: user?.uid || '',
         extra: {
           albumId: bookId,
+          ...(await getStorageUploadDebugContext()),
         },
       });
       console.error('Upload error:', error);
@@ -490,7 +495,7 @@ const AlbumDetail = () => {
       (snapshot) => {
         // Optional: Handle progress
       },
-      (error) => {
+      async (error) => {
         logStorageUploadFailure({
           error,
           storagePath,
@@ -499,6 +504,7 @@ const AlbumDetail = () => {
           userUid: user?.uid || '',
           extra: {
             albumId: bookId,
+            ...(await getStorageUploadDebugContext()),
           },
         });
         console.error('Upload error:', error);

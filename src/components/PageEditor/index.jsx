@@ -17,7 +17,11 @@ import BlockEditor from '@/components/BlockEditor';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import { stripHtml, convertToEmulatorURL, textToHtml } from '@/lib/pageUtils';
 import { validatePageContentLimits } from '@/lib/pageContentValidation';
-import { ensureStorageUploadAuth, logStorageUploadFailure } from '@/lib/storageUpload';
+import {
+  ensureStorageUploadAuth,
+  getStorageUploadDebugContext,
+  logStorageUploadFailure,
+} from '@/lib/storageUpload';
 import GenerateImagePrompt from '@/components/PageEditor/GenerateImagePrompt';
 import TemplatePage from '@/components/PageEditor/TemplatePage';
 import { pageTemplates } from '@/constants/pageTemplates';
@@ -725,7 +729,7 @@ const PageEditor = forwardRef(({
           const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
           setUploadProgress((prev) => ({ ...prev, [file.name]: progress }));
         },
-        (error) => {
+        async (error) => {
           logStorageUploadFailure({
             error,
             storagePath,
@@ -1374,6 +1378,7 @@ const PageEditor = forwardRef(({
           bookId,
           chapterId,
           pageId: page?.id || '',
+          ...(await getStorageUploadDebugContext()),
         },
       });
       toast({ title: 'Upload Error', description: error.message, variant: 'destructive' });
@@ -1387,7 +1392,7 @@ const PageEditor = forwardRef(({
         const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
         setUploadProgress(prev => ({ ...prev, [file.name]: progress }));
       },
-      (error) => {
+      async (error) => {
         logStorageUploadFailure({
           error,
           storagePath,
@@ -1398,6 +1403,7 @@ const PageEditor = forwardRef(({
             bookId,
             chapterId,
             pageId: page?.id || '',
+            ...(await getStorageUploadDebugContext()),
           },
         });
         toast({ title: 'Upload Error', description: error.message, variant: 'destructive' });

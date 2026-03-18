@@ -2,7 +2,11 @@ import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { doc, getDoc } from 'firebase/firestore';
 import { firestore, storage } from '@/lib/firebase';
 import { convertToEmulatorURL } from '@/lib/pageUtils';
-import { ensureStorageUploadAuth, logStorageUploadFailure } from '@/lib/storageUpload';
+import {
+  ensureStorageUploadAuth,
+  getStorageUploadDebugContext,
+  logStorageUploadFailure,
+} from '@/lib/storageUpload';
 
 const getMediaType = (file) => {
   if (!file?.type) return null;
@@ -117,7 +121,7 @@ const uploadPlannerMediaFile = async ({ user, bookId, selectedAlbumId, file, onP
           : 0;
         onProgress?.(progress);
       },
-      (error) => {
+      async (error) => {
         logStorageUploadFailure({
           error,
           storagePath,
@@ -128,6 +132,7 @@ const uploadPlannerMediaFile = async ({ user, bookId, selectedAlbumId, file, onP
             albumId: targetAlbumId,
             bookId,
             selectedAlbumId: selectedAlbumId || '',
+            ...(await getStorageUploadDebugContext()),
           },
         });
         reject(error);

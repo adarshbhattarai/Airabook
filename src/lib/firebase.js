@@ -145,4 +145,13 @@ if (import.meta.env.VITE_RECAPTCHA_SITE_KEY) {
     provider: new ReCaptchaV3Provider(import.meta.env.VITE_RECAPTCHA_SITE_KEY),
     isTokenAutoRefreshEnabled: true
   });
+  console.log('🛡️ App Check initialized', {
+    hostname: typeof window !== 'undefined' ? window.location.hostname : null,
+    hasSiteKey: true,
+  });
+} else {
+  console.warn('🛡️ App Check not initialized', {
+    hostname: typeof window !== 'undefined' ? window.location.hostname : null,
+    hasSiteKey: false,
+  });
 }
