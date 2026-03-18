@@ -13,6 +13,7 @@ import { auth, firestore, storage } from '@/lib/firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/lib/firebase';
+import { ensureStorageUploadAuth, logStorageUploadFailure } from '@/lib/storageUpload';
 import {
   Dialog,
   DialogContent,
@@ -442,7 +443,7 @@ const AlbumDetail = () => {
     event.target.value = '';
   };
 
-  const handleUpload = (file) => {
+  const handleUpload = async (file) => {
     if (!file || !user || !canUploadMedia) return;
 
     setUploading(true);
@@ -461,6 +462,28 @@ const AlbumDetail = () => {
       }
     };
 
+    try {
+      await ensureStorageUploadAuth({
+        storagePath,
+        uploadSource: 'album_detail_media',
+      });
+    } catch (error) {
+      logStorageUploadFailure({
+        error,
+        storagePath,
+        file,
+        uploadSource: 'album_detail_media',
+        userUid: user?.uid || '',
+        extra: {
+          albumId: bookId,
+        },
+      });
+      console.error('Upload error:', error);
+      toast({ title: 'Upload Error', description: error.message, variant: 'destructive' });
+      setUploading(false);
+      return;
+    }
+
     const uploadTask = uploadBytesResumable(storageRef, file, metadata);
 
     uploadTask.on('state_changed',
@@ -468,6 +491,16 @@ const AlbumDetail = () => {
         // Optional: Handle progress
       },
       (error) => {
+        logStorageUploadFailure({
+          error,
+          storagePath,
+          file,
+          uploadSource: 'album_detail_media',
+          userUid: user?.uid || '',
+          extra: {
+            albumId: bookId,
+          },
+        });
         console.error('Upload error:', error);
         toast({ title: 'Upload Error', description: error.message, variant: 'destructive' });
         setUploading(false);

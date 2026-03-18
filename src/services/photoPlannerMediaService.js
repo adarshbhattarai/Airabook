@@ -2,6 +2,7 @@ import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { doc, getDoc } from 'firebase/firestore';
 import { firestore, storage } from '@/lib/firebase';
 import { convertToEmulatorURL } from '@/lib/pageUtils';
+import { ensureStorageUploadAuth, logStorageUploadFailure } from '@/lib/storageUpload';
 
 const getMediaType = (file) => {
   if (!file?.type) return null;
@@ -100,6 +101,11 @@ const uploadPlannerMediaFile = async ({ user, bookId, selectedAlbumId, file, onP
     },
   };
 
+  await ensureStorageUploadAuth({
+    storagePath,
+    uploadSource: 'photo_planner_media',
+  });
+
   const uploadTask = uploadBytesResumable(storageRef, file, metadata);
 
   return await new Promise((resolve, reject) => {
@@ -111,7 +117,21 @@ const uploadPlannerMediaFile = async ({ user, bookId, selectedAlbumId, file, onP
           : 0;
         onProgress?.(progress);
       },
-      (error) => reject(error),
+      (error) => {
+        logStorageUploadFailure({
+          error,
+          storagePath,
+          file,
+          uploadSource: 'photo_planner_media',
+          userUid: user?.uid || '',
+          extra: {
+            albumId: targetAlbumId,
+            bookId,
+            selectedAlbumId: selectedAlbumId || '',
+          },
+        });
+        reject(error);
+      },
       async () => {
         try {
           const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
