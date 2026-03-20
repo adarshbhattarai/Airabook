@@ -21,6 +21,7 @@ import {
   ensureStorageUploadAuth,
   getStorageUploadDebugContext,
   logStorageUploadFailure,
+  resolveStorageUploadAuthorization,
 } from '@/lib/storageUpload';
 import GenerateImagePrompt from '@/components/PageEditor/GenerateImagePrompt';
 import TemplatePage from '@/components/PageEditor/TemplatePage';
@@ -704,7 +705,12 @@ const PageEditor = forwardRef(({
     }
     const mediaType = isVideo ? 'video' : 'image';
     const uniqueFileName = `${Date.now()}_${file.name}`;
-    const storagePath = `${user.uid}/${bookId}/${chapterId}/${page.id}/media/${mediaType}/${uniqueFileName}`;
+    const authTrace = await resolveStorageUploadAuthorization({
+      targetId: bookId,
+      actorUid: user?.uid || '',
+    });
+    const storageOwnerUid = authTrace.storageOwnerUid || user.uid;
+    const storagePath = `${storageOwnerUid}/${bookId}/${chapterId}/${page.id}/media/${mediaType}/${uniqueFileName}`;
     const storageRef = firebaseRef(storage, storagePath);
 
     const metadata = {
@@ -740,6 +746,8 @@ const PageEditor = forwardRef(({
               bookId,
               chapterId,
               pageId: page?.id || '',
+              authTrace,
+              ...(await getStorageUploadDebugContext()),
             },
           });
           setUploadProgress((prev) => {
@@ -1351,7 +1359,12 @@ const PageEditor = forwardRef(({
 
     const mediaType = isVideo ? 'video' : 'image';
     const uniqueFileName = `${Date.now()}_${file.name}`;
-    const storagePath = `${user.uid}/${bookId}/${chapterId}/${page.id}/media/${mediaType}/${uniqueFileName}`;
+    const authTrace = await resolveStorageUploadAuthorization({
+      targetId: bookId,
+      actorUid: user?.uid || '',
+    });
+    const storageOwnerUid = authTrace.storageOwnerUid || user.uid;
+    const storagePath = `${storageOwnerUid}/${bookId}/${chapterId}/${page.id}/media/${mediaType}/${uniqueFileName}`;
     const storageRef = firebaseRef(storage, storagePath);
 
     const metadata = {
@@ -1378,6 +1391,7 @@ const PageEditor = forwardRef(({
           bookId,
           chapterId,
           pageId: page?.id || '',
+          authTrace,
           ...(await getStorageUploadDebugContext()),
         },
       });
@@ -1403,6 +1417,7 @@ const PageEditor = forwardRef(({
             bookId,
             chapterId,
             pageId: page?.id || '',
+            authTrace,
             ...(await getStorageUploadDebugContext()),
           },
         });

@@ -10,6 +10,7 @@ Open the smallest relevant file first, then inspect code.
 - `/Users/adeshbhattarai/code/Airabook/SELF_UPDATE_WORKFLOW.md`: how to refresh frontend context and memory after meaningful changes.
 - `/Users/adeshbhattarai/code/Airabook/MEDIA_STORAGE_AGENT.md`: current Firebase Storage upload/delete/quota workflow, path conventions, and trigger ownership.
 - `/Users/adeshbhattarai/code/Airabook/CREDIT_BILLING_AGENT.md`: current subscription tiers, credit wallet, Stripe flows, usage charging, and pricing/business logic.
+- `/Users/adeshbhattarai/code/Airabook/AI_CREDIT_STORAGE_POLICY.md`: intended policy for AI credit charging, storage byte tracking, image-generation cost, and lazy monthly credit grants.
 - `/Users/adeshbhattarai/code/AiraAI/Agent/AGENTS.md`: backend agent map for the Spring Boot + Spring AI repo.
 
 ## Repository Identity

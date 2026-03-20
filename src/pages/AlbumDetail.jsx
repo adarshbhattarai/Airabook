@@ -17,6 +17,7 @@ import {
   ensureStorageUploadAuth,
   getStorageUploadDebugContext,
   logStorageUploadFailure,
+  resolveStorageUploadAuthorization,
 } from '@/lib/storageUpload';
 import {
   Dialog,
@@ -384,14 +385,21 @@ const AlbumDetail = () => {
     if (!editingName.trim()) return;
 
     setUpdating(true);
+    let coverUploadPath = '';
+    let coverAuthTrace = null;
     try {
       let coverImageUrl = album.coverImage;
 
       // Upload new cover if selected
       if (editingCover) {
         await auth.currentUser?.getIdToken(true);
-        const storagePath = `${user.uid}/albums/${bookId}/cover_${Date.now()}_${editingCover.name}`;
-        const storageRef = ref(storage, storagePath);
+        coverAuthTrace = await resolveStorageUploadAuthorization({
+          targetId: bookId,
+          actorUid: user?.uid || '',
+        });
+        const storageOwnerUid = coverAuthTrace.storageOwnerUid || user.uid;
+        coverUploadPath = `${storageOwnerUid}/albums/${bookId}/cover_${Date.now()}_${editingCover.name}`;
+        const storageRef = ref(storage, coverUploadPath);
         const uploadTask = await uploadBytesResumable(storageRef, editingCover);
         coverImageUrl = await getDownloadURL(uploadTask.ref);
       }
@@ -411,6 +419,20 @@ const AlbumDetail = () => {
       toast({ title: 'Success', description: 'Asset updated successfully.' });
       setEditModalOpen(false);
     } catch (error) {
+      if (editingCover && coverUploadPath) {
+        logStorageUploadFailure({
+          error,
+          storagePath: coverUploadPath,
+          file: editingCover,
+          uploadSource: 'album_detail_cover',
+          userUid: user?.uid || '',
+          extra: {
+            albumId: bookId,
+            authTrace: coverAuthTrace,
+            ...(await getStorageUploadDebugContext()),
+          },
+        });
+      }
       console.error('Update failed:', error);
       toast({ title: 'Error', description: error.message || 'Failed to update asset.', variant: 'destructive' });
     } finally {
@@ -453,9 +475,14 @@ const AlbumDetail = () => {
     setUploading(true);
     const mediaType = file.type.startsWith('video') ? 'video' : 'image';
     const uniqueFileName = `${Date.now()}_${file.name}`;
+    const authTrace = await resolveStorageUploadAuthorization({
+      targetId: bookId,
+      actorUid: user?.uid || '',
+    });
+    const storageOwnerUid = authTrace.storageOwnerUid || user.uid;
     // Construct path to match mediaProcessor expectation: {userId}/{bookId}/{chapterId}/{pageId}/media/{type}/{filename}
     // For albums, we use albumId as bookId, and '_album_' as placeholders for chapter/page
-    const storagePath = `${user.uid}/${bookId}/_album_/_album_/media/${mediaType}/${uniqueFileName}`;
+    const storagePath = `${storageOwnerUid}/${bookId}/_album_/_album_/media/${mediaType}/${uniqueFileName}`;
     const storageRef = ref(storage, storagePath);
 
     // Add custom metadata for original name
@@ -480,6 +507,7 @@ const AlbumDetail = () => {
         userUid: user?.uid || '',
         extra: {
           albumId: bookId,
+          authTrace,
           ...(await getStorageUploadDebugContext()),
         },
       });
@@ -504,6 +532,7 @@ const AlbumDetail = () => {
           userUid: user?.uid || '',
           extra: {
             albumId: bookId,
+            authTrace,
             ...(await getStorageUploadDebugContext()),
           },
         });

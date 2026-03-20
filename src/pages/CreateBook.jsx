@@ -14,6 +14,7 @@ import InfoCard from '@/components/app/InfoCard';
 import SummaryCard from '@/components/app/SummaryCard';
 import BookCardPreview from '@/components/previews/BookCardPreview';
 import { ArrowLeft, Upload, X, Image as ImageIcon } from 'lucide-react';
+import { ensureStorageUploadAuth, getStorageUploadDebugContext, logStorageUploadFailure } from '@/lib/storageUpload';
 
 const CreateBook = () => {
   const [title, setTitle] = useState('');
@@ -99,14 +100,27 @@ const CreateBook = () => {
 
       let coverImageUrl = null;
       if (coverImageFile) {
+        const filename = `${Date.now()}_${coverImageFile.name}`;
+        const storagePath = `${user.uid}/covers/${filename}`;
         try {
-          const filename = `${Date.now()}_${coverImageFile.name}`;
-          const storageRef = ref(storage, `${user.uid}/covers/${filename}`);
+          const storageRef = ref(storage, storagePath);
+          await ensureStorageUploadAuth({
+            storagePath,
+            uploadSource: 'create_book_cover',
+          });
           console.log("📤 Uploading cover image...");
           const snapshot = await uploadBytes(storageRef, coverImageFile);
           coverImageUrl = await getDownloadURL(snapshot.ref);
           console.log("✅ Cover image uploaded:", coverImageUrl);
         } catch (uploadError) {
+          logStorageUploadFailure({
+            error: uploadError,
+            storagePath,
+            file: coverImageFile,
+            uploadSource: 'create_book_cover',
+            userUid: user?.uid || '',
+            extra: await getStorageUploadDebugContext(),
+          });
           console.error("❌ Error uploading cover image:", uploadError);
           toast({ title: "Warning", description: "Failed to upload cover image. Book will be created without it.", variant: "destructive" });
           // Continue without cover image

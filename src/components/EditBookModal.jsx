@@ -9,6 +9,7 @@ import { auth, storage, functions } from '@/lib/firebase'; // Corrected import p
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
 import { useAuth } from '@/context/AuthContext';
+import { ensureStorageUploadAuth, getStorageUploadDebugContext, logStorageUploadFailure } from '@/lib/storageUpload';
 
 const EditBookModal = ({ isOpen, onClose, book, onUpdate, onOpenPhotoPlanner }) => {
     const { user } = useAuth();
@@ -62,14 +63,19 @@ const EditBookModal = ({ isOpen, onClose, book, onUpdate, onOpenPhotoPlanner }) 
         }
 
         setLoading(true);
+        let coverUploadPath = '';
         try {
             let newCoverImageUrl = undefined;
 
             // Handle Image Upload
             if (coverImageFile) {
                 await auth.currentUser?.getIdToken(true);
-                const filename = `${Date.now()}_${coverImageFile.name}`;
-                const storageRef = ref(storage, `${user.uid}/covers/${filename}`);
+                coverUploadPath = `${user.uid}/covers/${Date.now()}_${coverImageFile.name}`;
+                await ensureStorageUploadAuth({
+                    storagePath: coverUploadPath,
+                    uploadSource: 'edit_book_cover',
+                });
+                const storageRef = ref(storage, coverUploadPath);
                 const metadata = {
                     customMetadata: {
                         bookId: book.id
@@ -107,6 +113,16 @@ const EditBookModal = ({ isOpen, onClose, book, onUpdate, onOpenPhotoPlanner }) 
             }
             onClose();
         } catch (error) {
+            if (coverImageFile) {
+                logStorageUploadFailure({
+                    error,
+                    storagePath: coverUploadPath,
+                    file: coverImageFile,
+                    uploadSource: 'edit_book_cover',
+                    userUid: user?.uid || '',
+                    extra: await getStorageUploadDebugContext(),
+                });
+            }
             console.error("Error updating book:", error);
             toast({ title: "Error", description: "Failed to update book.", variant: "destructive" });
         } finally {

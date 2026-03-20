@@ -6,6 +6,7 @@ import {
   ensureStorageUploadAuth,
   getStorageUploadDebugContext,
   logStorageUploadFailure,
+  resolveStorageUploadAuthorization,
 } from '@/lib/storageUpload';
 
 const getMediaType = (file) => {
@@ -88,11 +89,16 @@ const uploadPlannerMediaFile = async ({ user, bookId, selectedAlbumId, file, onP
   }
 
   const targetAlbumId = await resolvePlannerUploadTarget({ user, bookId, selectedAlbumId });
+  const authTrace = await resolveStorageUploadAuthorization({
+    targetId: targetAlbumId,
+    actorUid: user?.uid || '',
+  });
+  const storageOwnerUid = authTrace.storageOwnerUid || user.uid;
   const uniqueFileName = `${Date.now()}_${file.name}`;
   // Align planner uploads with book album media conventions.
   // Path format expected by mediaProcessor: {uid}/{bookId}/{chapterId}/{pageId}/media/{type}/{filename}
   // For album-level uploads, use _album_ placeholders for chapter/page.
-  const storagePath = `${user.uid}/${targetAlbumId}/_album_/_album_/media/${mediaType}/${uniqueFileName}`;
+  const storagePath = `${storageOwnerUid}/${targetAlbumId}/_album_/_album_/media/${mediaType}/${uniqueFileName}`;
   const storageRef = ref(storage, storagePath);
 
   const metadata = {
@@ -132,6 +138,7 @@ const uploadPlannerMediaFile = async ({ user, bookId, selectedAlbumId, file, onP
             albumId: targetAlbumId,
             bookId,
             selectedAlbumId: selectedAlbumId || '',
+            authTrace,
             ...(await getStorageUploadDebugContext()),
           },
         });
