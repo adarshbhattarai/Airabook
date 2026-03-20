@@ -106,6 +106,12 @@ Frontend Spring integration points currently show up in:
 - When the frontend references a Spring endpoint, document the backend file or route that owns it.
 - When deprecating Firebase AI paths in favor of Spring, leave the boundary explicit rather than ambiguous.
 
+## Firebase Security Model
+- `firestore.rules` treats top-level `albums` documents as server-authoritative. Client reads are allowed by access rules, but create/update/delete should go through Firebase Functions using the Admin SDK.
+- `firestore.rules` treats top-level `books` creation as server-authoritative. The only direct client mutation intentionally left open on the root book doc is the owner's `isPublic` publish toggle.
+- Chapter and page documents are still client-accessible for owners/co-authors under the existing collaboration model.
+- `storage.rules` gate raw file writes separately from Firestore. When a feature touches upload permissions, trace both `storage.rules` and the related Firestore access documents together.
+
 ## First Files To Inspect For Most Tasks
 - `src/App.jsx`
 - `src/config/serviceEndpoints.js`

@@ -1,11 +1,11 @@
 # Frontend Context Report
 
-Generated: 2026-03-18 06:26:37Z
+Generated: 2026-03-20 18:43:17Z
 
 ## Frontend Repo Snapshot
 - Workspace: /Users/adeshbhattarai/code/Airabook
 - Branch: main
-- HEAD: 28a2ddf
+- HEAD: 32a82aa
 - Backend repo: /Users/adeshbhattarai/code/AiraAI/Agent
 
 ## Read First
@@ -19,11 +19,16 @@ Generated: 2026-03-18 06:26:37Z
 
 
 ```text
+ M ARCHITECTURE.md
+ M firestore.rules
+ M functions/createPage.js
+ M functions/index.js
+ M functions/services/pageService.js
+ M functions/updatePage.js
+ M functions/utils/chapterUtils.js
  M generated/frontend-context-report.md
- M src/components/PageEditor/index.jsx
- M src/pages/AlbumDetail.jsx
- M src/services/photoPlannerMediaService.js
-?? src/lib/storageUpload.js
+ M storage.rules
+?? functions/syncPageDerivedData.js
 ```
 
 ## Backend Snapshot
@@ -36,14 +41,14 @@ Working tree clean.
 ```
 
 ## Recent Commits
+- 2026-03-20 32a82aa Update
+- 2026-03-20 9e0cbaf Update
+- 2026-03-18 569e32f Update
+- 2026-03-18 72dfa3b U;date
 - 2026-03-16 28a2ddf Updates
 - 2026-03-15 1daddba Update on storage rules and UI
 - 2026-03-15 9fd2c34 Update
 - 2026-03-15 4e94484 Update
-- 2026-03-14 c36be18 Update on pages
-- 2026-03-14 a5eff04 Update
-- 2026-03-11 1ccf66e Update
-- 2026-03-08 47a05db Update
 
 ## High-Signal Paths
 - /Users/adeshbhattarai/code/Airabook/src/App.jsx

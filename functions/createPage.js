@@ -1,5 +1,5 @@
 // functions/createPage.js
-// Cloud Function to create a new page with embeddings
+// Cloud Function to create a new page quickly; embeddings are generated asynchronously.
 
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
@@ -7,7 +7,7 @@ const admin = require('firebase-admin');
 const FieldValue = require('firebase-admin/firestore').FieldValue;
 const { assertAndIncrementCounter, resolveUserPlanLimits } = require('./utils/limits');
 
-const { extractTextFromHtml, generateEmbeddings } = require('./utils/embeddingsClient');
+const { extractTextFromHtml } = require('./utils/embeddingsClient');
 const { updateChapterPageSummary } = require('./utils/chapterUtils');
 const { validatePageContentLimits } = require('./utils/pageContentValidation');
 
@@ -96,31 +96,13 @@ exports.createPage = onCall(
             // Extract plain text from HTML
             const plainText = extractTextFromHtml(note || '');
 
-            // Generate embeddings (only if there's text content)
-            let embeddings = [];
-            let embeddingModel = null;
-
-            if (plainText && plainText.length > 0) {
-                try {
-                    embeddings = await generateEmbeddings(plainText, {
-                        taskType: 'RETRIEVAL_DOCUMENT'  // For documents to be searched later
-                    });
-                    embeddingModel = 'text-embedding-004';
-                    logger.log(`✅ Generated embeddings: ${embeddings.length} dimensions`);
-                } catch (embError) {
-                    logger.error('⚠️ Failed to generate embeddings, saving page without embeddings:', embError);
-                    // Continue without embeddings - don't fail the page creation
-                }
-            } else {
-                logger.log('ℹ️ No text content, skipping embeddings generation');
-            }
-
             // Create page document
             const pageData = {
                 note: note || '',
                 plainText: plainText,
-                embeddings: (embeddings && embeddings.length > 0) ? FieldValue.vector(embeddings) : null,
-                embeddingModel: embeddingModel,
+                embeddings: null,
+                embeddingModel: null,
+                embeddingStatus: plainText ? 'pending' : 'ready',
                 media: media || [],
                 pageName: String(pageName || '').trim(),
                 order: order || '',
@@ -144,7 +126,17 @@ exports.createPage = onCall(
             logger.log(`📄 Page created with ID: ${pageRef.id}`);
 
             // Update chapter's pagesSummary using helper
-            await updateChapterPageSummary(db, bookId, chapterId, pageRef.id, plainText, order, true, pageName);
+            await updateChapterPageSummary(
+                db,
+                bookId,
+                chapterId,
+                pageRef.id,
+                plainText,
+                order,
+                true,
+                pageName,
+                { skipChapterSummary: true }
+            );
 
             logger.log(`✅ Chapter pagesSummary updated`);
 

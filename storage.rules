@@ -13,148 +13,72 @@ service firebase.storage {
       return firestore.get(/databases/(default)/documents/books/$(bookId));
     }
 
-    function albumDoc(albumId) {
-      return firestore.get(/databases/(default)/documents/albums/$(albumId));
-    }
-
-    function isOwnUserRoot(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    function bookOwnerId(bookId) {
+    function isBookOwnerPath(ownerUid, bookId) {
       let bookData = bookDoc(bookId).data;
-      return bookData != null
-        ? (
-          bookData.ownerId != null
-            ? bookData.ownerId
-            : (
-              bookData.members != null &&
-              bookData.members[request.auth.uid] == 'Owner'
-            )
-              ? request.auth.uid
-              : null
-        )
-        : null;
+      return bookData != null && bookData.ownerId == ownerUid;
     }
 
-    function albumOwnerId(albumId) {
-      let albumData = albumDoc(albumId).data;
-      return albumData != null
-        ? (
-          albumData.accessPermission != null &&
-          albumData.accessPermission.ownerId != null
-            ? albumData.accessPermission.ownerId
-            : albumData.ownerId
-        )
-        : null;
-    }
-
-    function isBookStorageOwner(userId, bookId) {
-      let ownerId = bookOwnerId(bookId);
-      return ownerId != null && ownerId == userId;
-    }
-
-    function isAlbumStorageOwner(userId, albumId) {
-      let ownerId = albumOwnerId(albumId);
-      return ownerId != null && ownerId == userId;
-    }
-
-    function canCurrentUserManageAlbumTarget(albumId) {
-      let albumData = albumDoc(albumId).data;
-      return albumData != null &&
-        (
-          (
-            albumData.accessPermission != null &&
-            albumData.accessPermission.ownerId == request.auth.uid
-          ) ||
-          (
-            albumData.accessPermission != null &&
-            albumData.accessPermission.sharedWith != null &&
-            request.auth.uid in albumData.accessPermission.sharedWith
-          ) ||
-          albumData.ownerId == request.auth.uid
-        );
-    }
-
-    function canCurrentUserManageBookTarget(bookId) {
+    function canManageBookMedia(bookId) {
       let bookData = bookDoc(bookId).data;
-      return (
-        bookData != null &&
+      return bookData != null && (
+        bookData.ownerId == request.auth.uid ||
         (
-          bookData.ownerId == request.auth.uid ||
+          bookData.members != null &&
+          bookData.members[request.auth.uid] == 'Owner'
+        ) ||
+        (
+          bookData.members != null &&
+          bookData.members[request.auth.uid] == 'Co-author' &&
+          bookData.memberPermissions != null &&
+          bookData.memberPermissions[request.auth.uid] != null &&
+          bookData.memberPermissions[request.auth.uid].canManageMedia == true
+        )
+      );
+    }
+
+    // Book page media and linked album media under the owner's root.
+    // This allows:
+    // - owner writing to their own path
+    // - co-author with canManageMedia writing into the main author's path
+    match /{userId}/{bookId}/{chapterId}/{pageId}/media/{mediaType}/{fileName=**} {
+      allow read: if true;
+      allow create, update: if isAdmin() || (
+        isSignedIn() && (
+          request.auth.uid == userId ||
           (
-            bookData.members != null &&
-            bookData.members[request.auth.uid] == 'Owner'
-          ) ||
-          (
-            bookData.members != null &&
-            bookData.members[request.auth.uid] == 'Co-author' &&
-            bookData.memberPermissions != null &&
-            bookData.memberPermissions[request.auth.uid] != null &&
-            bookData.memberPermissions[request.auth.uid].canManageMedia == true
+            request.auth.uid != userId &&
+            isBookOwnerPath(userId, bookId) &&
+            canManageBookMedia(bookId)
           )
         )
-      ) ||
-        canCurrentUserManageAlbumTarget(bookId);
-    }
-
-    function canWriteManagedTargetAtOwnerPath(userId, targetId) {
-      return (
-        isBookStorageOwner(userId, targetId) &&
-        canCurrentUserManageBookTarget(targetId)
-      ) || (
-        isAlbumStorageOwner(userId, targetId) &&
-        canCurrentUserManageAlbumTarget(targetId)
-      );
-    }
-
-    // Profile avatars:
-    //   {uid}/avatars/{file}
-    match /{userId}/avatars/{fileName=**} {
-      allow read: if true;
-      allow create, update: if isAdmin() || (
-        isOwnUserRoot(userId)
       );
       allow delete: if isAdmin();
     }
 
-    // Book covers and pre-create album covers:
-    //   {uid}/covers/{file}
-    match /{userId}/covers/{fileName=**} {
-      allow read: if true;
-      allow create, update: if isAdmin() || (
-        isOwnUserRoot(userId)
-      );
-      allow delete: if isAdmin();
-    }
-
-    // Existing album covers:
-    //   {uid}/albums/{albumId}/{file}
+    // Book-linked album cover path under the owner's root.
     match /{userId}/albums/{albumId}/{fileName=**} {
       allow read: if true;
       allow create, update: if isAdmin() || (
-        isSignedIn() &&
-        canWriteManagedTargetAtOwnerPath(userId, albumId)
+        isSignedIn() && (
+          request.auth.uid == userId ||
+          (
+            request.auth.uid != userId &&
+            isBookOwnerPath(userId, albumId) &&
+            canManageBookMedia(albumId)
+          )
+        )
       );
       allow delete: if isAdmin();
     }
 
-    // Page media and album assets:
-    //   {uid}/{bookOrAlbumId}/{chapterId}/{pageId}/media/{image|video}/{file}
-    // Album-level assets use _album_/_album_ placeholders for chapter/page.
-    match /{userId}/{bookOrAlbumId}/{chapterId}/{pageId}/media/{mediaType}/{fileName=**} {
+    // Default simplified policy:
+    // any signed-in user can write only inside their own {userId}/** root.
+    match /{userId}/{allPaths=**} {
       allow read: if true;
       allow create, update: if isAdmin() || (
         isSignedIn() &&
-        canWriteManagedTargetAtOwnerPath(userId, bookOrAlbumId)
+        request.auth.uid == userId
       );
-      allow delete: if isAdmin();
-    }
-
-    // No other client-written Storage paths are currently supported.
-    match /{userId}/{allPaths=**} {
-      allow read: if true;
-      allow create, update: if isAdmin();
       allow delete: if isAdmin();
     }
   }

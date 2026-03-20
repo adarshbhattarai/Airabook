@@ -1,5 +1,5 @@
 const { FieldValue } = require('firebase-admin/firestore');
-const { extractTextFromHtml, generateEmbeddings } = require('../utils/embeddingsClient');
+const { extractTextFromHtml } = require('../utils/embeddingsClient');
 const { updateChapterPageSummary } = require('../utils/chapterUtils');
 const { assertAndIncrementCounter, resolveUserPlanLimits } = require('../utils/limits');
 
@@ -141,24 +141,12 @@ const createChapterPage = async ({ db, userId, bookId, chapterId, markdown }) =>
     const html = markdownToHtml(markdown || '');
     const plainText = extractTextFromHtml(html);
 
-    let embeddings = [];
-    let embeddingModel = null;
-    if (plainText) {
-      try {
-        embeddings = await generateEmbeddings(plainText, {
-          taskType: 'RETRIEVAL_DOCUMENT',
-        });
-        embeddingModel = 'text-embedding-004';
-      } catch (error) {
-        console.error('Failed to generate embeddings for AI page:', error);
-      }
-    }
-
     const pageData = {
       note: html,
       plainText: plainText,
-      embeddings: embeddings.length ? FieldValue.vector(embeddings) : null,
-      embeddingModel: embeddingModel,
+      embeddings: null,
+      embeddingModel: null,
+      embeddingStatus: plainText ? 'pending' : 'ready',
       media: [],
       order: newPageOrder,
       createdAt: FieldValue.serverTimestamp(),
@@ -167,7 +155,9 @@ const createChapterPage = async ({ db, userId, bookId, chapterId, markdown }) =>
     };
 
     const pageRef = await chapterRef.collection('pages').add(pageData);
-    await updateChapterPageSummary(db, bookId, chapterId, pageRef.id, plainText, newPageOrder, true);
+    await updateChapterPageSummary(db, bookId, chapterId, pageRef.id, plainText, newPageOrder, true, undefined, {
+      skipChapterSummary: true,
+    });
 
     return {
       id: pageRef.id,

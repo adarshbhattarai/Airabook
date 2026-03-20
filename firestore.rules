@@ -48,6 +48,27 @@ service cloud.firestore {
 
     // Books collection with public/private and co-author support
     match /books/{bookId} {
+      function isValidBookCreate() {
+        return request.auth != null &&
+          request.resource.data.ownerId == request.auth.uid &&
+          request.resource.data.members is map &&
+          request.resource.data.members.keys().hasOnly([request.auth.uid]) &&
+          request.resource.data.members[request.auth.uid] == "Owner" &&
+          (!('memberPermissions' in request.resource.data) ||
+            (request.resource.data.memberPermissions is map &&
+             request.resource.data.memberPermissions.keys().size() == 0)) &&
+          (!('isPublic' in request.resource.data) ||
+            request.resource.data.isPublic == false);
+      }
+
+      function isAllowedBookOwnerUpdate() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isPublic', 'updatedAt']) &&
+          request.resource.data.ownerId == resource.data.ownerId &&
+          request.resource.data.members == resource.data.members &&
+          request.resource.data.memberPermissions == resource.data.memberPermissions &&
+          request.resource.data.isPublic is bool;
+      }
+
       // Helper function to get book data
       function bookData() {
         return get(/databases/$(database)/documents/books/$(bookId)).data;
@@ -73,21 +94,14 @@ service cloud.firestore {
       // Read access: owner, co-authors, or public books
       allow read: if isAdminRequest() || (request.auth != null && hasAccess());
 
-      // Create access: authenticated users (book creation)
-      allow create: if isAdminRequest() || request.auth != null;
+      // Book creation is server-authoritative. The narrow self-create path exists
+      // only for safe local/testing flows and prevents forged owner/member data.
+      allow create: if isAdminRequest() || isValidBookCreate();
 
-      // Update access:
-      // - Owner: full access
-      // - Co-author: can update pages/chapters but not isPublic, members, or delete chapters
+      // Top-level book edits should go through callables, except the owner's
+      // direct publish toggle, which still updates isPublic from the client.
       allow update: if isAdminRequest() || (request.auth != null && (
-        (isOwner() &&
-         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['members', 'memberPermissions', 'ownerId'])) ||
-        (isCoAuthor() && 
-         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isPublic', 'members', 'memberPermissions', 'ownerId']) &&
-         request.resource.data.isPublic == resource.data.isPublic &&
-         request.resource.data.members == resource.data.members &&
-         request.resource.data.memberPermissions == resource.data.memberPermissions &&
-         request.resource.data.ownerId == resource.data.ownerId)
+        isOwner() && isAllowedBookOwnerUpdate()
       ));
 
       // Delete access: only owner
@@ -140,12 +154,10 @@ service cloud.firestore {
       // Album creation must go through backend callables for quota enforcement.
       allow create: if isAdminRequest();
 
-      allow update: if isAdminRequest() || (request.auth != null &&
-        resource.data.accessPermission.ownerId == request.auth.uid &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['accessPermission']));
+      // Album metadata and membership are server-authoritative.
+      allow update: if isAdminRequest();
 
-      allow delete: if isAdminRequest() || (request.auth != null &&
-        resource.data.accessPermission.ownerId == request.auth.uid);
+      allow delete: if isAdminRequest();
     }
   }
 }

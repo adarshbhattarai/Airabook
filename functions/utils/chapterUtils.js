@@ -31,6 +31,88 @@ async function generateCumulativeSummary(previousSummary, newPageContent, chapte
     }
 }
 
+function buildShortNote(plainText) {
+    return plainText
+        ? plainText.substring(0, 40) + (plainText.length > 40 ? '...' : '')
+        : 'New Page';
+}
+
+async function updatePageSummaryEntry(db, bookId, chapterId, pageId, plainText, order, isNew = false, pageName = undefined) {
+    const chapterRef = db.collection('books').doc(bookId).collection('chapters').doc(chapterId);
+    const chapterDoc = await chapterRef.get();
+
+    if (!chapterDoc.exists) {
+        console.warn('⚠️ Chapter document not found');
+        return;
+    }
+
+    const chapterData = chapterDoc.data();
+    const pagesSummary = chapterData.pagesSummary || [];
+    const shortNote = buildShortNote(plainText);
+    const normalizedPageName = pageName === undefined ? undefined : String(pageName || '').trim();
+
+    console.log(`📝 Short note generated: "${shortNote}"`);
+
+    if (isNew) {
+        const newPageSummary = {
+            pageId,
+            pageName: normalizedPageName || '',
+            shortNote,
+            order: order || '',
+        };
+
+        await chapterRef.update({
+            pagesSummary: FieldValue.arrayUnion(newPageSummary),
+            updatedAt: FieldValue.serverTimestamp(),
+        });
+        console.log('✅ Added new page summary');
+        return;
+    }
+
+    const updatedPagesSummary = pagesSummary.map((ps) =>
+        ps.pageId === pageId
+            ? {
+                ...ps,
+                shortNote,
+                ...(normalizedPageName !== undefined ? { pageName: normalizedPageName } : {}),
+                ...(order !== undefined && order !== null ? { order } : {}),
+            }
+            : ps
+    );
+
+    await chapterRef.update({
+        pagesSummary: updatedPagesSummary,
+        updatedAt: FieldValue.serverTimestamp(),
+    });
+    console.log('✅ Updated existing page summary');
+}
+
+async function refreshChapterSummary(db, bookId, chapterId, plainText) {
+    const chapterRef = db.collection('books').doc(bookId).collection('chapters').doc(chapterId);
+    const chapterDoc = await chapterRef.get();
+
+    if (!chapterDoc.exists) {
+        console.warn('⚠️ Chapter document not found for chapter summary refresh');
+        return;
+    }
+
+    const chapterData = chapterDoc.data();
+    const previousChapterSummary = chapterData.chapterSummary || '';
+    const chapterTitle = chapterData.title || '';
+
+    const newChapterSummary = await generateCumulativeSummary(
+        previousChapterSummary,
+        plainText,
+        chapterTitle
+    );
+
+    await chapterRef.update({
+        chapterSummary: newChapterSummary,
+        updatedAt: FieldValue.serverTimestamp(),
+    });
+    console.log('✅ Updated chapter summary');
+}
+
 /**
  * Updates the chapter's pagesSummary with the latest shortNote for a page.
  * Also generates and updates the cumulative chapter summary.
@@ -45,71 +127,14 @@ async function generateCumulativeSummary(previousSummary, newPageContent, chapte
  * @param {boolean} isNew - Whether this is a new page being created
  * @param {string} pageName - Optional user-defined page name
  */
-async function updateChapterPageSummary(db, bookId, chapterId, pageId, plainText, order, isNew = false, pageName = undefined) {
+async function updateChapterPageSummary(db, bookId, chapterId, pageId, plainText, order, isNew = false, pageName = undefined, options = {}) {
     console.log(`📝 updateChapterPageSummary: ${isNew ? 'Creating' : 'Updating'} summary for page ${pageId}`);
 
     try {
-        const chapterRef = db.collection('books').doc(bookId).collection('chapters').doc(chapterId);
-        const chapterDoc = await chapterRef.get();
-
-        if (!chapterDoc.exists) {
-            console.warn('⚠️ Chapter document not found');
-            return;
-        }
-
-        const chapterData = chapterDoc.data();
-        const pagesSummary = chapterData.pagesSummary || [];
-        const previousChapterSummary = chapterData.chapterSummary || '';
-        const chapterTitle = chapterData.title || '';
-
-        // Generate short note
-        const shortNote = plainText
-            ? plainText.substring(0, 40) + (plainText.length > 40 ? '...' : '')
-            : 'New Page';
-        const normalizedPageName = pageName === undefined ? undefined : String(pageName || '').trim();
-
-        console.log(`📝 Short note generated: "${shortNote}"`);
-
-        // Generate cumulative summary
-        const newChapterSummary = await generateCumulativeSummary(
-            previousChapterSummary,
-            plainText,
-            chapterTitle
-        );
-
-        if (isNew) {
-            // Append new page summary
-            const newPageSummary = {
-                pageId,
-                pageName: normalizedPageName || '',
-                shortNote,
-                order: order || '',
-            };
-
-            await chapterRef.update({
-                pagesSummary: FieldValue.arrayUnion(newPageSummary),
-                chapterSummary: newChapterSummary,
-                updatedAt: FieldValue.serverTimestamp(),
-            });
-            console.log('✅ Added new page summary and updated chapter summary');
-        } else {
-            // Update existing page summary
-            const updatedPagesSummary = pagesSummary.map(ps =>
-                ps.pageId === pageId
-                    ? {
-                        ...ps,
-                        shortNote,
-                        ...(normalizedPageName !== undefined ? { pageName: normalizedPageName } : {})
-                    }
-                    : ps
-            );
-
-            await chapterRef.update({
-                pagesSummary: updatedPagesSummary,
-                chapterSummary: newChapterSummary,
-                updatedAt: FieldValue.serverTimestamp(),
-            });
-            console.log('✅ Updated existing page summary and chapter summary');
+        const { skipChapterSummary = false } = options || {};
+        await updatePageSummaryEntry(db, bookId, chapterId, pageId, plainText, order, isNew, pageName);
+        if (!skipChapterSummary) {
+            await refreshChapterSummary(db, bookId, chapterId, plainText);
         }
     } catch (error) {
         console.error('❌ Error in updateChapterPageSummary:', error);
@@ -117,4 +142,9 @@ async function updateChapterPageSummary(db, bookId, chapterId, pageId, plainText
     }
 }
 
-module.exports = { updateChapterPageSummary };
+module.exports = {
+    buildShortNote,
+    updatePageSummaryEntry,
+    refreshChapterSummary,
+    updateChapterPageSummary,
+};
