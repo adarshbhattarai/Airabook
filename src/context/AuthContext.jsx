@@ -88,6 +88,11 @@ export const AuthProvider = ({ children }) => {
           console.warn('syncUserAuthFlags failed:', error?.message || error);
         });
 
+        const ensureCurrentUserCredits = httpsCallable(functions, 'ensureCurrentUserCredits');
+        ensureCurrentUserCredits().catch((error) => {
+          console.warn('ensureCurrentUserCredits failed:', error?.message || error);
+        });
+
         const userRef = doc(firestore, 'users', user.uid);
         console.log('🔗 Setting up snapshot listener for:', userRef.path);
 

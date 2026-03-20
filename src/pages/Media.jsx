@@ -13,6 +13,7 @@ import AppLoader from '@/components/app/AppLoader';
 import { httpsCallable } from 'firebase/functions';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { auth, functions, storage } from '@/lib/firebase';
+import { ensureStorageUploadAuth, getStorageUploadDebugContext, logStorageUploadFailure } from '@/lib/storageUpload';
 
 /**
  * Convert storage URL to emulator format if running in emulator mode
@@ -182,8 +183,24 @@ const AssetRegistry = () => {
         // Or just use the user's root covers folder
         const storagePath = `${user.uid}/covers/${Date.now()}_${newAlbumCover.name}`;
         const storageRef = ref(storage, storagePath);
-        const uploadTask = await uploadBytesResumable(storageRef, newAlbumCover);
-        coverImageUrl = await getDownloadURL(uploadTask.ref);
+        try {
+          await ensureStorageUploadAuth({
+            storagePath,
+            uploadSource: 'create_album_cover',
+          });
+          const uploadTask = await uploadBytesResumable(storageRef, newAlbumCover);
+          coverImageUrl = await getDownloadURL(uploadTask.ref);
+        } catch (error) {
+          logStorageUploadFailure({
+            error,
+            storagePath,
+            file: newAlbumCover,
+            uploadSource: 'create_album_cover',
+            userUid: user?.uid || '',
+            extra: await getStorageUploadDebugContext(),
+          });
+          throw error;
+        }
       }
 
       const createAlbumFn = httpsCallable(functions, 'createAlbum');

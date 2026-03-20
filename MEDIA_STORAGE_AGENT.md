@@ -44,7 +44,25 @@ Examples:
 - Page upload: `{uid}/{bookId}/{chapterId}/{pageId}/media/image/{file}`
 - Album-level upload: `{uid}/{albumId}/_album_/_album_/media/image/{file}`
 
+Other direct client upload paths in the UI today:
+
+- Profile avatar: `{uid}/avatars/{file}`
+- Book cover: `{uid}/covers/{file}`
+- New standalone album cover before album creation: `{uid}/covers/{file}`
+- Existing album cover: `{uid}/albums/{albumId}/{file}`
+
 The `_album_/_album_` placeholders mean "this belongs to the album registry, not a specific page".
+
+For shared books, the first path segment should still be the **owning user's UID**, not the acting co-author's UID.
+That means:
+
+- owner upload to shared book media: `{ownerUid}/{bookId}/{chapterId}/{pageId}/media/...`
+- co-author upload with `canManageMedia`: also `{ownerUid}/{bookId}/{chapterId}/{pageId}/media/...`
+- linked book album media: `{ownerUid}/{bookId}/_album_/_album_/media/...`
+
+Storage rules should validate both:
+- whether the acting user is allowed to manage media for the target book/album
+- whether the path root matches the target owner's UID
 
 If you change this path format, you must update:
 - `storage.rules`
@@ -130,6 +148,15 @@ Quota changes should happen in:
 - `onMediaUpload`
 - `onMediaDelete`
 - controlled admin cleanup helpers
+
+Important product policy:
+- `storageBytesUsed` is for tracking and quota visibility
+- uploads should increase it
+- deletes should decrease it
+- plain stored bytes should **not** deduct credits on a daily schedule
+
+If billing logic is touched, also open:
+- `/Users/adeshbhattarai/code/Airabook/AI_CREDIT_STORAGE_POLICY.md`
 
 ## Important Current Caveat
 

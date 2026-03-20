@@ -17,6 +17,12 @@ import BlockEditor from '@/components/BlockEditor';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import { stripHtml, convertToEmulatorURL, textToHtml } from '@/lib/pageUtils';
 import { validatePageContentLimits } from '@/lib/pageContentValidation';
+import {
+  ensureStorageUploadAuth,
+  getStorageUploadDebugContext,
+  logStorageUploadFailure,
+  resolveStorageUploadAuthorization,
+} from '@/lib/storageUpload';
 import GenerateImagePrompt from '@/components/PageEditor/GenerateImagePrompt';
 import TemplatePage from '@/components/PageEditor/TemplatePage';
 import { pageTemplates } from '@/constants/pageTemplates';
@@ -699,7 +705,12 @@ const PageEditor = forwardRef(({
     }
     const mediaType = isVideo ? 'video' : 'image';
     const uniqueFileName = `${Date.now()}_${file.name}`;
-    const storagePath = `${user.uid}/${bookId}/${chapterId}/${page.id}/media/${mediaType}/${uniqueFileName}`;
+    const authTrace = await resolveStorageUploadAuthorization({
+      targetId: bookId,
+      actorUid: user?.uid || '',
+    });
+    const storageOwnerUid = authTrace.storageOwnerUid || user.uid;
+    const storagePath = `${storageOwnerUid}/${bookId}/${chapterId}/${page.id}/media/${mediaType}/${uniqueFileName}`;
     const storageRef = firebaseRef(storage, storagePath);
 
     const metadata = {
@@ -710,6 +721,11 @@ const PageEditor = forwardRef(({
       },
     };
 
+    await ensureStorageUploadAuth({
+      storagePath,
+      uploadSource: 'page_editor_template_media',
+    });
+
     const uploadTask = uploadBytesResumable(storageRef, file, metadata);
 
     return await new Promise((resolve, reject) => {
@@ -719,7 +735,21 @@ const PageEditor = forwardRef(({
           const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
           setUploadProgress((prev) => ({ ...prev, [file.name]: progress }));
         },
-        (error) => {
+        async (error) => {
+          logStorageUploadFailure({
+            error,
+            storagePath,
+            file,
+            uploadSource: 'page_editor_template_media',
+            userUid: user?.uid || '',
+            extra: {
+              bookId,
+              chapterId,
+              pageId: page?.id || '',
+              authTrace,
+              ...(await getStorageUploadDebugContext()),
+            },
+          });
           setUploadProgress((prev) => {
             const next = { ...prev };
             delete next[file.name];
@@ -1309,7 +1339,7 @@ const PageEditor = forwardRef(({
     }
   };
 
-  const handleUpload = (file) => {
+  const handleUpload = async (file) => {
     if (readOnly) return;
     if (!file || !user) return;
     if (!ensureMediaUploadAllowed()) return;
@@ -1329,7 +1359,12 @@ const PageEditor = forwardRef(({
 
     const mediaType = isVideo ? 'video' : 'image';
     const uniqueFileName = `${Date.now()}_${file.name}`;
-    const storagePath = `${user.uid}/${bookId}/${chapterId}/${page.id}/media/${mediaType}/${uniqueFileName}`;
+    const authTrace = await resolveStorageUploadAuthorization({
+      targetId: bookId,
+      actorUid: user?.uid || '',
+    });
+    const storageOwnerUid = authTrace.storageOwnerUid || user.uid;
+    const storagePath = `${storageOwnerUid}/${bookId}/${chapterId}/${page.id}/media/${mediaType}/${uniqueFileName}`;
     const storageRef = firebaseRef(storage, storagePath);
 
     const metadata = {
@@ -1340,6 +1375,30 @@ const PageEditor = forwardRef(({
       }
     };
 
+    try {
+      await ensureStorageUploadAuth({
+        storagePath,
+        uploadSource: 'page_editor_media',
+      });
+    } catch (error) {
+      logStorageUploadFailure({
+        error,
+        storagePath,
+        file,
+        uploadSource: 'page_editor_media',
+        userUid: user?.uid || '',
+        extra: {
+          bookId,
+          chapterId,
+          pageId: page?.id || '',
+          authTrace,
+          ...(await getStorageUploadDebugContext()),
+        },
+      });
+      toast({ title: 'Upload Error', description: error.message, variant: 'destructive' });
+      return;
+    }
+
     const uploadTask = uploadBytesResumable(storageRef, file, metadata);
 
     uploadTask.on('state_changed',
@@ -1347,7 +1406,21 @@ const PageEditor = forwardRef(({
         const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
         setUploadProgress(prev => ({ ...prev, [file.name]: progress }));
       },
-      (error) => {
+      async (error) => {
+        logStorageUploadFailure({
+          error,
+          storagePath,
+          file,
+          uploadSource: 'page_editor_media',
+          userUid: user?.uid || '',
+          extra: {
+            bookId,
+            chapterId,
+            pageId: page?.id || '',
+            authTrace,
+            ...(await getStorageUploadDebugContext()),
+          },
+        });
         toast({ title: 'Upload Error', description: error.message, variant: 'destructive' });
         setUploadProgress(prev => {
           const next = { ...prev };

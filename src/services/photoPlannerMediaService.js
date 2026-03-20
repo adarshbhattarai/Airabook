@@ -2,6 +2,12 @@ import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { doc, getDoc } from 'firebase/firestore';
 import { firestore, storage } from '@/lib/firebase';
 import { convertToEmulatorURL } from '@/lib/pageUtils';
+import {
+  ensureStorageUploadAuth,
+  getStorageUploadDebugContext,
+  logStorageUploadFailure,
+  resolveStorageUploadAuthorization,
+} from '@/lib/storageUpload';
 
 const getMediaType = (file) => {
   if (!file?.type) return null;
@@ -83,11 +89,16 @@ const uploadPlannerMediaFile = async ({ user, bookId, selectedAlbumId, file, onP
   }
 
   const targetAlbumId = await resolvePlannerUploadTarget({ user, bookId, selectedAlbumId });
+  const authTrace = await resolveStorageUploadAuthorization({
+    targetId: targetAlbumId,
+    actorUid: user?.uid || '',
+  });
+  const storageOwnerUid = authTrace.storageOwnerUid || user.uid;
   const uniqueFileName = `${Date.now()}_${file.name}`;
   // Align planner uploads with book album media conventions.
   // Path format expected by mediaProcessor: {uid}/{bookId}/{chapterId}/{pageId}/media/{type}/{filename}
   // For album-level uploads, use _album_ placeholders for chapter/page.
-  const storagePath = `${user.uid}/${targetAlbumId}/_album_/_album_/media/${mediaType}/${uniqueFileName}`;
+  const storagePath = `${storageOwnerUid}/${targetAlbumId}/_album_/_album_/media/${mediaType}/${uniqueFileName}`;
   const storageRef = ref(storage, storagePath);
 
   const metadata = {
@@ -100,6 +111,11 @@ const uploadPlannerMediaFile = async ({ user, bookId, selectedAlbumId, file, onP
     },
   };
 
+  await ensureStorageUploadAuth({
+    storagePath,
+    uploadSource: 'photo_planner_media',
+  });
+
   const uploadTask = uploadBytesResumable(storageRef, file, metadata);
 
   return await new Promise((resolve, reject) => {
@@ -111,7 +127,23 @@ const uploadPlannerMediaFile = async ({ user, bookId, selectedAlbumId, file, onP
           : 0;
         onProgress?.(progress);
       },
-      (error) => reject(error),
+      async (error) => {
+        logStorageUploadFailure({
+          error,
+          storagePath,
+          file,
+          uploadSource: 'photo_planner_media',
+          userUid: user?.uid || '',
+          extra: {
+            albumId: targetAlbumId,
+            bookId,
+            selectedAlbumId: selectedAlbumId || '',
+            authTrace,
+            ...(await getStorageUploadDebugContext()),
+          },
+        });
+        reject(error);
+      },
       async () => {
         try {
           const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);

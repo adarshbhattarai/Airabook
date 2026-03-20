@@ -20,7 +20,22 @@ Open this before changing:
   - `enterprise` is manual/custom
 - One-time support still exists, but it is separate from subscriptions and separate from credit packs.
 - Voice-enabled writing and speech translation are available on `creator+`, but only while billing is active and credits are above the reserve threshold.
-- Storage is still tracked in raw bytes with `quotaCounters.storageBytesUsed`, but economic charging is credit-based through the daily maintenance job.
+- Storage is tracked in raw bytes with `quotaCounters.storageBytesUsed` for quota visibility and reporting.
+
+## Intended Policy Override
+
+Open this as the policy source of truth:
+- `/Users/adeshbhattarai/code/Airabook/AI_CREDIT_STORAGE_POLICY.md`
+
+Important intended rules:
+- charge credits for AI usage
+- do not charge credits for plain file storage
+- keep `storageBytesUsed` updated on upload/delete
+- do not deduct daily storage retention credits
+- image generation should be treated as a billable AI action at about `24` credits per generated image
+- monthly credit grants should be lazy + idempotent for the signed-in user, not driven by a scan-all-users cron
+
+If implementation currently differs, treat it as drift and bring the code back to this policy.
 
 ## Source Of Truth
 - Plan catalog and entitlements:
@@ -36,8 +51,9 @@ Open this before changing:
   - `/Users/adeshbhattarai/code/Airabook/functions/payments/createBillingPortalSession.js`
   - `/Users/adeshbhattarai/code/Airabook/functions/payments/stripeWebhook.js`
   - `/Users/adeshbhattarai/code/Airabook/functions/payments/refreshBillingState.js`
-- Daily storage credit charging and monthly grant maintenance:
+- Billing refresh and legacy scheduled maintenance hook:
   - `/Users/adeshbhattarai/code/Airabook/functions/payments/processCreditMaintenance.js`
+  - `/Users/adeshbhattarai/code/Airabook/functions/payments/ensureCurrentUserCredits.js`
 - Frontend plan catalog and gating:
   - `/Users/adeshbhattarai/code/Airabook/src/lib/billingCatalog.js`
   - `/Users/adeshbhattarai/code/Airabook/src/lib/billing.js`
@@ -97,9 +113,10 @@ Stripe metadata conventions:
 ## Credit Charging Rules
 - AI text/genkit/function actions charge through `consumeCredits(...)`.
 - If true provider token usage is not available, fallback is token estimation from text length.
-- Storage is charged daily as retention through the scheduled maintenance function, not only at upload time.
+- Plain storage uploads/deletes should not deduct credits by themselves.
 - Monthly included credits are granted per cycle through the wallet logic, not by UI assumptions.
 - Rollover is capped by plan.
+- Preferred grant path is lazy refresh for the authenticated user during app/bootstrap or before spend.
 
 Current public tier bundles:
 - `free`: `150` monthly credits, no rollover

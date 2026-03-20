@@ -10,6 +10,7 @@ import { functions, storage } from '@/lib/firebase';
 import { defaultAvatars } from '@/constants/avatars';
 import { PROFILE_LIMITS } from '@/constants/profileLimits';
 import { getBillingPlanLabel, getCreditBalance, getIncludedCreditsMonthly, hasVoiceAssistantAccess, isBillingRecoverable, normalizePlanState } from '@/lib/billing';
+import { ensureStorageUploadAuth, getStorageUploadDebugContext, logStorageUploadFailure } from '@/lib/storageUpload';
 
 const SPEAKING_LANGUAGE_OPTIONS = [
   { value: 'English', label: 'English' },
@@ -93,13 +94,17 @@ const ProfileSettings = () => {
   const handleAvatarFile = async (event) => {
     const file = event.target.files?.[0];
     if (!file || !user) return;
+    const timestamp = Date.now();
+    const storagePath = `${user.uid}/avatars/${timestamp}_${file.name}`;
 
     try {
       setIsUploading(true);
       // Create a reference to 'userId/avatars/timestamp_filename'
-      const timestamp = Date.now();
-      const storagePath = `${user.uid}/avatars/${timestamp}_${file.name}`;
       const storageRef = ref(storage, storagePath);
+      await ensureStorageUploadAuth({
+        storagePath,
+        uploadSource: 'profile_avatar',
+      });
 
       // Upload the file
       const snapshot = await uploadBytes(storageRef, file);
@@ -116,6 +121,14 @@ const ProfileSettings = () => {
         description: 'Your new avatar is ready to be saved.',
       });
     } catch (error) {
+      logStorageUploadFailure({
+        error,
+        storagePath,
+        file,
+        uploadSource: 'profile_avatar',
+        userUid: user?.uid || '',
+        extra: await getStorageUploadDebugContext(),
+      });
       console.error("Error uploading avatar:", error);
       toast({
         title: 'Upload failed',
