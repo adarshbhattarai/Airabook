@@ -98,6 +98,10 @@ Scheduled maintenance should **not**:
 - deduct credits only because `storageBytesUsed > 0`
 - refresh monthly credits for every user in the system
 
+Current preferred implementation:
+- do not export an active scheduler for monthly credit refresh
+- refresh only for the authenticated user through a callable/bootstrap path
+
 ## Usage Event Policy
 
 Usage events should explain why credits were deducted.
