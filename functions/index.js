@@ -145,7 +145,6 @@ const { createCreditPackCheckoutSession } = require("./payments/createCreditPack
 const { getUsageSummary } = require("./payments/getUsageSummary");
 const { ensureCurrentUserCredits } = require("./payments/ensureCurrentUserCredits");
 const { refreshBillingState } = require("./payments/refreshBillingState");
-const { processCreditMaintenance } = require("./payments/processCreditMaintenance");
 const { stripeWebhook } = require("./payments/stripeWebhook");
 const { createPage } = require("./createPage");
 const { updatePage } = require("./updatePage");
@@ -189,7 +188,6 @@ exports.createBillingPortalSession = createBillingPortalSession;
 exports.getUsageSummary = getUsageSummary;
 exports.ensureCurrentUserCredits = ensureCurrentUserCredits;
 exports.refreshBillingState = refreshBillingState;
-exports.processCreditMaintenance = processCreditMaintenance;
 exports.stripeWebhook = stripeWebhook;
 
 exports.createPage = createPage;

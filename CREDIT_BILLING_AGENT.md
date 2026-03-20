@@ -51,9 +51,9 @@ If implementation currently differs, treat it as drift and bring the code back t
   - `/Users/adeshbhattarai/code/Airabook/functions/payments/createBillingPortalSession.js`
   - `/Users/adeshbhattarai/code/Airabook/functions/payments/stripeWebhook.js`
   - `/Users/adeshbhattarai/code/Airabook/functions/payments/refreshBillingState.js`
-- Billing refresh and legacy scheduled maintenance hook:
-  - `/Users/adeshbhattarai/code/Airabook/functions/payments/processCreditMaintenance.js`
+- Billing refresh and lazy monthly credit grant hook:
   - `/Users/adeshbhattarai/code/Airabook/functions/payments/ensureCurrentUserCredits.js`
+  - `/Users/adeshbhattarai/code/Airabook/functions/payments/refreshBillingState.js`
 - Frontend plan catalog and gating:
   - `/Users/adeshbhattarai/code/Airabook/src/lib/billingCatalog.js`
   - `/Users/adeshbhattarai/code/Airabook/src/lib/billing.js`
@@ -117,6 +117,7 @@ Stripe metadata conventions:
 - Monthly included credits are granted per cycle through the wallet logic, not by UI assumptions.
 - Rollover is capped by plan.
 - Preferred grant path is lazy refresh for the authenticated user during app/bootstrap or before spend.
+- `processCreditMaintenance` should not be exported/deployed as an active scheduler while this policy is in effect.
 
 Current public tier bundles:
 - `free`: `150` monthly credits, no rollover
