@@ -1,12 +1,12 @@
 // functions/updatePage.js
-// Cloud Function to update a page and regenerate embeddings
+// Cloud Function to update a page quickly; embeddings are regenerated asynchronously.
 
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
 const admin = require('firebase-admin');
 const FieldValue = require('firebase-admin/firestore').FieldValue;
 
-const { extractTextFromHtml, generateEmbeddings } = require('./utils/embeddingsClient');
+const { extractTextFromHtml } = require('./utils/embeddingsClient');
 const { updateChapterPageSummary } = require('./utils/chapterUtils');
 const { validatePageContentLimits } = require('./utils/pageContentValidation');
 
@@ -73,36 +73,18 @@ exports.updatePage = onCall(
             // Extract plain text
             const plainText = extractTextFromHtml(note || '');
 
-            // Regenerate embeddings if text changed
-            let embeddings = pageDoc.data().embeddings || [];
-            let embeddingModel = pageDoc.data().embeddingModel || null;
-
-            if (plainText && plainText.length > 0) {
-                try {
-                    embeddings = await generateEmbeddings(plainText, {
-                        taskType: 'RETRIEVAL_DOCUMENT'
-                    });
-                    embeddingModel = 'text-embedding-004';
-                    logger.log(`✅ Regenerated embeddings: ${embeddings.length} dimensions`);
-                } catch (embError) {
-                    logger.error('⚠️ Failed to regenerate embeddings:', embError);
-                    // Keep existing embeddings
-                }
-            } else {
-                // No text content, clear embeddings
-                embeddings = [];
-                embeddingModel = null;
-            }
-
             // Update page
             const updateData = {
                 note: note || '',
                 plainText,
-                embeddings: (embeddings && embeddings.length > 0) ? FieldValue.vector(embeddings) : null,
-                embeddingModel,
+                embeddingStatus: plainText ? 'pending' : 'ready',
                 media: media !== undefined ? media : pageDoc.data().media,
                 updatedAt: FieldValue.serverTimestamp(),
             };
+            if (!plainText) {
+                updateData.embeddings = null;
+                updateData.embeddingModel = null;
+            }
             if (type) updateData.type = type;
             if (templateVersion) updateData.templateVersion = templateVersion;
             if (content !== undefined) updateData.content = content;
@@ -115,7 +97,17 @@ exports.updatePage = onCall(
             logger.log(`📝 About to update chapter summary. plainText: "${plainText}"`);
 
             // Update chapter's pagesSummary using helper
-            await updateChapterPageSummary(db, bookId, chapterId, pageId, plainText, null, false, pageName);
+            await updateChapterPageSummary(
+                db,
+                bookId,
+                chapterId,
+                pageId,
+                plainText,
+                pageDoc.data().order,
+                false,
+                pageName,
+                { skipChapterSummary: true }
+            );
 
             logger.log(`✅ Chapter summary update completed`);
 

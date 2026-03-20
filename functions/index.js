@@ -148,6 +148,7 @@ const { refreshBillingState } = require("./payments/refreshBillingState");
 const { stripeWebhook } = require("./payments/stripeWebhook");
 const { createPage } = require("./createPage");
 const { updatePage } = require("./updatePage");
+const { syncPageDerivedData } = require("./syncPageDerivedData");
 const { updateAlbum } = require("./updateAlbum");
 const { airabookaiStream } = require("./airabookaiStream");
 const { onBookDeleted, onPageDeleted, onChapterDeleted } = require("./usageTriggers");
@@ -192,6 +193,7 @@ exports.stripeWebhook = stripeWebhook;
 
 exports.createPage = createPage;
 exports.updatePage = updatePage;
+exports.syncPageDerivedData = syncPageDerivedData;
 exports.generateImage = generateImage;
 exports.queryBookFlow = queryBookFlow;
 exports.generateChapterSuggestions = generateChapterSuggestions;
