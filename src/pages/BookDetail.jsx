@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import {
-  Trash2, PlusCircle, ChevronRight, ChevronDown, ArrowLeft, GripVertical, Sparkles, Globe, Users, UserPlus, X, Edit, Eye, Loader2, Clapperboard
+  Trash2, PlusCircle, ChevronRight, ChevronDown, ArrowLeft, GripVertical, Sparkles, Globe, Users, UserPlus, X, Edit, Eye, Loader2
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
@@ -1830,8 +1830,7 @@ const BookDetail = () => {
   const selectedDraft = selectedPageId ? pageDrafts[selectedPageId] : undefined;
   const isSelectedPageDirty = !!(selectedPageId && selectedPage && selectedDraft != null);
   const currentVideoPageId = activePageId || selectedPageId || '';
-  const currentVideoPage = currentVideoPageId ? pages.find((page) => page.id === currentVideoPageId) || null : null;
-  const canCreateVideo = !isForcedReadRoute && !!selectedChapterId && !!currentVideoPage && (isOwner || collaborationPermissions.canManageMedia);
+  const canCreateVideo = !isForcedReadRoute && !!selectedChapterId && (isOwner || collaborationPermissions.canManageMedia);
 
   const onDraftChange = useCallback((pageId, nextNote) => {
     setPageDrafts(prev => {
@@ -1882,8 +1881,12 @@ const BookDetail = () => {
     }
   }, [bookId, selectedChapterId, selectedPageId, pages, onDraftChange, toast]);
 
-  const handleCreateVideo = useCallback(async () => {
-    if (!selectedChapterId || !currentVideoPageId || !currentVideoPage) {
+  const handleCreateVideo = useCallback(async ({ pageId, instruction } = {}) => {
+    const targetPageId = pageId || currentVideoPageId || '';
+    const targetPage = targetPageId ? pages.find((page) => page.id === targetPageId) || null : null;
+    const promptText = typeof instruction === 'string' ? instruction.trim() : '';
+
+    if (!selectedChapterId || !targetPageId || !targetPage) {
       toast({
         title: 'Select a page first',
         description: 'Open the page you want to turn into a clip, then try again.',
@@ -1892,7 +1895,7 @@ const BookDetail = () => {
       return;
     }
 
-    if (currentVideoPageId.startsWith('temp_')) {
+    if (targetPageId.startsWith('temp_')) {
       toast({
         title: 'Save this page first',
         description: 'New pages need to be saved once before their video clip can be generated.',
@@ -1903,20 +1906,23 @@ const BookDetail = () => {
 
     setCreatingVideoJob(true);
     try {
-      if (pageRefs.current?.[currentVideoPageId]?.save) {
-        await pageRefs.current[currentVideoPageId].save({ silent: true });
+      if (pageRefs.current?.[targetPageId]?.save) {
+        const didSave = await pageRefs.current[targetPageId].save({ silent: true });
+        if (didSave === false) {
+          throw new Error('Please fix the page content and save it before generating a clip.');
+        }
       }
 
       const createdJob = await createPageClip({
         bookId,
         chapterId: selectedChapterId,
-        pageId: currentVideoPageId,
-        threadId: `movies-${bookId}-${selectedChapterId}-${currentVideoPageId}`,
-        instruction: `Create a silent page clip for "${currentVideoPage?.shortNote || currentVideoPage?.note || 'this page'}".`,
+        pageId: targetPageId,
+        threadId: `movies-${bookId}-${selectedChapterId}-${targetPageId}`,
+        instruction: promptText || `Create a silent page clip for "${targetPage?.shortNote || stripHtml(targetPage?.note || '') || 'this page'}".`,
       });
 
       navigate(
-        `/movies?bookId=${encodeURIComponent(bookId)}&chapterId=${encodeURIComponent(selectedChapterId)}&pageId=${encodeURIComponent(currentVideoPageId)}&jobId=${encodeURIComponent(createdJob.jobId)}`,
+        `/movies?bookId=${encodeURIComponent(bookId)}&chapterId=${encodeURIComponent(selectedChapterId)}&pageId=${encodeURIComponent(targetPageId)}&jobId=${encodeURIComponent(createdJob.jobId)}`,
       );
       toast({
         title: 'Page clip created',
@@ -1932,7 +1938,7 @@ const BookDetail = () => {
     } finally {
       setCreatingVideoJob(false);
     }
-  }, [bookId, currentVideoPage, currentVideoPageId, navigate, selectedChapterId, toast]);
+  }, [bookId, currentVideoPageId, navigate, pages, selectedChapterId, toast]);
 
   const requestSelectPage = useCallback(async (chapterId, pageId) => {
     if (chapterId === selectedChapterId && pageId === selectedPageId && pageId === activePageId) {
@@ -2638,18 +2644,6 @@ const BookDetail = () => {
 
             {!isForcedReadRoute && canEdit && (
               <div className="flex items-center gap-2">
-                {canCreateVideo && (
-                  <Button
-                    variant="outline"
-                    onClick={handleCreateVideo}
-                    disabled={creatingVideoJob}
-                    className="flex items-center gap-2 h-8 text-xs"
-                    data-testid="book-detail-create-video"
-                  >
-                    {creatingVideoJob ? <Loader2 className="h-3 w-3 animate-spin" /> : <Clapperboard className="h-3 w-3" />}
-                    Create video
-                  </Button>
-                )}
                 <Button
                   variant="outline"
                   onClick={() => navigate(`/book/${bookId}/view`)}
@@ -3091,12 +3085,15 @@ const BookDetail = () => {
                                   onFocus={handlePageFocus}
                                   onReplacePageId={handleReplacePageId}
                                   onRequestPageDelete={(page, pageIndex) => openDeleteModal('page', { ...page, chapterId: selectedChapterId, pageId: page.id, pageIndex })}
+                                  onCreateVideo={handleCreateVideo}
                                   pages={pages}
                                   layoutMode={book?.layoutMode}
                                   pageAlign={pageAlign}
                                   standardPageHeightPx={standardPageHeightPx}
                                   readOnly={isForcedReadRoute || !canEdit}
                                   canUploadMedia={isOwner || collaborationPermissions.canManageMedia}
+                                  canCreateVideo={canCreateVideo}
+                                  creatingVideoJob={creatingVideoJob}
                                 />
                               </div>
                             ))}
