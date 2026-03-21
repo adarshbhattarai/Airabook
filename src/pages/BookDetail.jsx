@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import {
-  Trash2, PlusCircle, ChevronRight, ChevronDown, ArrowLeft, GripVertical, Sparkles, Globe, Users, UserPlus, X, Edit, Eye, Loader2
+  Trash2, PlusCircle, ChevronRight, ChevronDown, ArrowLeft, GripVertical, Sparkles, Globe, Users, UserPlus, X, Edit, Eye, Loader2, Clapperboard
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
@@ -38,6 +38,7 @@ import {
 } from '@/lib/pageUtils';
 import { pageTemplates } from '@/constants/pageTemplates';
 import { collabApi, getCallableErrorMessage } from '@/services/collabApi';
+import { createPageClip } from '@/services/videoJobsService';
 
 // react-beautiful-dnd is not fully StrictMode-safe in React 18 dev.
 // This delays droppable mounting to avoid registry invariant errors.
@@ -117,6 +118,7 @@ const BookDetail = () => {
   const [chatPanelSeed, setChatPanelSeed] = useState(null);
   const [photoPlannerOpen, setPhotoPlannerOpen] = useState(false);
   const [photoPlannerSeed, setPhotoPlannerSeed] = useState(null);
+  const [creatingVideoJob, setCreatingVideoJob] = useState(false);
   const plannerSeedHandledRef = useRef(false);
   const isForcedReadRoute = location.pathname.endsWith('/view');
   const [viewMode, setViewMode] = useState(() => (isForcedReadRoute ? 'pages' : 'chapter')); // 'chapter' or 'pages'
@@ -1827,6 +1829,9 @@ const BookDetail = () => {
   const selectedPage = selectedPageId ? pages.find(p => p.id === selectedPageId) : null;
   const selectedDraft = selectedPageId ? pageDrafts[selectedPageId] : undefined;
   const isSelectedPageDirty = !!(selectedPageId && selectedPage && selectedDraft != null);
+  const currentVideoPageId = activePageId || selectedPageId || '';
+  const currentVideoPage = currentVideoPageId ? pages.find((page) => page.id === currentVideoPageId) || null : null;
+  const canCreateVideo = !isForcedReadRoute && !!selectedChapterId && !!currentVideoPage && (isOwner || collaborationPermissions.canManageMedia);
 
   const onDraftChange = useCallback((pageId, nextNote) => {
     setPageDrafts(prev => {
@@ -1876,6 +1881,58 @@ const BookDetail = () => {
       throw e;
     }
   }, [bookId, selectedChapterId, selectedPageId, pages, onDraftChange, toast]);
+
+  const handleCreateVideo = useCallback(async () => {
+    if (!selectedChapterId || !currentVideoPageId || !currentVideoPage) {
+      toast({
+        title: 'Select a page first',
+        description: 'Open the page you want to turn into a clip, then try again.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (currentVideoPageId.startsWith('temp_')) {
+      toast({
+        title: 'Save this page first',
+        description: 'New pages need to be saved once before their video clip can be generated.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setCreatingVideoJob(true);
+    try {
+      if (pageRefs.current?.[currentVideoPageId]?.save) {
+        await pageRefs.current[currentVideoPageId].save({ silent: true });
+      }
+
+      const createdJob = await createPageClip({
+        bookId,
+        chapterId: selectedChapterId,
+        pageId: currentVideoPageId,
+        threadId: `movies-${bookId}-${selectedChapterId}-${currentVideoPageId}`,
+        instruction: `Create a silent page clip for "${currentVideoPage?.shortNote || currentVideoPage?.note || 'this page'}".`,
+      });
+
+      navigate(
+        `/movies?bookId=${encodeURIComponent(bookId)}&chapterId=${encodeURIComponent(selectedChapterId)}&pageId=${encodeURIComponent(currentVideoPageId)}&jobId=${encodeURIComponent(createdJob.jobId)}`,
+      );
+      toast({
+        title: 'Page clip created',
+        description: 'The new video draft is ready in Movies for review and render.',
+      });
+    } catch (error) {
+      console.error('Failed to create page clip:', error);
+      toast({
+        title: 'Could not create page clip',
+        description: error.message || 'The page video workflow could not start right now.',
+        variant: 'destructive',
+      });
+    } finally {
+      setCreatingVideoJob(false);
+    }
+  }, [bookId, currentVideoPage, currentVideoPageId, navigate, selectedChapterId, toast]);
 
   const requestSelectPage = useCallback(async (chapterId, pageId) => {
     if (chapterId === selectedChapterId && pageId === selectedPageId && pageId === activePageId) {
@@ -2581,6 +2638,18 @@ const BookDetail = () => {
 
             {!isForcedReadRoute && canEdit && (
               <div className="flex items-center gap-2">
+                {canCreateVideo && (
+                  <Button
+                    variant="outline"
+                    onClick={handleCreateVideo}
+                    disabled={creatingVideoJob}
+                    className="flex items-center gap-2 h-8 text-xs"
+                    data-testid="book-detail-create-video"
+                  >
+                    {creatingVideoJob ? <Loader2 className="h-3 w-3 animate-spin" /> : <Clapperboard className="h-3 w-3" />}
+                    Create video
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   onClick={() => navigate(`/book/${bookId}/view`)}
