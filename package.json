@@ -33,6 +33,8 @@
     "emulators:with-data": "node scripts/start-with-data.js",
     "seed:data": "node functions/seedData.js",
     "test:auth": "cd functions && node test-auth.cjs",
+    "test:e2e": "npx playwright test",
+    "test:e2e:movies": "npx playwright test e2e/movies.spec.mjs",
     "create:emulator-user": "cd functions && node create-emulator-user.cjs",
     "stripe:setup": "bash scripts/setup-stripe-webhook.sh",
     "stripe:update-secret": "bash scripts/update-stripe-secret.sh"
