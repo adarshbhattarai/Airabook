@@ -34,6 +34,18 @@ export const SERVICE_ENDPOINTS = {
       // Conversation detail endpoint used when loading an existing thread from history
       conversationById:
         import.meta.env.VITE_SPRING_CONVERSATION_BY_ID_ENDPOINT || 'api/v1/conversations/{conversationId}',
+      videoPageClipsCreate:
+        import.meta.env.VITE_SPRING_VIDEO_PAGE_CLIPS_CREATE_ENDPOINT || 'api/v1/videos/page-clips',
+      videoPageClipsRevise:
+        import.meta.env.VITE_SPRING_VIDEO_PAGE_CLIPS_REVISE_ENDPOINT || 'api/v1/videos/page-clips/{jobId}/revise',
+      videoPageClipsRender:
+        import.meta.env.VITE_SPRING_VIDEO_PAGE_CLIPS_RENDER_ENDPOINT || 'api/v1/videos/page-clips/{jobId}/render',
+      videoPageClipsById:
+        import.meta.env.VITE_SPRING_VIDEO_PAGE_CLIPS_BY_ID_ENDPOINT || 'api/v1/videos/page-clips/{jobId}',
+      videoPageClipsStream:
+        import.meta.env.VITE_SPRING_VIDEO_PAGE_CLIPS_STREAM_ENDPOINT || 'api/v1/videos/page-clips/{jobId}/stream',
+      videoPageClipsByBook:
+        import.meta.env.VITE_SPRING_VIDEO_PAGE_CLIPS_BY_BOOK_ENDPOINT || 'api/v1/videos/books/{bookId}',
     },
   },
 };
