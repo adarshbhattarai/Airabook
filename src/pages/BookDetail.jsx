@@ -39,6 +39,7 @@ import {
 import { pageTemplates } from '@/constants/pageTemplates';
 import { collabApi, getCallableErrorMessage } from '@/services/collabApi';
 import { createPageClip } from '@/services/videoJobsService';
+import ManimVideoDialog from '@/components/ManimVideoDialog';
 
 // react-beautiful-dnd is not fully StrictMode-safe in React 18 dev.
 // This delays droppable mounting to avoid registry invariant errors.
@@ -119,6 +120,8 @@ const BookDetail = () => {
   const [photoPlannerOpen, setPhotoPlannerOpen] = useState(false);
   const [photoPlannerSeed, setPhotoPlannerSeed] = useState(null);
   const [creatingVideoJob, setCreatingVideoJob] = useState(false);
+  const [videoDialogOpen, setVideoDialogOpen] = useState(false);
+  const [videoDialogContext, setVideoDialogContext] = useState({ pageId: null, instruction: '' });
   const plannerSeedHandledRef = useRef(false);
   const isForcedReadRoute = location.pathname.endsWith('/view');
   const [viewMode, setViewMode] = useState(() => (isForcedReadRoute ? 'pages' : 'chapter')); // 'chapter' or 'pages'
@@ -1881,10 +1884,10 @@ const BookDetail = () => {
     }
   }, [bookId, selectedChapterId, selectedPageId, pages, onDraftChange, toast]);
 
-  const handleCreateVideo = useCallback(async ({ pageId, instruction } = {}) => {
+  // Step 1: "Generate Clip" button click → open the prompt dialog
+  const handleCreateVideo = useCallback(({ pageId, instruction } = {}) => {
     const targetPageId = pageId || currentVideoPageId || '';
-    const targetPage = targetPageId ? pages.find((page) => page.id === targetPageId) || null : null;
-    const promptText = typeof instruction === 'string' ? instruction.trim() : '';
+    const targetPage = targetPageId ? pages.find((p) => p.id === targetPageId) || null : null;
 
     if (!selectedChapterId || !targetPageId || !targetPage) {
       toast({
@@ -1904,6 +1907,19 @@ const BookDetail = () => {
       return;
     }
 
+    const defaultInstruction = typeof instruction === 'string' && instruction.trim()
+      ? instruction.trim()
+      : `Create a silent page clip for "${targetPage?.shortNote || stripHtml(targetPage?.note || '') || 'this page'}".`;
+
+    setVideoDialogContext({ pageId: targetPageId, instruction: defaultInstruction });
+    setVideoDialogOpen(true);
+  }, [currentVideoPageId, pages, selectedChapterId, toast]);
+
+  // Step 2: User confirms in dialog → save page silently then create job
+  const handleConfirmVideoDialog = useCallback(async ({ instruction, quality }) => {
+    const { pageId: targetPageId } = videoDialogContext;
+    const targetPage = pages.find((p) => p.id === targetPageId) || null;
+
     setCreatingVideoJob(true);
     try {
       if (pageRefs.current?.[targetPageId]?.save) {
@@ -1918,9 +1934,11 @@ const BookDetail = () => {
         chapterId: selectedChapterId,
         pageId: targetPageId,
         threadId: `movies-${bookId}-${selectedChapterId}-${targetPageId}`,
-        instruction: promptText || `Create a silent page clip for "${targetPage?.shortNote || stripHtml(targetPage?.note || '') || 'this page'}".`,
+        instruction: instruction || `Create a silent page clip for "${targetPage?.shortNote || stripHtml(targetPage?.note || '') || 'this page'}".`,
+        quality,
       });
 
+      setVideoDialogOpen(false);
       navigate(
         `/movies?bookId=${encodeURIComponent(bookId)}&chapterId=${encodeURIComponent(selectedChapterId)}&pageId=${encodeURIComponent(targetPageId)}&jobId=${encodeURIComponent(createdJob.jobId)}`,
       );
@@ -1938,7 +1956,7 @@ const BookDetail = () => {
     } finally {
       setCreatingVideoJob(false);
     }
-  }, [bookId, currentVideoPageId, navigate, pages, selectedChapterId, toast]);
+  }, [bookId, navigate, pages, selectedChapterId, toast, videoDialogContext]);
 
   const requestSelectPage = useCallback(async (chapterId, pageId) => {
     if (chapterId === selectedChapterId && pageId === selectedPageId && pageId === activePageId) {
@@ -2999,6 +3017,7 @@ const BookDetail = () => {
                           {/* Show "Go to Pages" button if pages exist */}
                           {pages.length > 0 && (
                             <Button
+                              data-testid="view-pages-btn"
                               onClick={() => {
                                 setViewMode('pages');
                                 setSelectedPageId(pages[0].id);
@@ -3012,7 +3031,7 @@ const BookDetail = () => {
                           )}
 
                           {canEdit && (
-                            <Button onClick={requestAddPage} className="mt-2" disabled={isAddingPage}>
+                            <Button data-testid="add-page-btn" onClick={requestAddPage} className="mt-2" disabled={isAddingPage}>
                               <PlusCircle className="h-4 w-4 mr-2" />
                               Add Page Manually
                             </Button>
@@ -3210,6 +3229,13 @@ const BookDetail = () => {
           </div>
         </div>
       </DragDropContext>
+      <ManimVideoDialog
+        open={videoDialogOpen}
+        onOpenChange={(open) => { if (!creatingVideoJob) setVideoDialogOpen(open); }}
+        defaultInstruction={videoDialogContext.instruction}
+        loading={creatingVideoJob}
+        onConfirm={handleConfirmVideoDialog}
+      />
       <PhotoPlannerDialog
         isOpen={photoPlannerOpen}
         onOpenChange={handlePhotoPlannerOpenChange}

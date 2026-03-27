@@ -461,7 +461,7 @@ const Movies = () => {
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-medium ${statusClasses(selectedJob.status)}`}>
+                        <span data-testid="movies-job-status" className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-medium ${statusClasses(selectedJob.status)}`}>
                           {selectedJob.status}
                         </span>
                         {selectedJob.renderReady && (
@@ -497,6 +497,7 @@ const Movies = () => {
                       <video
                         key={selectedJob.previewUrl}
                         src={selectedJob.previewUrl}
+                        data-testid="movies-video-preview"
                         controls
                         className="aspect-video w-full rounded-[18px] bg-black"
                       />

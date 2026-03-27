@@ -32,6 +32,7 @@
     "deploy:prod": "npm run build:prod && firebase deploy --project prod",
     "emulators:with-data": "node scripts/start-with-data.js",
     "seed:data": "node functions/seedData.js",
+    "seed:emulator": "node functions/create_emulator_user.mjs && node functions/seed_emulator.mjs && node functions/seed_user.mjs",
     "test:auth": "cd functions && node test-auth.cjs",
     "test:e2e": "npx playwright test",
     "test:e2e:movies": "npx playwright test e2e/movies.spec.mjs",
@@ -72,6 +73,7 @@
     "uuid": "^13.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@types/node": "^20.8.3",
     "@types/react": "^18.2.15",
     "@types/react-dom": "^18.2.7",

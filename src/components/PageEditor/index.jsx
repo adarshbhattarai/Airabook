@@ -2446,6 +2446,7 @@ const PageEditor = forwardRef(({
                         variant="outline"
                         size="sm"
                         className="h-9 whitespace-nowrap rounded-full px-4"
+                        data-testid="book-detail-create-video"
                         onClick={handleCreateVideoAction}
                         disabled={creatingVideoJob || isSaving || babyReflectionLimits.hasOverLimit}
                       >
@@ -2571,6 +2572,7 @@ const PageEditor = forwardRef(({
                         variant="outline"
                         size="sm"
                         className="h-8 whitespace-nowrap bg-white shadow-sm border border-gray-100"
+                        data-testid="book-detail-create-video"
                         onClick={handleCreateVideoAction}
                         disabled={creatingVideoJob || isSaving}
                       >
@@ -2696,6 +2698,7 @@ const PageEditor = forwardRef(({
                           variant="outline"
                           size="sm"
                           className="h-8 whitespace-nowrap"
+                          data-testid="book-detail-create-video"
                           onClick={handleCreateVideoAction}
                           disabled={creatingVideoJob || isSaving}
                         >

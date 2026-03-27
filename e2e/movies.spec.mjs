@@ -5,9 +5,9 @@ const password = process.env.PLAYWRIGHT_PASSWORD || '';
 
 const login = async (page) => {
   await page.goto('/login');
-  await page.getByLabel(/email/i).fill(email);
-  await page.getByLabel(/password/i).fill(password);
-  await page.getByRole('button', { name: /log in|login/i }).click();
+  await page.getByPlaceholder(/email address/i).fill(email);
+  await page.getByPlaceholder(/password/i).fill(password);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 };
 
 test.describe('Movies workspace smoke', () => {
