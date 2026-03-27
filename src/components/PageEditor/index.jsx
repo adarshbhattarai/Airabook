@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { httpsCallable } from 'firebase/functions';
 import {
-  ChevronDown, ChevronLeft, ChevronRight, Sparkles, UploadCloud, X, Trash2, Save
+  ChevronDown, ChevronLeft, ChevronRight, Sparkles, UploadCloud, X, Trash2, Save, Clapperboard, Loader2, Plus
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
@@ -51,10 +51,13 @@ const PageEditor = forwardRef(({
   onFocus,
   onReplacePageId,
   onRequestPageDelete,
+  onCreateVideo,
   layoutMode = 'standard',
   standardPageHeightPx,
   readOnly = false,
-  canUploadMedia = true
+  canUploadMedia = true,
+  canCreateVideo = false,
+  creatingVideoJob = false,
 }, ref) => {
   const [isSaving, setIsSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({});
@@ -1897,18 +1900,25 @@ const PageEditor = forwardRef(({
   const standardHeightStyle = pageHeightPx
     ? { minHeight: `${pageHeightPx}px` }
     : { minHeight: `${fallbackHeightPx}px` };
-  const saveButtonLabel = pageIndex < totalPages - 1 ? 'Save Page' : 'Save + New';
   const hasAiInstruction = aiStyle.trim().length > 0;
+  const clipPrompt = aiStyle.trim();
+  const isLastPage = pageIndex >= totalPages - 1;
+  const showNewPageAction = isLastPage && typeof onAddPage === 'function';
   const showSidePageNav = !readOnly && isBabyTemplatePage && totalPages > 1 && typeof onNavigate === 'function';
   const showPageOverflowCue = !readOnly && !isTemplatePage && limitStatus === 'full';
   const overflowCueLabel = 'Recommended page length reached';
-  const handlePrimarySaveAction = async () => {
-    if (pageIndex < totalPages - 1) {
-      await handleSave();
-      return;
-    }
-    await handleSave();
+
+  const handleNewPageAction = async () => {
+    const didSave = await handleSave();
+    if (didSave === false) return;
     onAddPage?.(true, '', page.id);
+  };
+
+  const handleCreateVideoAction = async () => {
+    await onCreateVideo?.({
+      pageId: page.id,
+      instruction: clipPrompt,
+    });
   };
 
   return (
@@ -2431,15 +2441,40 @@ const PageEditor = forwardRef(({
                     </div>
                   )}
                   <div className="flex items-center gap-2">
+                    {canCreateVideo && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 whitespace-nowrap rounded-full px-4"
+                        data-testid="book-detail-create-video"
+                        onClick={handleCreateVideoAction}
+                        disabled={creatingVideoJob || isSaving || babyReflectionLimits.hasOverLimit}
+                      >
+                        {creatingVideoJob ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Clapperboard className="h-4 w-4 mr-1" />}
+                        Generate Clip
+                      </Button>
+                    )}
                     <Button
                       variant="appSuccess"
                       size="sm"
                       className="h-9 whitespace-nowrap min-w-[140px] rounded-full px-5"
-                      onClick={handlePrimarySaveAction}
+                      onClick={handleSave}
                       disabled={isSaving || babyReflectionLimits.hasOverLimit}
                     >
-                      {saveButtonLabel}
+                      {isSaving ? 'Saving...' : 'Save'}
                     </Button>
+                    {showNewPageAction && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 whitespace-nowrap rounded-full px-4"
+                        onClick={handleNewPageAction}
+                        disabled={isSaving || creatingVideoJob || babyReflectionLimits.hasOverLimit}
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        New Page
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2491,7 +2526,7 @@ const PageEditor = forwardRef(({
                       <Input
                         value={aiStyle}
                         onChange={(e) => setAiStyle(e.target.value)}
-                        placeholder="AI instruction..."
+                        placeholder="Prompt for rewrite or clip..."
                         className="editor-ai-input h-8 w-28 sm:w-40 text-xs bg-white"
                       />
                       <Button
@@ -2532,29 +2567,40 @@ const PageEditor = forwardRef(({
                       <Sparkles className="h-4 w-4 mr-1 text-app-iris" />
                       Rewrite
                     </Button>
+                    {canCreateVideo && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 whitespace-nowrap bg-white shadow-sm border border-gray-100"
+                        data-testid="book-detail-create-video"
+                        onClick={handleCreateVideoAction}
+                        disabled={creatingVideoJob || isSaving}
+                      >
+                        {creatingVideoJob ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Clapperboard className="h-4 w-4 mr-1" />}
+                        Generate Clip
+                      </Button>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {pageIndex < totalPages - 1 ? (
+                    <Button
+                      variant="appSuccess"
+                      size="sm"
+                      className="editor-save-btn h-8 whitespace-nowrap min-w-[110px]"
+                      onClick={handleSave}
+                    >
+                      {isSaving ? 'Saving...' : 'Save'}
+                    </Button>
+                    {showNewPageAction && (
                       <Button
-                        variant="appSuccess"
+                        variant="outline"
                         size="sm"
-                        className="editor-save-btn h-8 whitespace-nowrap min-w-[110px]"
-                        onClick={handleSave}
+                        className="h-8 whitespace-nowrap min-w-[110px]"
+                        onClick={handleNewPageAction}
+                        disabled={isSaving || creatingVideoJob}
                       >
-                        Save Page
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="appSuccess"
-                        size="sm"
-                        className="editor-save-btn h-8 whitespace-nowrap min-w-[110px]"
-                        onClick={async () => {
-                          await handleSave();
-                          onAddPage?.(true, '', page.id);
-                        }}
-                      >
-                        Save + New
+                        <Plus className="h-4 w-4 mr-1" />
+                        New Page
                       </Button>
                     )}
                   </div>
@@ -2606,7 +2652,7 @@ const PageEditor = forwardRef(({
                         <Input
                           value={aiStyle}
                           onChange={(e) => setAiStyle(e.target.value)}
-                          placeholder="AI instruction..."
+                          placeholder="Prompt for rewrite or clip..."
                           className="editor-ai-input h-8 w-28 sm:w-40 md:w-56 text-xs"
                         />
                         <Button
@@ -2647,27 +2693,38 @@ const PageEditor = forwardRef(({
                         <Sparkles className="h-4 w-4 mr-1" />
                         Rewrite
                       </Button>
+                      {canCreateVideo && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 whitespace-nowrap"
+                          data-testid="book-detail-create-video"
+                          onClick={handleCreateVideoAction}
+                          disabled={creatingVideoJob || isSaving}
+                        >
+                          {creatingVideoJob ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Clapperboard className="h-4 w-4 mr-1" />}
+                          Generate Clip
+                        </Button>
+                      )}
                     </div>
-                    {pageIndex < totalPages - 1 ? (
+                    <Button
+                      variant="appSuccess"
+                      size="sm"
+                      className="editor-save-btn h-8 whitespace-nowrap min-w-[110px]"
+                      onClick={handleSave}
+                    >
+                      {isSaving ? 'Saving...' : 'Save'}
+                    </Button>
+                    {showNewPageAction && (
                       <Button
-                        variant="appSuccess"
+                        variant="outline"
                         size="sm"
-                        className="editor-save-btn h-8 whitespace-nowrap min-w-[110px]"
-                        onClick={handleSave}
+                        className="h-8 whitespace-nowrap min-w-[110px]"
+                        onClick={handleNewPageAction}
+                        disabled={isSaving || creatingVideoJob}
                       >
-                        Save Page
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="appSuccess"
-                        size="sm"
-                        className="editor-save-btn h-8 whitespace-nowrap min-w-[110px]"
-                        onClick={async () => {
-                          await handleSave();
-                          onAddPage?.(true, '', page.id);
-                        }}
-                      >
-                        Save + New
+                        <Plus className="h-4 w-4 mr-1" />
+                        New Page
                       </Button>
                     )}
                   </div>
