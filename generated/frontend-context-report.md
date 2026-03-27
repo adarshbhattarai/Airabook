@@ -1,11 +1,11 @@
 # Frontend Context Report
 
-Generated: 2026-03-20 18:43:17Z
+Generated: 2026-03-21 07:12:53Z
 
 ## Frontend Repo Snapshot
 - Workspace: /Users/adeshbhattarai/code/Airabook
-- Branch: main
-- HEAD: 32a82aa
+- Branch: dev-video-flow
+- HEAD: 233e993
 - Backend repo: /Users/adeshbhattarai/code/AiraAI/Agent
 
 ## Read First
@@ -19,36 +19,29 @@ Generated: 2026-03-20 18:43:17Z
 
 
 ```text
- M ARCHITECTURE.md
- M firestore.rules
- M functions/createPage.js
- M functions/index.js
- M functions/services/pageService.js
- M functions/updatePage.js
- M functions/utils/chapterUtils.js
  M generated/frontend-context-report.md
- M storage.rules
-?? functions/syncPageDerivedData.js
+ M src/components/PageEditor/index.jsx
+ M src/pages/BookDetail.jsx
 ```
 
 ## Backend Snapshot
 - Branch: dev-AiraCleanUp
-- HEAD: e5500c1
+- HEAD: e74cdeb
 
 
 ```text
-Working tree clean.
+ M agent/src/main/java/com/ethela/agent/service/UnifiedChatStreamService.java
 ```
 
 ## Recent Commits
+- 2026-03-21 233e993 Video flow idea
+- 2026-03-21 69a272a Update
+- 2026-03-21 0bed0a5 Update
 - 2026-03-20 32a82aa Update
 - 2026-03-20 9e0cbaf Update
 - 2026-03-18 569e32f Update
 - 2026-03-18 72dfa3b U;date
 - 2026-03-16 28a2ddf Updates
-- 2026-03-15 1daddba Update on storage rules and UI
-- 2026-03-15 9fd2c34 Update
-- 2026-03-15 4e94484 Update
 
 ## High-Signal Paths
 - /Users/adeshbhattarai/code/Airabook/src/App.jsx

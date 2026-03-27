@@ -38,6 +38,8 @@ import {
 } from '@/lib/pageUtils';
 import { pageTemplates } from '@/constants/pageTemplates';
 import { collabApi, getCallableErrorMessage } from '@/services/collabApi';
+import { createPageClip } from '@/services/videoJobsService';
+import ManimVideoDialog from '@/components/ManimVideoDialog';
 
 // react-beautiful-dnd is not fully StrictMode-safe in React 18 dev.
 // This delays droppable mounting to avoid registry invariant errors.
@@ -117,6 +119,9 @@ const BookDetail = () => {
   const [chatPanelSeed, setChatPanelSeed] = useState(null);
   const [photoPlannerOpen, setPhotoPlannerOpen] = useState(false);
   const [photoPlannerSeed, setPhotoPlannerSeed] = useState(null);
+  const [creatingVideoJob, setCreatingVideoJob] = useState(false);
+  const [videoDialogOpen, setVideoDialogOpen] = useState(false);
+  const [videoDialogContext, setVideoDialogContext] = useState({ pageId: null, instruction: '' });
   const plannerSeedHandledRef = useRef(false);
   const isForcedReadRoute = location.pathname.endsWith('/view');
   const [viewMode, setViewMode] = useState(() => (isForcedReadRoute ? 'pages' : 'chapter')); // 'chapter' or 'pages'
@@ -1827,6 +1832,8 @@ const BookDetail = () => {
   const selectedPage = selectedPageId ? pages.find(p => p.id === selectedPageId) : null;
   const selectedDraft = selectedPageId ? pageDrafts[selectedPageId] : undefined;
   const isSelectedPageDirty = !!(selectedPageId && selectedPage && selectedDraft != null);
+  const currentVideoPageId = activePageId || selectedPageId || '';
+  const canCreateVideo = !isForcedReadRoute && !!selectedChapterId && (isOwner || collaborationPermissions.canManageMedia);
 
   const onDraftChange = useCallback((pageId, nextNote) => {
     setPageDrafts(prev => {
@@ -1876,6 +1883,80 @@ const BookDetail = () => {
       throw e;
     }
   }, [bookId, selectedChapterId, selectedPageId, pages, onDraftChange, toast]);
+
+  // Step 1: "Generate Clip" button click → open the prompt dialog
+  const handleCreateVideo = useCallback(({ pageId, instruction } = {}) => {
+    const targetPageId = pageId || currentVideoPageId || '';
+    const targetPage = targetPageId ? pages.find((p) => p.id === targetPageId) || null : null;
+
+    if (!selectedChapterId || !targetPageId || !targetPage) {
+      toast({
+        title: 'Select a page first',
+        description: 'Open the page you want to turn into a clip, then try again.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (targetPageId.startsWith('temp_')) {
+      toast({
+        title: 'Save this page first',
+        description: 'New pages need to be saved once before their video clip can be generated.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const defaultInstruction = typeof instruction === 'string' && instruction.trim()
+      ? instruction.trim()
+      : `Create a silent page clip for "${targetPage?.shortNote || stripHtml(targetPage?.note || '') || 'this page'}".`;
+
+    setVideoDialogContext({ pageId: targetPageId, instruction: defaultInstruction });
+    setVideoDialogOpen(true);
+  }, [currentVideoPageId, pages, selectedChapterId, toast]);
+
+  // Step 2: User confirms in dialog → save page silently then create job
+  const handleConfirmVideoDialog = useCallback(async ({ instruction, quality }) => {
+    const { pageId: targetPageId } = videoDialogContext;
+    const targetPage = pages.find((p) => p.id === targetPageId) || null;
+
+    setCreatingVideoJob(true);
+    try {
+      if (pageRefs.current?.[targetPageId]?.save) {
+        const didSave = await pageRefs.current[targetPageId].save({ silent: true });
+        if (didSave === false) {
+          throw new Error('Please fix the page content and save it before generating a clip.');
+        }
+      }
+
+      const createdJob = await createPageClip({
+        bookId,
+        chapterId: selectedChapterId,
+        pageId: targetPageId,
+        threadId: `movies-${bookId}-${selectedChapterId}-${targetPageId}`,
+        instruction: instruction || `Create a silent page clip for "${targetPage?.shortNote || stripHtml(targetPage?.note || '') || 'this page'}".`,
+        quality,
+      });
+
+      setVideoDialogOpen(false);
+      navigate(
+        `/movies?bookId=${encodeURIComponent(bookId)}&chapterId=${encodeURIComponent(selectedChapterId)}&pageId=${encodeURIComponent(targetPageId)}&jobId=${encodeURIComponent(createdJob.jobId)}`,
+      );
+      toast({
+        title: 'Page clip created',
+        description: 'The new video draft is ready in Movies for review and render.',
+      });
+    } catch (error) {
+      console.error('Failed to create page clip:', error);
+      toast({
+        title: 'Could not create page clip',
+        description: error.message || 'The page video workflow could not start right now.',
+        variant: 'destructive',
+      });
+    } finally {
+      setCreatingVideoJob(false);
+    }
+  }, [bookId, navigate, pages, selectedChapterId, toast, videoDialogContext]);
 
   const requestSelectPage = useCallback(async (chapterId, pageId) => {
     if (chapterId === selectedChapterId && pageId === selectedPageId && pageId === activePageId) {
@@ -2936,6 +3017,7 @@ const BookDetail = () => {
                           {/* Show "Go to Pages" button if pages exist */}
                           {pages.length > 0 && (
                             <Button
+                              data-testid="view-pages-btn"
                               onClick={() => {
                                 setViewMode('pages');
                                 setSelectedPageId(pages[0].id);
@@ -2949,7 +3031,7 @@ const BookDetail = () => {
                           )}
 
                           {canEdit && (
-                            <Button onClick={requestAddPage} className="mt-2" disabled={isAddingPage}>
+                            <Button data-testid="add-page-btn" onClick={requestAddPage} className="mt-2" disabled={isAddingPage}>
                               <PlusCircle className="h-4 w-4 mr-2" />
                               Add Page Manually
                             </Button>
@@ -3022,12 +3104,15 @@ const BookDetail = () => {
                                   onFocus={handlePageFocus}
                                   onReplacePageId={handleReplacePageId}
                                   onRequestPageDelete={(page, pageIndex) => openDeleteModal('page', { ...page, chapterId: selectedChapterId, pageId: page.id, pageIndex })}
+                                  onCreateVideo={handleCreateVideo}
                                   pages={pages}
                                   layoutMode={book?.layoutMode}
                                   pageAlign={pageAlign}
                                   standardPageHeightPx={standardPageHeightPx}
                                   readOnly={isForcedReadRoute || !canEdit}
                                   canUploadMedia={isOwner || collaborationPermissions.canManageMedia}
+                                  canCreateVideo={canCreateVideo}
+                                  creatingVideoJob={creatingVideoJob}
                                 />
                               </div>
                             ))}
@@ -3144,6 +3229,13 @@ const BookDetail = () => {
           </div>
         </div>
       </DragDropContext>
+      <ManimVideoDialog
+        open={videoDialogOpen}
+        onOpenChange={(open) => { if (!creatingVideoJob) setVideoDialogOpen(open); }}
+        defaultInstruction={videoDialogContext.instruction}
+        loading={creatingVideoJob}
+        onConfirm={handleConfirmVideoDialog}
+      />
       <PhotoPlannerDialog
         isOpen={photoPlannerOpen}
         onOpenChange={handlePhotoPlannerOpenChange}
