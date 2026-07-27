@@ -1708,6 +1708,7 @@ const BookDetail = () => {
           chapterId: selectedChapterId,
           note: noteToSave,
           media: [],
+          embeddedMedia: [],
           order: newOrder,
           ...(template ? {
             type: template.type,
@@ -1762,6 +1763,7 @@ const BookDetail = () => {
         chapterId: selectedChapterId,
         note: noteToSave,
         media: [],
+        embeddedMedia: [],
         order: newOrder,
         ...(template ? {
           type: template.type,
@@ -1782,6 +1784,7 @@ const BookDetail = () => {
         chapterId: selectedChapterId,
         note: persistedPage.note ?? noteToSave,
         media: Array.isArray(persistedPage.media) ? persistedPage.media : [],
+        embeddedMedia: Array.isArray(persistedPage.embeddedMedia) ? persistedPage.embeddedMedia : [],
         order: persistedPage.order || newOrder,
         pageName: persistedPage.pageName || '',
         shortNote,
@@ -1874,6 +1877,7 @@ const BookDetail = () => {
         pageId: selectedPageId,
         note: html,
         media: current.media || [],
+        embeddedMedia: current.embeddedMedia || [],
       });
       handlePageUpdate({ ...current, note: html, shortNote });
       onDraftChange(selectedPageId, null);

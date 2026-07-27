@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -48,23 +53,22 @@ export default function ManimVideoDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-md"
+        className="w-full max-w-md rounded-2xl bg-white p-6 shadow-lg"
         data-testid="manim-video-dialog"
       >
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex items-center gap-2 text-2xl font-bold text-gray-800">
             <Clapperboard className="h-5 w-5 text-indigo-500" />
             Generate a page video
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="mt-2 text-gray-600">
             The AI will create an animated Manim video for this page.
             Add any style or focus notes, or leave blank to use the page content.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 pt-2">
-          {/* Instruction */}
-          <div className="space-y-1.5">
+        <div className="mt-6 space-y-5">
+          <div className="space-y-2">
             <label className="text-sm font-medium text-gray-700" htmlFor="manim-instruction">
               Instruction <span className="font-normal text-gray-400">(optional)</span>
             </label>
@@ -80,8 +84,7 @@ export default function ManimVideoDialog({
             />
           </div>
 
-          {/* Quality */}
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <p className="text-sm font-medium text-gray-700">Render quality</p>
             <div className="grid grid-cols-3 gap-2" data-testid="manim-video-quality-selector">
               {QUALITY_OPTIONS.map((opt) => (
@@ -91,22 +94,21 @@ export default function ManimVideoDialog({
                   data-testid={`manim-quality-${opt.value}`}
                   onClick={() => setQuality(opt.value)}
                   disabled={loading}
-                  className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                  className={`manim-quality-option rounded-lg border px-3 py-2 text-left transition-colors ${
                     quality === opt.value
-                      ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                      ? 'manim-quality-option-selected border-app-iris/40 bg-app-iris/10 text-app-iris'
                       : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
                   }`}
                 >
                   <p className="text-sm font-medium">{opt.label}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{opt.description}</p>
+                  <p className="mt-0.5 text-xs text-gray-400">{opt.description}</p>
                 </button>
               ))}
             </div>
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex justify-end gap-2 pt-2">
+        <DialogFooter className="mt-6 flex-row justify-end gap-2 space-x-0">
           <Button
             variant="outline"
             onClick={() => onOpenChange?.(false)}
@@ -117,16 +119,16 @@ export default function ManimVideoDialog({
           </Button>
           <Button
             onClick={handleConfirm}
+            variant="appPrimary"
             disabled={loading}
             data-testid="manim-video-confirm"
-            className="bg-indigo-600 hover:bg-indigo-700 text-white"
           >
             {loading
               ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Creating…</>
               : <><Clapperboard className="h-4 w-4 mr-2" />Generate clip</>
             }
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

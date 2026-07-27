@@ -65,6 +65,7 @@ When a feature touches both repos, inspect both before changing behavior.
 
 ## Build And Verification
 - Emulator-first flow: `npm run emulators:local` then `npm start`
+- On a new laptop, install Stripe CLI first with `brew install stripe/stripe-cli/stripe` and run `stripe login`; `npm run emulators:local` starts the local Stripe webhook listener automatically when the CLI is available
 - Real dev frontend: `npm run dev`
 - Auth sanity: `npm run test:auth`
 - Environment deploys: `npm run deploy:dev|qa|go|prod`

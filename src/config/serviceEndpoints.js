@@ -40,6 +40,8 @@ export const SERVICE_ENDPOINTS = {
         import.meta.env.VITE_SPRING_VIDEO_PAGE_CLIPS_REVISE_ENDPOINT || 'api/v1/videos/page-clips/{jobId}/revise',
       videoPageClipsRender:
         import.meta.env.VITE_SPRING_VIDEO_PAGE_CLIPS_RENDER_ENDPOINT || 'api/v1/videos/page-clips/{jobId}/render',
+      videoPageClipsCode:
+        import.meta.env.VITE_SPRING_VIDEO_PAGE_CLIPS_CODE_ENDPOINT || 'api/v1/videos/page-clips/{jobId}/code',
       videoPageClipsById:
         import.meta.env.VITE_SPRING_VIDEO_PAGE_CLIPS_BY_ID_ENDPOINT || 'api/v1/videos/page-clips/{jobId}',
       videoPageClipsStream:

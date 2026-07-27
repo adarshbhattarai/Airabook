@@ -156,6 +156,7 @@ npx playwright test --ui
 - Use `@/` path alias instead of deep relative imports
 - Keep privileged logic and secrets in `functions/`, never in `src/`
 - After meaningful changes, run `scripts/refresh_frontend_context.sh`
+- **UI button consistency**: Never add inline color/background overrides (e.g. `bg-white`, `border-gray-100`) to buttons. Rely on the shadcn `variant` prop (`outline`, `secondary`, `appSuccess`, etc.) so buttons respect the app's dark theme. If a button looks wrong, fix the variant — don't patch it with Tailwind background classes.
 
 ## Important Non-Obvious Things
 - `npm run local` = `npm run start` = Vite in `localemulator` mode (points to Firebase emulators at localhost:4000)

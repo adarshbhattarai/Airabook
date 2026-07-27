@@ -87,6 +87,7 @@ async function seedStarterPages(db, bookId, chapterId, userId, template, pagesPe
         embeddings: null,
         embeddingModel: null,
         media: [],
+        embeddedMedia: [],
         order,
         type: template?.type || "babyJournalPage",
         templateVersion: template?.templateVersion || "v1",

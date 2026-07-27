@@ -117,6 +117,7 @@ export function usePaginationReflow({
         chapterId,
         note: '',
         media: [],
+        embeddedMedia: [],
         order: newOrder,
         isReflowTemp: true,
       };

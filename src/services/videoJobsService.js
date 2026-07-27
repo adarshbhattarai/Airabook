@@ -183,6 +183,19 @@ export const renderPageClip = async ({ bookId, jobId, quality = 'medium' } = {})
   return normalizeJobPayload(json);
 };
 
+export const updatePageClipCode = async ({ bookId, jobId, manimCode }) => {
+  const response = await request(
+    springUrl(
+      SERVICE_ENDPOINTS.spring.paths.videoPageClipsCode,
+      { jobId },
+      { bookId }
+    ),
+    { method: 'POST', body: { manimCode } }
+  );
+  const json = await response.json();
+  return normalizeJobPayload(json);
+};
+
 export const getPageClip = async ({ bookId, jobId }) => {
   const response = await request(
     springUrl(
