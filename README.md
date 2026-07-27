@@ -600,18 +600,28 @@ payments/{paymentId}
 
 ### Local Testing
 
-1. **Run frontend + functions emulators**:
+1. **Install Stripe CLI on a new machine**:
+   ```bash
+   brew install stripe/stripe-cli/stripe
+   stripe login
+   ```
+
+2. **Run frontend + functions emulators**:
    ```bash
    npm run emulators:local
    npm start  # in another terminal
    ```
 
-2. **Start Stripe CLI forwarding** (in a third terminal):
+   `npm run emulators:local` already starts `stripe listen --forward-to localhost:5001/demo-project/us-central1/stripeWebhook` in the background and updates `functions/.runtimeconfig.json` when Stripe CLI is installed.
+
+3. **If you started emulators another way, start Stripe CLI forwarding manually**:
    ```bash
    stripe listen --forward-to localhost:5001/demo-project/us-central1/stripeWebhook
    ```
 
-3. **Start a donation** from `/donate`. The webhook updates Firestore in seconds.
+4. **Start a donation** from `/donate`. The webhook updates Firestore in seconds.
+
+If `npm run emulators:local` prints `Stripe CLI not found. Skipping Stripe setup.`, install Stripe CLI with Homebrew and rerun the command.
 
 **Note**: Since this project uses Firebase Auth triggers, the functions need to be deployed for full functionality. However, when making changes to your client application, you can serve it locally to quickly preview changes:
 

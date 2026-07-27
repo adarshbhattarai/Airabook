@@ -114,7 +114,7 @@ const GenerateChapterContent = ({ bookId, chapterId, onSuggestionSelect }) => {
   if (!bookId || !chapterId) return null;
 
   return (
-    <div className="mt-3 rounded-lg border border-border bg-card p-3">
+    <div data-testid="chapter-suggestions" className="mt-3 rounded-lg border border-border bg-card p-3">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-foreground">Chapter suggestions</p>
         <div className="flex items-center gap-2">
@@ -139,6 +139,7 @@ const GenerateChapterContent = ({ bookId, chapterId, onSuggestionSelect }) => {
             <button
               key={`${index}-${suggestion}`}
               type="button"
+              data-testid="chapter-suggestion-item"
               onClick={() => onSuggestionSelect?.(suggestion)}
               className="rounded-md border border-border bg-app-gray-50 px-2 py-2 text-left text-xs text-app-gray-700 transition hover:bg-app-gray-100"
             >

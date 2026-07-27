@@ -9,6 +9,7 @@ const FieldValue = require('firebase-admin/firestore').FieldValue;
 const { extractTextFromHtml } = require('./utils/embeddingsClient');
 const { updateChapterPageSummary } = require('./utils/chapterUtils');
 const { validatePageContentLimits } = require('./utils/pageContentValidation');
+const { normalizeEmbeddedMedia } = require('./utils/pageMedia');
 
 const db = admin.firestore();
 
@@ -27,7 +28,19 @@ exports.updatePage = onCall(
             throw new HttpsError('unauthenticated', 'User must be authenticated to update pages.');
         }
 
-        const { bookId, chapterId, pageId, note, media, type, templateVersion, content, theme, pageName } = data;
+        const {
+            bookId,
+            chapterId,
+            pageId,
+            note,
+            media,
+            embeddedMedia,
+            type,
+            templateVersion,
+            content,
+            theme,
+            pageName,
+        } = data;
         const userId = auth.uid;
 
         if (!bookId || !chapterId || !pageId) {
@@ -90,6 +103,9 @@ exports.updatePage = onCall(
             if (content !== undefined) updateData.content = content;
             if (theme !== undefined) updateData.theme = theme;
             if (pageName !== undefined) updateData.pageName = String(pageName || '').trim();
+            if (embeddedMedia !== undefined) {
+                updateData.embeddedMedia = normalizeEmbeddedMedia(embeddedMedia);
+            }
 
             await pageRef.update(updateData);
             logger.log(`✅ Page ${pageId} updated`);

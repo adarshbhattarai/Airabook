@@ -306,6 +306,8 @@ const BlockEditor = forwardRef(
             albumId: item.albumId || null,
             originalName: item.name || null,
             mediaType: item.type || 'image',
+            mimeType: item.mimeType || null,
+            source: item.source || null,
           });
 
           if (isVideo) {
@@ -509,6 +511,8 @@ const BlockEditor = forwardRef(
               albumId: item.albumId || null,
               originalName: item.name || null,
               mediaType: item.type || 'image',
+              mimeType: item.mimeType || null,
+              source: item.source || null,
             });
 
             return {

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { httpsCallable } from 'firebase/functions';
@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import {
   LayoutDashboard,
   BookOpen,
+  Clapperboard,
   Image as ImageIcon,
   Heart,
   ShieldCheck,
@@ -17,14 +18,13 @@ import {
   Loader2,
 } from 'lucide-react';
 
-const sections = [
+const baseSections = [
   {
     label: 'Main',
     items: [
       { name: 'Dashboard', icon: LayoutDashboard, to: '/dashboard' },
       { name: 'Books', icon: BookOpen, to: '/books' },
       { name: 'Asset Registry', icon: ImageIcon, to: '/media' },
-      // { name: 'Notes', icon: StickyNote, to: '/notes' },
     ],
   },
   {
@@ -36,7 +36,7 @@ const sections = [
 ];
 
 const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile }) => {
-  const { user, billing } = useAuth();
+  const { user, appUser, billing } = useAuth();
   const { pathname } = useLocation();
   const [isAdmin, setIsAdmin] = useState(false);
   const [usageDialogOpen, setUsageDialogOpen] = useState(false);
@@ -58,6 +58,11 @@ const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile }) => 
     checkAdmin();
   }, [user]);
 
+  const hasBooks = useMemo(
+    () => Array.isArray(appUser?.accessibleBookIds) && appUser.accessibleBookIds.length > 0,
+    [appUser?.accessibleBookIds]
+  );
+
   const adminSection = isAdmin ? {
     label: 'Admin',
     items: [
@@ -65,7 +70,18 @@ const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile }) => 
     ],
   } : null;
 
-  const displaySections = adminSection ? [...sections, adminSection] : sections;
+  const displaySections = useMemo(() => {
+    const sections = baseSections.map((section) => ({
+      ...section,
+      items: [...section.items],
+    }));
+
+    if (hasBooks) {
+      sections[0].items.splice(2, 0, { name: 'Movies', icon: Clapperboard, to: '/movies', testId: 'movies-sidebar-link' });
+    }
+
+    return adminSection ? [...sections, adminSection] : sections;
+  }, [adminSection, hasBooks]);
 
   const openUsageDialog = async () => {
     setUsageDialogOpen(true);
@@ -128,6 +144,7 @@ const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile }) => 
                   <NavLink
                     key={item.name}
                     to={item.to}
+                    data-testid={item.testId}
                     className={({ isActive }) => {
                       const isBookDetailRoute = item.to === '/books' && pathname.startsWith('/book/');
                       const isActiveRoute = isActive || isBookDetailRoute;

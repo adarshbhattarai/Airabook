@@ -10,6 +10,7 @@ const { assertAndIncrementCounter, resolveUserPlanLimits } = require('./utils/li
 const { extractTextFromHtml } = require('./utils/embeddingsClient');
 const { updateChapterPageSummary } = require('./utils/chapterUtils');
 const { validatePageContentLimits } = require('./utils/pageContentValidation');
+const { normalizeEmbeddedMedia } = require('./utils/pageMedia');
 
 // Firebase Admin initialized in index.js
 const db = admin.firestore();
@@ -33,7 +34,19 @@ exports.createPage = onCall(
             throw new HttpsError('unauthenticated', 'User must be authenticated to create pages.');
         }
 
-        const { bookId, chapterId, note, media, order, type, templateVersion, content, theme, pageName } = data;
+        const {
+            bookId,
+            chapterId,
+            note,
+            media,
+            embeddedMedia,
+            order,
+            type,
+            templateVersion,
+            content,
+            theme,
+            pageName,
+        } = data;
         const userId = auth.uid;
 
         // Validate required fields
@@ -104,6 +117,7 @@ exports.createPage = onCall(
                 embeddingModel: null,
                 embeddingStatus: plainText ? 'pending' : 'ready',
                 media: media || [],
+                embeddedMedia: normalizeEmbeddedMedia(embeddedMedia),
                 pageName: String(pageName || '').trim(),
                 order: order || '',
                 ...(type ? { type } : {}),

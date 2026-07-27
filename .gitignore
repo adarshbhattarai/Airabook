@@ -16,3 +16,6 @@ dist/
 .DS_Store
 .cursor/
 .idea/
+# Debug / throwaway e2e test files
+e2e/debug-*.spec.mjs
+test-results/

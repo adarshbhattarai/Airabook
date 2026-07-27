@@ -688,10 +688,20 @@ exports.onMediaDelete = onObjectDeleted(
             if (pageSnap.exists) {
               const pageData = pageSnap.data() || {};
               const mediaArr = pageData.media || [];
+              const embeddedMediaArr = pageData.embeddedMedia || [];
               const filtered = mediaArr.filter((m) => m.storagePath !== storagePath);
+              const filteredEmbeddedMedia = embeddedMediaArr.filter(
+                (m) => m.storagePath !== storagePath
+              );
 
-              if (filtered.length !== mediaArr.length) {
-                await pageRef.update({ media: filtered });
+              if (
+                filtered.length !== mediaArr.length
+                || filteredEmbeddedMedia.length !== embeddedMediaArr.length
+              ) {
+                await pageRef.update({
+                  media: filtered,
+                  embeddedMedia: filteredEmbeddedMedia,
+                });
                 console.log(`✅ [onMediaDelete] Removed media from page ${usage.pageId} in book ${usage.bookId}`);
               }
             }
