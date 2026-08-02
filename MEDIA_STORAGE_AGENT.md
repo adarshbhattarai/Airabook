@@ -26,9 +26,9 @@ The trigger does **not** proxy the file bytes today. It reacts after Storage has
 Page documents keep two additive media lists with different presentation semantics:
 
 - `media`: legacy/gallery media rendered in the attached-media area above page content
-- `embeddedMedia`: an ordered index of image/video blocks embedded inside BlockNote content
+- `embeddedMedia`: an index of page image/video media, including BlockNote-embedded blocks and `/media` uploads that are stored without changing BlockNote content
 
-`embeddedMedia` is derived from the current BlockNote blocks whenever the page is saved. Each item may include:
+BlockNote media is derived from the current blocks whenever the page is saved. `/media` uploads are retained in the same list with `source: "pageMedia"`, so they are not removed when there is no corresponding BlockNote block. Each item may include:
 
 - `url`
 - `storagePath`
@@ -36,12 +36,11 @@ Page documents keep two additive media lists with different presentation semanti
 - `type` (`image` or `video`)
 - `mimeType`
 - `albumId`
-- `blockId`
-- `blockIndex`
+- `blockId` and `blockIndex` (for BlockNote blocks)
 - `caption`
 - `source`
 
-The serialized BlockNote HTML remains in `note`; `embeddedMedia` is an index for backend consumers and cleanup, not a replacement for editor layout. Backend features that need every page asset should merge `media` and `embeddedMedia`, deduplicate by `storagePath` (falling back to `url`), and preserve gallery items before block-order embedded items.
+The serialized BlockNote HTML remains in `note`; `embeddedMedia` is an index for backend consumers and cleanup, not a replacement for editor layout. Backend features that need every page asset should merge `media` and `embeddedMedia`, deduplicate by `storagePath` (falling back to `url`), and preserve gallery items before BlockNote-order embedded items.
 
 Do not persist a third `allMedia` field because it can drift from the two authoritative lists.
 

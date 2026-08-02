@@ -1,10 +1,12 @@
 node_modules
 .env
 .env.development
+.env.development.local
 .env.qa
 .env.go
 .env.dev2
 .env.production
+emulator-data/
 functions/.env
 functions/.env.local
 *.log

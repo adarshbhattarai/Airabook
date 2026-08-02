@@ -165,6 +165,7 @@ export const AuthProvider = ({ children }) => {
       // Create user with Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(userCredential.user, { displayName: name });
+      await userCredential.user.getIdToken(true);
 
       // Send verification email
       await sendEmailVerification(userCredential.user);
@@ -199,11 +200,11 @@ export const AuthProvider = ({ children }) => {
     try {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
-      const user = result.user;
+      await result.user.getIdToken(true);
 
-      console.log("Google Sign-In successful for:", user.uid);
+      console.log("Google Sign-In successful for:", result.user.uid);
 
-      // Call the callable function to ensure user document exists (idempotent)
+      // Ensure the user document exists after authentication (idempotent).
       console.log("📞 Calling createUserDoc function...");
       const createUserDoc = httpsCallable(functions, 'createUserDoc');
       await createUserDoc();
