@@ -81,12 +81,13 @@ The project uses Vite's environment file system. Files are loaded based on the m
 
 | File | When Loaded | Committed? | Purpose |
 |------|-------------|-----------|---------|
-| `.env` | Always (base) | ✅ Yes | Shared defaults |
-| `.env.localemulator` | `--mode localemulator` | ❌ No | Local emulator config |
-| `.env.development` | `--mode development` | ✅ Yes | Dev environment config |
-| `.env.qa` | `--mode qa` | ✅ Yes | QA environment config |
-| `.env.go` | `--mode go` | ✅ Yes | Go/Staging environment config |
-| `.env.production` | `--mode production` | ✅ Yes | Production environment config |
+| `.env` | Always (base) | ❌ No | Optional personal shared defaults |
+| `.env.localemulator` | `--mode localemulator` | ✅ Yes | Local emulator config |
+| `.env.development` | `--mode development` | ❌ No | Local dev-project config; copy the committed example |
+| `.env.qa` | `--mode qa` | ❌ No | QA environment config |
+| `.env.go` | `--mode go` | ❌ No | Go/Staging environment config |
+| `.env.production` | `--mode production` | ❌ No | Production environment config |
+| `.env.development.example` | Reference only | ✅ Yes | Safe template for the dev profile |
 | `.env.*.local` | Mode-specific override | ❌ No | Personal overrides |
 
 **Note**: Files ending in `.local` are gitignored and should never be committed.
@@ -111,30 +112,20 @@ VITE_RECAPTCHA_SITE_KEY=your-recaptcha-key (optional)
 
 ## Local Development
 
-### Option 1: Local Development with Emulators (Recommended for Testing)
+### Option 1: Local Development with Persistent Emulators (Recommended for Testing)
 
 This setup runs the frontend locally and connects to Firebase emulators running on your machine.
 
-#### Step 1: Start Firebase Emulators
-
 ```bash
-npm run emulators:local
+npm run local
 ```
 
-This starts all Firebase emulators:
+This starts Vite and all Firebase emulators together:
 - **Emulator UI**: http://localhost:4000
 - **Auth Emulator**: http://localhost:9099
 - **Firestore Emulator**: http://localhost:8080
 - **Storage Emulator**: http://localhost:9199
 - **Functions Emulator**: http://localhost:5001
-
-#### Step 2: Start Frontend (in a separate terminal)
-
-```bash
-npm start
-# or
-npm run local
-```
 
 The frontend will be available at: http://localhost:5173
 
@@ -143,6 +134,10 @@ The frontend will be available at: http://localhost:5173
 - Connects to local emulators
 - Project ID: `demo-project`
 - All data is local and isolated
+- Emulator state is restored from and exported to the gitignored `emulator-data/` directory
+
+To run only the emulator suite, use `npm run emulators:local`. To run only Vite
+against an already-running emulator suite, use `npm run local:web`.
 
 ### Option 2: Local Development with Real Dev Backend
 
@@ -166,9 +161,10 @@ running the full emulator suite.
 
 #### Prereqs
 
-- In `.env.development` (or `.env.development.local`), set:
+- Keep `.env.development` on the normal checked dev profile:
   - `VITE_USE_EMULATOR=false`
-  - `VITE_USE_FUNCTIONS_EMULATOR=true`
+  - `VITE_USE_FUNCTIONS_EMULATOR=false`
+- The `dev:functions-emulator` command enables only the Functions emulator for that process.
 
 #### Step 1: Start local Functions emulator (dev project)
 
@@ -194,8 +190,9 @@ npm run dev:functions-emulator
 
 | Command | Frontend Config | Backend | Use Case |
 |---------|----------------|---------|----------|
-| `npm start` | `.env.localemulator` | Emulators | Local testing |
-| `npm run local` | `.env.localemulator` | Emulators | Same as above |
+| `npm start` | `.env.localemulator` | Emulators + Vite | Persistent isolated local testing |
+| `npm run local` | `.env.localemulator` | Emulators + Vite | Same as above |
+| `npm run local:web` | `.env.localemulator` | Existing emulators | Frontend-only local process |
 | `npm run dev` | `.env.development` | Real Dev Firebase | Test against dev data |
 | `npm run emulators:functions:dev` + `npm run dev:functions-emulator` | `.env.development` (+ functions emulator flag) | Real Dev + Local Functions | Debug Cloud Functions locally |
 
@@ -311,6 +308,9 @@ npm run emulators:debug
 
 ### Emulator Data Management
 
+Normal local starts automatically import existing `emulator-data/` and export it on
+clean shutdown. This directory is intentionally gitignored and stays on your machine.
+
 ```bash
 # Export emulator data
 npm run emulators:export
@@ -341,8 +341,9 @@ npm run test:auth
 
 | Command | Vite Mode | Environment Files Loaded | Result |
 |---------|-----------|-------------------------|--------|
-| `npm start` | `localemulator` | `.env` → `.env.localemulator` | Emulator config |
-| `npm run local` | `localemulator` | `.env` → `.env.localemulator` | Emulator config |
+| `npm start` | `localemulator` | `.env` → `.env.localemulator` | Emulator config + emulator suite |
+| `npm run local` | `localemulator` | `.env` → `.env.localemulator` | Emulator config + emulator suite |
+| `npm run local:web` | `localemulator` | `.env` → `.env.localemulator` | Emulator config, frontend only |
 | `npm run dev` | `development` | `.env` → `.env.development` | Dev Firebase |
 | `npm run build:dev` | `development` | `.env` → `.env.development` | Dev build |
 | `npm run build:qa` | `qa` | `.env` → `.env.qa` | QA build |
@@ -376,6 +377,12 @@ VITE_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
 VITE_FIREBASE_APP_ID=your-app-id
 VITE_FIREBASE_MEASUREMENT_ID=G-XXXXXXXXXX
 ```
+
+Start from `.env.development.example`. Both `npm run dev` and `npm run build:dev`
+validate the complete `airabook-dev` Web App identity and ensure all-emulator mode
+is disabled. Restart Vite after editing environment files.
+See `DEVELOPMENT_PROFILES.md` for the complete service matrix, hybrid Functions mode,
+test dependencies, and pre-deploy checklist.
 
 ## Project Structure
 
