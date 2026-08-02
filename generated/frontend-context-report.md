@@ -1,11 +1,11 @@
 # Frontend Context Report
 
-Generated: 2026-07-31 22:12:41Z
+Generated: 2026-08-02 04:35:07Z
 
 ## Frontend Repo Snapshot
 - Workspace: /Users/adarshbhattarai/code/Airabook/Airabook
 - Branch: dev-video-flow
-- HEAD: 99efa29
+- HEAD: 0880443
 - Backend repo: /Users/adarshbhattarai/code/AiraAI/Agent
 
 ## Read First
@@ -19,23 +19,8 @@ Generated: 2026-07-31 22:12:41Z
 
 
 ```text
- M .env.example
- M .env.localemulator
- M .gitignore
- M README.md
+ M .github/workflows/deploy-dev.yml
  M generated/frontend-context-report.md
- M package.json
- M scripts/start-emulators-with-stripe.sh
- M src/context/AuthContext.jsx
- M src/pages/Login.jsx
- M src/pages/Signup.jsx
- M vite.config.js
-?? .codex/skills/airabook-run-profiles/SKILL.md
-?? .codex/skills/airabook-run-profiles/agents/openai.yaml
-?? .env.development.example
-?? DEVELOPMENT_PROFILES.md
-?? scripts/check-profile.mjs
-?? scripts/start-local-profile.mjs
 ```
 
 ## Backend Snapshot
@@ -48,14 +33,14 @@ Working tree clean.
 ```
 
 ## Recent Commits
+- 2026-08-01 0880443 Fix deployment
+- 2026-08-01 e0881c9 Updates
 - 2026-07-26 99efa29 Recent updates
 - 2026-03-27 9fe3b9d feat(video): Manim clip generation UI, e2e tests, emulator seed scripts
 - 2026-03-22 84395fe Color match
 - 2026-03-21 4a34b9b Video Flow
 - 2026-03-21 233e993 Video flow idea
 - 2026-03-21 69a272a Update
-- 2026-03-21 0bed0a5 Update
-- 2026-03-20 32a82aa Update
 
 ## High-Signal Paths
 - /Users/adarshbhattarai/code/Airabook/Airabook/src/App.jsx
