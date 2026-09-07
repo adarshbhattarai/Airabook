@@ -37,8 +37,13 @@
     "seed:data": "node functions/seedData.js",
     "seed:emulator": "node functions/create_emulator_user.mjs && node functions/seed_emulator.mjs && node functions/seed_user.mjs",
     "test:auth": "cd functions && node test-auth.cjs",
+    "test:unit": "node --test src/lib/pageMedia.test.mjs functions/tests/page-media-unit-tests.cjs",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=80 --test-coverage-branches=60 --test-coverage-functions=80 src/lib/pageMedia.test.mjs functions/tests/page-media-unit-tests.cjs",
     "test:e2e": "npx playwright test",
+    "test:e2e:critical": "npx playwright test e2e/critical-path.spec.mjs --workers=1",
     "test:e2e:movies": "npx playwright test e2e/movies.spec.mjs",
+    "test:local:qa": "node scripts/run-airabook-qa.mjs",
+    "test:weekly:qa": "node scripts/run-airabook-qa.mjs --start",
     "create:emulator-user": "cd functions && node create-emulator-user.cjs",
     "stripe:setup": "bash scripts/setup-stripe-webhook.sh",
     "stripe:update-secret": "bash scripts/update-stripe-secret.sh"
