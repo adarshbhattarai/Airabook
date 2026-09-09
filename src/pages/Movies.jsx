@@ -6,17 +6,19 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  HelpCircle,
   Clapperboard,
-  Code2,
   Film,
   Layers3,
   Library,
   Loader2,
+  MessageSquare,
   PencilLine,
   PlayCircle,
   PlusCircle,
   Sparkles,
   Wand2,
+  X,
 } from 'lucide-react';
 import AppLoader from '@/components/app/AppLoader';
 import StatCard from '@/components/app/StatCard';
@@ -156,7 +158,10 @@ const Movies = () => {
   const [createBookId, setCreateBookId] = useState('');
   const [moviePrompt, setMoviePrompt] = useState('');
   const [revisionInstruction, setRevisionInstruction] = useState('');
-  const [codeDraft, setCodeDraft] = useState('');
+  const [promptHistory, setPromptHistory] = useState([]);
+  const [promptHelpOpen, setPromptHelpOpen] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [activeInspectorTab, setActiveInspectorTab] = useState('prompt');
   const [activeEditorTab, setActiveEditorTab] = useState('movie');
   const streamAbortRef = useRef(null);
   const pageStripRef = useRef(null);
@@ -178,8 +183,6 @@ const Movies = () => {
   const storyboardScenes = selectedJob?.storyboard?.scenes || [];
   const reviewNotes = selectedJob?.reviewNotes || [];
   const latestWarning = selectedJob?.warnings?.[0] || '';
-  const backendManimCode = selectedJob?.manimCode || '# No Manim code is available yet.';
-  const codeDirty = !!selectedJob && codeDraft !== backendManimCode;
   const movieWorkspaceTitle = stripHtml(selectedPage?.title)
     || stripHtml(selectedBook?.title)
     || 'Movie workspace';
@@ -387,14 +390,6 @@ const Movies = () => {
   }, [jobs, selectedJobId]);
 
   useEffect(() => {
-    if (!selectedJob) {
-      setCodeDraft('');
-      return;
-    }
-    setCodeDraft(selectedJob.manimCode || '# No Manim code is available yet.');
-  }, [selectedJob?.jobId, selectedJob?.manimCode]);
-
-  useEffect(() => {
     if (selectedJob?.previewUrl) {
       setActiveEditorTab('movie');
     }
@@ -415,7 +410,10 @@ const Movies = () => {
     setSelectedJobId(pageJob?.jobId || '');
     setSelectedJob(pageJob);
     setRevisionInstruction('');
-    setActiveEditorTab(pageJob?.previewUrl ? 'movie' : 'prompt');
+    setPromptHistory([]);
+    setActiveEditorTab('movie');
+    setInspectorOpen(!pageJob?.previewUrl);
+    setActiveInspectorTab('prompt');
     setSearchParams({
       bookId: selectedBookId,
       chapterId,
@@ -476,8 +474,11 @@ const Movies = () => {
       handleJobUpdate(createdJob);
       setSelectedJobId(createdJob.jobId);
       setSelectedJob(createdJob);
+      setPromptHistory((history) => [...history, revisionInstruction.trim() || moviePrompt.trim() || fallbackInstruction]);
       setRevisionInstruction('');
-      setActiveEditorTab('prompt');
+      setActiveEditorTab('movie');
+      setInspectorOpen(true);
+      setActiveInspectorTab('render');
       setSearchParams({
         bookId: selectedBookId,
         chapterId: selectedChapterId,
@@ -502,16 +503,19 @@ const Movies = () => {
   const handleRevise = async () => {
     if (!selectedBookId || !selectedJobId || !revisionInstruction.trim()) return;
 
+    const submittedInstruction = revisionInstruction.trim();
     setSubmitting(true);
     try {
       const revisedJob = await revisePageClip({
         bookId: selectedBookId,
         jobId: selectedJobId,
-        instruction: revisionInstruction.trim(),
+        instruction: submittedInstruction,
       });
       handleJobUpdate(revisedJob);
       setSelectedJobId(revisedJob.jobId);
+      setPromptHistory((history) => [...history, submittedInstruction]);
       setRevisionInstruction('');
+      setActiveInspectorTab('render');
       toast({
         title: 'Clip revised',
         description: 'The storyboard and Manim draft were updated for this page.',
@@ -528,7 +532,7 @@ const Movies = () => {
   };
 
   const handleRender = async () => {
-    if (!selectedBookId || !selectedJobId || codeDirty) return;
+    if (!selectedBookId || !selectedJobId) return;
 
     setSubmitting(true);
     try {
@@ -760,104 +764,63 @@ const Movies = () => {
           {selectedJob?.latestError ? <div className="movies-feedback-error mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{selectedJob.latestError}</div> : null}
           {latestWarning ? <div className="movies-feedback-warning mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">{latestWarning}</div> : null}
 
-          <div className="mt-5 flex w-full rounded-2xl border border-app-gray-100 bg-app-gray-50 p-1" data-testid="movies-editor-tabs">
-            {[
-              { id: 'movie', label: 'Movie', icon: Film },
-              { id: 'prompt', label: 'Prompt', icon: Wand2 },
-              { id: 'page', label: 'Page', icon: BookOpen },
-            ].map((tab) => {
-              const Icon = tab.icon;
-              const active = activeEditorTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  data-testid={`movies-tab-${tab.id}`}
-                  onClick={() => setActiveEditorTab(tab.id)}
-                  className={[
-                    'inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all',
-                    active ? 'bg-white text-app-iris shadow-sm' : 'text-app-gray-600 hover:text-app-gray-900',
-                  ].join(' ')}
-                >
-                  <Icon className="h-4 w-4" />
-                  {tab.label}
-                </button>
-              );
-            })}
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3" data-testid="movies-editor-tabs">
+            <Button
+              variant={inspectorOpen && activeInspectorTab === 'prompt' ? 'appPrimary' : 'outline'}
+              onClick={() => {
+                setInspectorOpen(true);
+                setActiveInspectorTab('prompt');
+              }}
+              data-testid="movies-tab-prompt"
+            >
+              <MessageSquare className="mr-2 h-4 w-4" />
+              Prompt box
+            </Button>
+            <div className="flex rounded-2xl border border-app-gray-100 bg-app-gray-50 p-1">
+              {[
+                { id: 'movie', label: 'Movie', icon: Film },
+                { id: 'page', label: 'Page', icon: BookOpen },
+              ].map((tab) => {
+                const Icon = tab.icon;
+                const active = activeEditorTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    data-testid={`movies-tab-${tab.id}`}
+                    onClick={() => setActiveEditorTab(tab.id)}
+                    className={[
+                      'inline-flex min-w-[112px] items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all',
+                      active ? 'bg-white text-app-iris shadow-sm' : 'text-app-gray-600 hover:text-app-gray-900',
+                    ].join(' ')}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          {activeEditorTab === 'movie' ? (
-            <div className="mt-5">
-              {selectedJob?.previewUrl ? (
-                <div className="movies-code-panel overflow-hidden rounded-[24px] border border-app-gray-100 bg-app-gray-950 p-3 shadow-inner">
-                  <video key={selectedJob.previewUrl} src={selectedJob.previewUrl} data-testid="movies-video-preview" controls className="aspect-video w-full rounded-[18px] bg-black" />
-                </div>
-              ) : (
-                <div className="movies-empty-panel rounded-[24px] border border-dashed border-app-gray-200 bg-app-gray-50 px-6 py-16 text-center">
-                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-app-iris/10 text-app-iris">
-                    {selectedJob?.status === 'RENDERING' ? <Loader2 className="h-6 w-6 animate-spin" /> : <Film className="h-6 w-6" />}
+          <div className={['mt-5 grid items-start gap-5', inspectorOpen ? 'lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px]' : 'grid-cols-1'].join(' ')}>
+            <div className="min-w-0">
+              {activeEditorTab === 'movie' ? (
+                selectedJob?.previewUrl ? (
+                  <div className="movies-code-panel overflow-hidden rounded-[24px] border border-app-gray-100 bg-app-gray-950 p-3 shadow-inner">
+                    <video key={selectedJob.previewUrl} src={selectedJob.previewUrl} data-testid="movies-video-preview" controls className="aspect-video w-full rounded-[18px] bg-black" />
                   </div>
-                  <p className="mt-4 text-sm font-medium text-app-gray-900">{selectedJob?.status === 'RENDERING' ? 'Rendering is in progress' : 'No preview yet'}</p>
-                  <p className="mt-2 text-xs text-app-gray-600">
-                    {selectedJob ? 'Render the backend-saved Manim draft to produce the video preview.' : 'Open Prompt to generate the first clip for this page.'}
-                  </p>
-                </div>
-              )}
-            </div>
-          ) : activeEditorTab === 'prompt' ? (
-            <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-              <div className="movies-card-soft rounded-2xl border border-app-gray-100 bg-app-gray-50 p-4">
-                <div className="flex items-center gap-2">
-                  <Wand2 className="h-4 w-4 text-app-iris" />
-                  <h2 className="text-sm font-semibold text-app-gray-900">Prompt and generate</h2>
-                </div>
-                <div className="mt-4 space-y-2">
-                  <Label htmlFor="movies-movie-prompt">Movie prompt</Label>
-                  <Textarea id="movies-movie-prompt" value={moviePrompt} onChange={(event) => setMoviePrompt(event.target.value)} placeholder="Overall style, pacing, colors, or explanation tone for this book movie." className="movies-input min-h-[110px] resize-none" />
-                </div>
-                <div className="mt-4 space-y-2">
-                  <Label htmlFor="movies-page-prompt">{selectedJob ? 'Revision prompt' : 'Page clip prompt'}</Label>
-                  <Textarea id="movies-page-prompt" value={revisionInstruction} onChange={(event) => setRevisionInstruction(event.target.value)} placeholder="Example: Make this page feel like a clean math explainer with fewer words on screen." className="movies-input min-h-[150px] resize-none" data-testid="movies-revision-input" />
-                </div>
-                <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-                  {selectedJob ? (
-                    <Button variant="outline" onClick={handleRevise} disabled={submitting || !revisionInstruction.trim()} data-testid="movies-revision-submit" className="flex-1">
-                      {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
-                      Apply revision
-                    </Button>
-                  ) : (
-                    <Button variant="appPrimary" onClick={handleCreateClip} disabled={submitting || !selectedBookId || !selectedChapterId || !selectedPageId} data-testid="movies-generate-page-clip" className="flex-1">
-                      {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Clapperboard className="mr-2 h-4 w-4" />}
-                      Generate page clip
-                    </Button>
-                  )}
-                  <Button variant="outline" onClick={() => navigate(buildPagePath({ bookId: selectedBookId, chapterId: selectedChapterId, pageId: selectedPageId }))} disabled={!selectedBookId}>
-                    Open page in book
-                  </Button>
-                </div>
-              </div>
-
-              <div className="movies-card-soft rounded-2xl border border-app-gray-100 bg-app-gray-50 p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Code2 className="h-4 w-4 text-app-iris" />
-                      <h3 className="text-sm font-semibold text-app-gray-900">Editable Manim code</h3>
+                ) : (
+                  <div className="movies-empty-panel rounded-[24px] border border-dashed border-app-gray-200 bg-app-gray-50 px-6 py-16 text-center">
+                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-app-iris/10 text-app-iris">
+                      {selectedJob?.status === 'RENDERING' ? <Loader2 className="h-6 w-6 animate-spin" /> : <Film className="h-6 w-6" />}
                     </div>
-                    <p className="mt-1 text-xs leading-relaxed text-app-gray-600">Edits are local until backend save-code support is active.</p>
+                    <p className="mt-4 text-sm font-medium text-app-gray-900">{selectedJob?.status === 'RENDERING' ? 'Rendering is in progress' : 'No preview yet'}</p>
+                    <p className="mt-2 text-xs text-app-gray-600">
+                      {selectedJob ? 'Use Render clip on the right to build the updated video.' : 'Open Prompt box to generate the first clip for this page.'}
+                    </p>
                   </div>
-                  <Button variant="appPrimary" onClick={handleRender} disabled={submitting || !selectedJobId || selectedJob?.status === 'RENDERING' || codeDirty} data-testid="movies-render-button" className="shrink-0">
-                    {submitting && selectedJob?.status !== 'RENDERING' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlayCircle className="mr-2 h-4 w-4" />}
-                    Render clip
-                  </Button>
-                </div>
-                {codeDirty ? <div className="movies-feedback-warning mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">Save-code support is planned but not active yet. Revert local edits or revise by prompt before rendering.</div> : null}
-                <textarea value={codeDraft || backendManimCode} onChange={(event) => setCodeDraft(event.target.value)} disabled={!selectedJob} spellCheck={false} className="movies-code-block movies-input movies-code-panel mt-3 min-h-[360px] w-full resize-y rounded-2xl border px-5 py-5 outline-none transition focus:border-app-iris/50 focus:ring-2 focus:ring-app-iris/10 disabled:opacity-70" />
-              </div>
-            </div>
-          ) : (
-            <div className="mt-5">
-              {selectedPage ? (
+                )
+              ) : selectedPage ? (
                 <div className="overflow-hidden rounded-[24px] border border-app-gray-100 bg-app-gray-50 p-4">
                   <PageEditor
                     bookId={selectedBookId}
@@ -876,17 +839,122 @@ const Movies = () => {
                 </div>
               ) : (
                 <div className="movies-empty-panel rounded-[24px] border border-dashed border-app-gray-200 bg-app-gray-50 px-6 py-16 text-center">
-                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-app-iris/10 text-app-iris">
-                    <BookOpen className="h-6 w-6" />
-                  </div>
+                  <BookOpen className="mx-auto h-6 w-6 text-app-iris" />
                   <p className="mt-4 text-sm font-medium text-app-gray-900">No page selected</p>
-                  <p className="mt-2 text-xs text-app-gray-600">
-                    Choose a page from the strip below to preview it here.
-                  </p>
+                  <p className="mt-2 text-xs text-app-gray-600">Choose a page from the strip below to preview it here.</p>
                 </div>
               )}
             </div>
-          )}
+
+            {inspectorOpen ? (
+              <aside className="movies-card-soft overflow-hidden rounded-[24px] border border-app-gray-100 bg-app-gray-50 shadow-appSoft" data-testid="movies-right-inspector">
+                <div className="flex items-center gap-1 border-b border-app-gray-100 p-2">
+                  {[
+                    { id: 'prompt', label: 'Prompt box', icon: MessageSquare },
+                    { id: 'render', label: 'Render clip', icon: PlayCircle },
+                  ].map((tab) => {
+                    const Icon = tab.icon;
+                    const active = activeInspectorTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setActiveInspectorTab(tab.id)}
+                        data-testid={`movies-inspector-${tab.id}`}
+                        className={[
+                          'inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition-all',
+                          active ? 'bg-white text-app-iris shadow-sm' : 'text-app-gray-600 hover:text-app-gray-900',
+                        ].join(' ')}
+                      >
+                        <Icon className="h-4 w-4" />
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                  <button type="button" onClick={() => setInspectorOpen(false)} aria-label="Close prompt panel" className="rounded-xl p-2 text-app-gray-500 transition hover:bg-white hover:text-app-gray-900">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                {activeInspectorTab === 'prompt' ? (
+                  <div className="p-4">
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-sm font-semibold text-app-gray-900">What would you like to update?</h2>
+                      <button
+                        type="button"
+                        aria-label="Prompt help"
+                        aria-expanded={promptHelpOpen}
+                        onClick={() => setPromptHelpOpen((open) => !open)}
+                        className="rounded-full text-app-gray-500 transition hover:text-app-iris"
+                      >
+                        <HelpCircle className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <p className="mt-1 text-xs leading-relaxed text-app-gray-600">Send one clear instruction, then render the new draft to see it in the movie.</p>
+                    {promptHelpOpen ? (
+                      <div className="mt-3 rounded-2xl border border-app-iris/20 bg-app-iris/5 px-3 py-2 text-xs leading-relaxed text-app-gray-700" role="note">
+                        Describe one visual, pacing, text, or animation change. Airabook will revise the current clip draft without needing a second prompt field.
+                      </div>
+                    ) : null}
+
+                    {promptHistory.length ? (
+                      <div className="mt-4 max-h-40 space-y-2 overflow-y-auto" aria-label="Recent clip instructions">
+                        {promptHistory.slice(-3).map((instruction, index) => (
+                          <div key={`${instruction}-${index}`} className="ml-6 rounded-2xl rounded-br-md bg-app-iris px-3 py-2 text-xs leading-relaxed text-white">
+                            {instruction}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <Label htmlFor="movies-page-prompt" className="sr-only">Clip instruction</Label>
+                    <Textarea
+                      id="movies-page-prompt"
+                      value={revisionInstruction}
+                      onChange={(event) => setRevisionInstruction(event.target.value)}
+                      placeholder="Example: Slow down the title animation and make the labels easier to read."
+                      className="movies-input mt-4 min-h-[150px] resize-none"
+                      data-testid="movies-revision-input"
+                    />
+                    {selectedJob ? (
+                      <Button variant="appPrimary" onClick={handleRevise} disabled={submitting || !revisionInstruction.trim()} data-testid="movies-revision-submit" className="mt-3 w-full">
+                        {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
+                        Update clip draft
+                      </Button>
+                    ) : (
+                      <Button variant="appPrimary" onClick={handleCreateClip} disabled={submitting || !selectedBookId || !selectedChapterId || !selectedPageId} data-testid="movies-generate-page-clip" className="mt-3 w-full">
+                        {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Clapperboard className="mr-2 h-4 w-4" />}
+                        Generate page clip
+                      </Button>
+                    )}
+                    <Button variant="ghost" onClick={() => navigate(buildPagePath({ bookId: selectedBookId, chapterId: selectedChapterId, pageId: selectedPageId }))} disabled={!selectedBookId} className="mt-2 w-full">
+                      Open page in book
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="p-4">
+                    <div className="flex items-center gap-2">
+                      <PlayCircle className="h-4 w-4 text-app-iris" />
+                      <h2 className="text-sm font-semibold text-app-gray-900">Render the latest changes</h2>
+                    </div>
+                    <p className="mt-2 text-xs leading-relaxed text-app-gray-600">Rendering may take a while. Live status stays here, and the updated video appears in the middle when it is ready.</p>
+                    <div className="mt-4 rounded-2xl border border-app-gray-100 bg-white p-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-app-gray-500">Current draft</p>
+                      <div className="mt-2 flex items-center justify-between gap-3">
+                        <span className="text-sm font-medium text-app-gray-900">{selectedJob ? 'Ready to render' : 'No clip draft yet'}</span>
+                        {selectedJob ? <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium ${statusClasses(selectedJob.status)}`}>{selectedJob.status}</span> : null}
+                      </div>
+                    </div>
+                    <Button variant="appPrimary" onClick={handleRender} disabled={submitting || !selectedJobId || selectedJob?.status === 'RENDERING'} data-testid="movies-render-button" className="mt-4 w-full">
+                      {selectedJob?.status === 'RENDERING' || streaming ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlayCircle className="mr-2 h-4 w-4" />}
+                      {selectedJob?.status === 'RENDERING' ? 'Rendering clip…' : 'Render clip'}
+                    </Button>
+                    {selectedJob?.previewUrl ? <p className="mt-3 text-center text-xs text-emerald-700">A rendered preview is available in the movie player.</p> : null}
+                  </div>
+                )}
+              </aside>
+            ) : null}
+          </div>
         </section>
 
         <section className="grid gap-4 lg:grid-cols-2">

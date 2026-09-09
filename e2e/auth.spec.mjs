@@ -134,7 +134,7 @@ test.describe('Signup', () => {
     await page.locator('button[type="submit"]').click();
 
     // After signup the app navigates away from /signup
-    await page.waitForURL(url => !url.includes('/signup'), { timeout: 15000 });
+    await page.waitForURL(url => !url.pathname.includes('/signup'), { timeout: 15000 });
     expect(page.url()).not.toContain('/signup');
   });
 });

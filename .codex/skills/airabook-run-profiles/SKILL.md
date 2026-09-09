@@ -54,3 +54,45 @@ Do not create test data, seed dev, run hybrid Functions, deploy, reauthenticate 
 - Check Firebase CLI authentication before deployment; request reauthentication if needed.
 - Run `npm run deploy:dev` only when the user explicitly asks to deploy.
 - Smoke-test `https://airabook-dev.web.app` after a successful dev deployment.
+
+## Local QA Navigation And Test Workflow
+
+For browser QA, use the isolated `local` profile and the seeded emulator user:
+
+```bash
+npm run test:local:qa
+```
+
+This command checks the local profile, verifies the emulator ports and frontend,
+recreates the fixed emulator account, runs the seed scripts, and executes the
+serial Playwright smoke suite. If the stack is not running, use
+`npm run test:weekly:qa`; it starts `npm run local`, waits for the emulators and
+Vite, runs the same suite, and cleans up the process group afterward.
+
+The canonical user navigation is:
+
+1. `/login` with the emulator credentials.
+2. `/dashboard` after successful authentication.
+3. `Books` navigation to `/books`.
+4. The seeded book at `/book/book-debug-001`.
+5. A chapter row, then `View Pages` for an existing page or `Add Page Manually`
+   for a new draft.
+6. The page editor `Save` button, which exercises the Firebase `createPage` or
+   `updatePage` callable.
+7. Double-click a `.chapter-page-row` to rename a page; this exercises both the
+   page document and the chapter `pagesSummary` update, then reload the book to
+   verify persistence.
+
+Prefer role, label, and existing `data-testid` locators. Stable Airabook
+locators include `add-page-btn`, `view-pages-btn`, `book-detail-create-video`,
+`editor-save-btn`, and `manim-video-dialog`. Keep browser mutations serial with
+`--workers=1` because emulator seed data is intentionally shared by the smoke
+scenario.
+
+The critical test is `e2e/critical-path.spec.mjs`. The related auth, book-flow,
+and video-dialog suites also run in the local QA command. Spring video calls are
+mocked in browser tests, but authenticated request headers and key request fields
+must still be asserted. Run the Python ADK unit suite separately from
+`/Users/adarshbhattarai/code/Airabook/Agent/manim-runner` with
+`./.venv/bin/python -m pytest -q`; opt-in integration tests require the ADK
+service and their documented credentials.

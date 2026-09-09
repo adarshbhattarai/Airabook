@@ -181,6 +181,11 @@ test.describe('Book flow', () => {
 
   test('Generate Clip button is visible on book detail page', async ({ page }) => {
     await openSeededBook(page);
+    const viewPagesBtn = page.getByTestId('view-pages-btn');
+    if (await viewPagesBtn.count()) {
+      await viewPagesBtn.click();
+      await page.waitForTimeout(1500);
+    }
     await expect(page.getByTestId('book-detail-create-video').first()).toBeVisible({ timeout: 10000 });
   });
 
@@ -206,6 +211,11 @@ test.describe('Book flow', () => {
     // Mock the Spring createDraft endpoint — no need for Agent backend to run
     await page.route('**/api/v1/videos/page-clips**', async route => {
       if (route.request().method() === 'POST') {
+        expect(route.request().headers().authorization).toMatch(/^Bearer\s+.+/);
+        expect(route.request().postDataJSON()).toMatchObject({
+          bookId: SEED_BOOK_ID,
+          chapterId: SEED_CHAPTER_ID,
+        });
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
