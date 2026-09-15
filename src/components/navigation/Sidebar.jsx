@@ -15,6 +15,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   BarChart3,
+  Building2,
   Loader2,
 } from 'lucide-react';
 
@@ -31,6 +32,12 @@ const baseSections = [
     label: 'Upgrade',
     items: [
       { name: 'Upgrade', icon: Heart, to: '/billing' },
+    ],
+  },
+  {
+    label: 'Enterprise',
+    items: [
+      { name: 'Enterprise Account Request', icon: Building2, to: '/v2/enterprise-signup' },
     ],
   },
 ];

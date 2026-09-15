@@ -102,10 +102,10 @@ const Navbar = () => {
             ) : (
               <>
                 <Button asChild variant="ghost" className="rounded-full text-violet-600 hover:bg-violet-100 hover:text-violet-700">
-                  <Link to="/login"><LogIn className="h-4 w-4 mr-2" />Login</Link>
+                  <Link to="/v2/login"><LogIn className="h-4 w-4 mr-2" />Login</Link>
                 </Button>
                 <Button asChild className="bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200">
-                  <Link to="/signup"><UserPlus className="h-4 w-4 mr-2" />Signup</Link>
+                  <Link to="/v2/personal-signup"><UserPlus className="h-4 w-4 mr-2" />Signup</Link>
                 </Button>
               </>
             )}
@@ -176,10 +176,10 @@ const Navbar = () => {
                 ) : (
                   <>
                     <Button asChild variant="outline" className="w-full justify-center rounded-lg">
-                      <Link to="/login" onClick={() => setIsOpen(false)}><LogIn className="h-4 w-4 mr-2" />Login</Link>
+                      <Link to="/v2/login" onClick={() => setIsOpen(false)}><LogIn className="h-4 w-4 mr-2" />Login</Link>
                     </Button>
                     <Button asChild className="w-full justify-center bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-lg">
-                      <Link to="/signup" onClick={() => setIsOpen(false)}><UserPlus className="h-4 w-4 mr-2" />Signup</Link>
+                      <Link to="/v2/personal-signup" onClick={() => setIsOpen(false)}><UserPlus className="h-4 w-4 mr-2" />Signup</Link>
                     </Button>
                   </>
                 )}

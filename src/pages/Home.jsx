@@ -7,8 +7,8 @@ import { useAuth } from '@/context/AuthContext';
 
 const Home = () => {
   const { user } = useAuth();
-  const mediaLink = user ? "/media" : "/login";
-  const notesLink = user ? "/notes" : "/login";
+  const mediaLink = user ? "/media" : "/v2/login";
+  const notesLink = user ? "/notes" : "/v2/login";
 
   const navigate = useNavigate();
   const [typingText, setTypingText] = useState('');
@@ -51,7 +51,7 @@ const Home = () => {
     if (user) {
       navigate('/dashboard', { state: { prompt } });
     } else {
-      navigate('/login');
+      navigate('/v2/login');
     }
   };
 
@@ -123,7 +123,7 @@ const Home = () => {
                             if (user) {
                               navigate('/dashboard', { state: { prompt: "Surprise me" } });
                             } else {
-                              navigate('/login');
+                              navigate('/v2/login');
                             }
                           }}
                           className="flex items-center text-[#646a80] text-sm px-3 py-1.5 rounded-full hover:bg-[#ececf9] transition-colors"
@@ -318,7 +318,7 @@ const Home = () => {
                 ],
                 accent: 'from-gray-100 to-gray-50',
                 buttonText: 'Start Writing',
-                link: '/login',
+                link: '/v2/login',
                 active: true
               },
               {
@@ -437,7 +437,7 @@ const Home = () => {
             </p>
             <div className="flex flex-wrap gap-4 justify-center">
               <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Link to="/login" className="inline-block bg-gradient-to-r from-purple-500 to-indigo-500 text-white px-8 py-3 rounded-full font-medium shadow-lg hover:shadow-xl transition-all duration-200">
+                <Link to="/v2/login" className="inline-block bg-gradient-to-r from-purple-500 to-indigo-500 text-white px-8 py-3 rounded-full font-medium shadow-lg hover:shadow-xl transition-all duration-200">
                   Start Writing Now
                 </Link>
               </motion.div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ThemeProvider } from '@/context/ThemeContext';
@@ -10,6 +10,7 @@ import AiraHome from '@/pages/AiraHome';
 import Login from '@/pages/Login';
 import Signup from '@/pages/Signup';
 import ForgotPassword from '@/pages/ForgotPassword';
+import EnterpriseHome from '@/pages/EnterpriseHome';
 import Dashboard from '@/pages/Dashboard';
 import Books from '@/pages/Books';
 import Movies from '@/pages/Movies';
@@ -27,10 +28,18 @@ import ErrorPage from '@/pages/ErrorPage';
 import ProfileSettings from '@/pages/ProfileSettings';
 import AdminDashboard from '@/pages/admin/AdminDashboard';
 import AdminRoute from '@/components/AdminRoute';
+import {
+  EnterpriseLogin,
+  EnterpriseSignup,
+  PersonalLogin,
+  PersonalSignup,
+  V2AccountSelector,
+} from '@/pages/auth/v2';
 
 // A wrapper to protect routes that require authentication
-const PrivateRoute = ({ children }) => {
+const PrivateRoute = ({ children, loginPath = '/v2/login' }) => {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -40,7 +49,7 @@ const PrivateRoute = ({ children }) => {
     );
   }
 
-  return user ? children : <Navigate to="/login" />;
+  return user ? children : <Navigate to={loginPath} replace state={{ from: location }} />;
 };
 
 const ThemedAppShell = ({ children }) => (
@@ -60,9 +69,27 @@ function App() {
             {/* Public / marketing routes */}
             <Route path="/aira" element={<MarketingLayout><AiraHome /></MarketingLayout>} />
             <Route path="/" element={<MarketingLayout><Home /></MarketingLayout>} />
+            {/* Existing auth routes remain unchanged. */}
             <Route path="/signup" element={<MarketingLayout><Signup /></MarketingLayout>} />
             <Route path="/login" element={<MarketingLayout><Login /></MarketingLayout>} />
             <Route path="/forgot-password" element={<MarketingLayout><ForgotPassword /></MarketingLayout>} />
+
+            {/* Version 2 auth aliases and account-specific pages. */}
+            <Route path="/v2/login" element={<V2AccountSelector />} />
+            <Route path="/v2/personal-login" element={<PersonalLogin />} />
+            <Route path="/v2/personal-signup" element={<PersonalSignup />} />
+            <Route path="/v2/enterprise-login" element={<EnterpriseLogin />} />
+            <Route
+              path="/v2/enterprise-signup"
+              element={
+                <PrivateRoute loginPath="/v2/personal-login">
+                  <ThemedAppShell>
+                    <EnterpriseSignup />
+                  </ThemedAppShell>
+                </PrivateRoute>
+              }
+            />
+            <Route path="/v2/enterprise-home" element={<EnterpriseHome />} />
 
             {/* Authenticated app routes */}
             <Route
