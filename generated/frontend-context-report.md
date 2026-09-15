@@ -1,11 +1,11 @@
 # Frontend Context Report
 
-Generated: 2026-09-13 15:18:54Z
+Generated: 2026-09-15 14:04:30Z
 
 ## Frontend Repo Snapshot
 - Workspace: /home/saroj/Documents/final/Airabook
-- Branch: main
-- HEAD: c8ac893
+- Branch: feature/enterprise-signin-login-FE
+- HEAD: 54b61cc
 - Backend repo: /home/saroj/Documents/final/Agent
 
 ## Read First
@@ -19,34 +19,7 @@ Generated: 2026-09-13 15:18:54Z
 
 
 ```text
- M package-lock.json
- M src/App.jsx
- M src/components/AdminRoute.jsx
- M src/components/Navbar.jsx
- M src/components/ProtectedRoute.jsx
- M src/components/navigation/Sidebar.jsx
- M src/index.css
- M src/pages/AiraHome.jsx
- M src/pages/Donate.jsx
- M src/pages/Home.jsx
-?? ENTERPRISE_AUTH_BACKEND_HANDOFF.md
-?? src/pages/EnterpriseHome.jsx
-?? src/pages/auth/v2/EnterpriseLogin.jsx
-?? src/pages/auth/v2/EnterpriseRequestPending.jsx
-?? src/pages/auth/v2/EnterpriseSignup.jsx
-?? src/pages/auth/v2/PersonalLogin.jsx
-?? src/pages/auth/v2/PersonalSignup.jsx
-?? src/pages/auth/v2/V2AccountSelector.jsx
-?? src/pages/auth/v2/components/AccountSwitcher.jsx
-?? src/pages/auth/v2/components/AuthBrandPanel.jsx
-?? src/pages/auth/v2/components/AuthField.jsx
-?? src/pages/auth/v2/components/AuthFooter.jsx
-?? src/pages/auth/v2/components/AuthShell.jsx
-?? src/pages/auth/v2/components/AuthTopBar.jsx
-?? src/pages/auth/v2/components/Divider.jsx
-?? src/pages/auth/v2/components/GoogleIcon.jsx
-?? src/pages/auth/v2/index.jsx
-?? src/services/enterpriseOnboardingService.js
+Working tree clean.
 ```
 
 ## Backend Snapshot
@@ -61,6 +34,7 @@ Generated: 2026-09-13 15:18:54Z
 ```
 
 ## Recent Commits
+- 2026-09-15 54b61cc Enterprise login-signup and previous personal login design improvement
 - 2026-08-02 c8ac893 Merge pull request #103 from adarshbhattarai/dev-video-flow
 - 2026-08-02 6e27384 Fix deployment
 - 2026-08-01 2370cbf Merge pull request #102 from adarshbhattarai/dev-video-flow
@@ -68,7 +42,6 @@ Generated: 2026-09-13 15:18:54Z
 - 2026-08-01 e09dfd6 Merge pull request #101 from adarshbhattarai/dev-video-flow
 - 2026-08-01 e0881c9 Updates
 - 2026-07-26 e09b324 Merge pull request #99 from adarshbhattarai/dev-video-flow
-- 2026-07-26 99efa29 Recent updates
 
 ## High-Signal Paths
 - /home/saroj/Documents/final/Airabook/src/App.jsx
