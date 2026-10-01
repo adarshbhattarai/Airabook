@@ -1,60 +1,59 @@
 # Frontend Context Report
 
-Generated: 2026-03-20 18:43:17Z
+Generated: 2026-10-01 18:51:16Z
 
 ## Frontend Repo Snapshot
-- Workspace: /Users/adeshbhattarai/code/Airabook
-- Branch: main
-- HEAD: 32a82aa
-- Backend repo: /Users/adeshbhattarai/code/AiraAI/Agent
+- Workspace: /Users/adarshbhattarai/code/Airabook/Airabook
+- Branch: dev-AB-navigation-fix
+- HEAD: 2ff22aa
+- Backend repo: /Users/adarshbhattarai/code/Airabook/Agent
 
 ## Read First
-- /Users/adeshbhattarai/code/Airabook/AGENTS.md
-- /Users/adeshbhattarai/code/Airabook/ARCHITECTURE.md
-- /Users/adeshbhattarai/code/Airabook/README.md
-- /Users/adeshbhattarai/code/Airabook/SELF_UPDATE_WORKFLOW.md
-- /Users/adeshbhattarai/code/AiraAI/Agent/AGENTS.md
+- /Users/adarshbhattarai/code/Airabook/Airabook/AGENTS.md
+- /Users/adarshbhattarai/code/Airabook/Airabook/ARCHITECTURE.md
+- /Users/adarshbhattarai/code/Airabook/Airabook/README.md
+- /Users/adarshbhattarai/code/Airabook/Airabook/SELF_UPDATE_WORKFLOW.md
+- /Users/adarshbhattarai/code/Airabook/Agent/AGENTS.md
 
 ## Frontend Working Tree
 
 
 ```text
- M ARCHITECTURE.md
- M firestore.rules
- M functions/createPage.js
- M functions/index.js
- M functions/services/pageService.js
- M functions/updatePage.js
- M functions/utils/chapterUtils.js
+ M .codex/skills/airabook-run-profiles/SKILL.md
+ M AGENTS.md
  M generated/frontend-context-report.md
- M storage.rules
-?? functions/syncPageDerivedData.js
+ M scripts/run-airabook-qa.mjs
+ M src/pages/BookDetail.jsx
+?? .codex/skills/airabook-playwright-regression/SKILL.md
+?? e2e/chapter-navigation.spec.mjs
 ```
 
 ## Backend Snapshot
-- Branch: dev-AiraCleanUp
-- HEAD: e5500c1
+- Branch: main
+- HEAD: 4c47630
 
 
 ```text
-Working tree clean.
+ M .dockerignore
+ M .gitignore
+ M Dockerfile
 ```
 
 ## Recent Commits
-- 2026-03-20 32a82aa Update
-- 2026-03-20 9e0cbaf Update
-- 2026-03-18 569e32f Update
-- 2026-03-18 72dfa3b U;date
-- 2026-03-16 28a2ddf Updates
-- 2026-03-15 1daddba Update on storage rules and UI
-- 2026-03-15 9fd2c34 Update
-- 2026-03-15 4e94484 Update
+- 2026-09-09 2ff22aa Merge pull request #104 from adarshbhattarai/dev-video-flow
+- 2026-09-06 3a4662c Update Movies workspace and add local QA checks
+- 2026-08-02 c8ac893 Merge pull request #103 from adarshbhattarai/dev-video-flow
+- 2026-08-02 6e27384 Fix deployment
+- 2026-08-01 2370cbf Merge pull request #102 from adarshbhattarai/dev-video-flow
+- 2026-08-01 0880443 Fix deployment
+- 2026-08-01 e09dfd6 Merge pull request #101 from adarshbhattarai/dev-video-flow
+- 2026-08-01 e0881c9 Updates
 
 ## High-Signal Paths
-- /Users/adeshbhattarai/code/Airabook/src/App.jsx
-- /Users/adeshbhattarai/code/Airabook/src/config/serviceEndpoints.js
-- /Users/adeshbhattarai/code/Airabook/src/services/ApiService.js
-- /Users/adeshbhattarai/code/Airabook/functions/index.js
-- /Users/adeshbhattarai/code/Airabook/functions/airabookaiStream.js
-- /Users/adeshbhattarai/code/AiraAI/Agent/agent/src/main/java/com/ethela/agent/service/UnifiedChatStreamService.java
-- /Users/adeshbhattarai/code/AiraAI/Agent/agent/src/main/java/com/ethela/agent/service/planner/PlannerAgentGraphService.java
+- /Users/adarshbhattarai/code/Airabook/Airabook/src/App.jsx
+- /Users/adarshbhattarai/code/Airabook/Airabook/src/config/serviceEndpoints.js
+- /Users/adarshbhattarai/code/Airabook/Airabook/src/services/ApiService.js
+- /Users/adarshbhattarai/code/Airabook/Airabook/functions/index.js
+- /Users/adarshbhattarai/code/Airabook/Airabook/functions/airabookaiStream.js
+- /Users/adarshbhattarai/code/Airabook/Agent/agent/src/main/java/com/ethela/agent/service/UnifiedChatStreamService.java
+- /Users/adarshbhattarai/code/Airabook/Agent/agent/src/main/java/com/ethela/agent/service/planner/PlannerAgentGraphService.java

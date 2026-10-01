@@ -65,6 +65,9 @@ jobs:
       # Build frontend
       - name: Build FE (DEV)
         run: npm run build:dev
+        env:
+          VITE_USE_EMULATOR: "false"
+          VITE_USE_FUNCTIONS_EMULATOR: "false"
 
       # Service account JSON
       - name: Write Firebase service account JSON

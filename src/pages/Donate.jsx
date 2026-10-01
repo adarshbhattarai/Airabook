@@ -5,6 +5,7 @@ import { functions } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
+import { cn } from '@/lib/utils';
 import {
   getCreditBalance,
   getBillingPlanLabel,
@@ -244,17 +245,24 @@ const BillingPage = () => {
           <div className="space-y-6">
             <div className="grid gap-4 lg:grid-cols-2">
               {planCards.map((plan) => (
-                <div key={plan.tier} className="rounded-[28px] border border-app-gray-200 bg-white p-6 shadow-appSoft">
+                <div key={plan.tier} className="billing-plan-card rounded-[28px] border border-app-gray-200 bg-white p-6 shadow-appSoft">
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <div className="inline-flex items-center gap-2 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-amber-800">
+                      <div
+                        className={cn(
+                          'billing-plan-badge inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em]',
+                          plan.tier === 'free'
+                            ? 'billing-plan-badge-free'
+                            : 'billing-plan-badge-paid'
+                        )}
+                      >
                         <Crown className="h-3.5 w-3.5" />
                         {plan.title}
                       </div>
                       <h2 className="mt-4 text-2xl font-semibold text-app-gray-900">{plan.price}</h2>
                       <p className="mt-2 text-sm text-app-gray-600">{plan.subtitle}</p>
                     </div>
-                    <div className="rounded-2xl bg-app-iris/10 p-3 text-app-iris">
+                    <div className="billing-plan-icon-shell rounded-2xl bg-app-iris/10 p-3 text-app-iris">
                       <Volume2 className="h-6 w-6" />
                     </div>
                   </div>

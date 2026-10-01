@@ -21,6 +21,29 @@ This means:
 
 The trigger does **not** proxy the file bytes today. It reacts after Storage has accepted the upload.
 
+## Page Media Fields
+
+Page documents keep two additive media lists with different presentation semantics:
+
+- `media`: legacy/gallery media rendered in the attached-media area above page content
+- `embeddedMedia`: an index of page image/video media, including BlockNote-embedded blocks and `/media` uploads that are stored without changing BlockNote content
+
+BlockNote media is derived from the current blocks whenever the page is saved. `/media` uploads are retained in the same list with `source: "pageMedia"`, so they are not removed when there is no corresponding BlockNote block. Each item may include:
+
+- `url`
+- `storagePath`
+- `name`
+- `type` (`image` or `video`)
+- `mimeType`
+- `albumId`
+- `blockId` and `blockIndex` (for BlockNote blocks)
+- `caption`
+- `source`
+
+The serialized BlockNote HTML remains in `note`; `embeddedMedia` is an index for backend consumers and cleanup, not a replacement for editor layout. Backend features that need every page asset should merge `media` and `embeddedMedia`, deduplicate by `storagePath` (falling back to `url`), and preserve gallery items before BlockNote-order embedded items.
+
+Do not persist a third `allMedia` field because it can drift from the two authoritative lists.
+
 ## Source Of Truth Files
 
 - `/Users/adeshbhattarai/code/Airabook/storage.rules`
@@ -85,6 +108,8 @@ They attach `customMetadata` such as:
 - `albumId`
 - `mediaType`
 
+Page uploads must use a persisted Firestore page ID. Do not upload under `temp_*` page IDs.
+
 ### 2. Storage rules gate access
 
 `/Users/adeshbhattarai/code/Airabook/storage.rules` allows client media writes only when:
@@ -130,7 +155,7 @@ Primary callable:
 `/Users/adeshbhattarai/code/Airabook/functions/mediaProcessor.js` `onMediaDelete`:
 - removes the media item from the album
 - updates cover image and media count
-- removes page references using `usedIn`
+- removes page references from both `media` and `embeddedMedia` using `usedIn`
 - updates accessible album/book projections
 - decrements storage usage
 

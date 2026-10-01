@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
-import { doc, getDoc, updateDoc, arrayRemove } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, arrayRemove, arrayUnion } from 'firebase/firestore';
 import { ref as firebaseRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { firestore, storage, functions } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { httpsCallable } from 'firebase/functions';
 import {
-  ChevronDown, ChevronLeft, ChevronRight, Sparkles, UploadCloud, X, Trash2, Save
+  ChevronDown, ChevronLeft, ChevronRight, Sparkles, UploadCloud, X, Trash2, Save, Clapperboard, Loader2, Plus
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
@@ -16,6 +16,7 @@ import {
 import BlockEditor from '@/components/BlockEditor';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import { stripHtml, convertToEmulatorURL, textToHtml } from '@/lib/pageUtils';
+import { extractEmbeddedMedia } from '@/lib/pageMedia';
 import { validatePageContentLimits } from '@/lib/pageContentValidation';
 import {
   ensureStorageUploadAuth,
@@ -51,10 +52,13 @@ const PageEditor = forwardRef(({
   onFocus,
   onReplacePageId,
   onRequestPageDelete,
+  onCreateVideo,
   layoutMode = 'standard',
   standardPageHeightPx,
   readOnly = false,
-  canUploadMedia = true
+  canUploadMedia = true,
+  canCreateVideo = false,
+  creatingVideoJob = false,
 }, ref) => {
   const [isSaving, setIsSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({});
@@ -127,6 +131,16 @@ const PageEditor = forwardRef(({
     });
     return false;
   }, [canUploadMedia, toast]);
+
+  const ensurePersistedPageForMedia = React.useCallback(() => {
+    if (!page?.id?.startsWith('temp_')) return true;
+    toast({
+      title: 'Save page first',
+      description: 'Save this new page once before uploading or generating media so the asset uses its permanent page ID.',
+      variant: 'warning',
+    });
+    return false;
+  }, [page?.id, toast]);
 
   const template = page?.type ? pageTemplates[page.type] : null;
   const isTemplatePage = !!template;
@@ -693,6 +707,7 @@ const PageEditor = forwardRef(({
   const uploadTemplateMediaItem = async (file) => {
     if (!file || !user) return null;
     if (!ensureMediaUploadAllowed()) return null;
+    if (!ensurePersistedPageForMedia()) return null;
     const isVideo = file.type.startsWith('video');
     const isImage = file.type.startsWith('image');
     if (!isVideo && !isImage) {
@@ -769,6 +784,9 @@ const PageEditor = forwardRef(({
             storagePath,
             name: file.name,
             type: mediaType,
+            mimeType: file.type || undefined,
+            albumId: bookId,
+            source: 'upload',
           });
         }
       );
@@ -1088,6 +1106,7 @@ const PageEditor = forwardRef(({
           chapterId,
           note,
           media: mediaToSave,
+          embeddedMedia: [],
           pageName: templatePageName,
           order: page.order,
           type: template?.type,
@@ -1101,6 +1120,7 @@ const PageEditor = forwardRef(({
           pageName: newPage.pageName ?? templatePageName,
           shortNote,
           media: mediaToSave,
+          embeddedMedia: [],
           content: normalizedContent
         });
         if (!silent) {
@@ -1114,6 +1134,7 @@ const PageEditor = forwardRef(({
           pageId: page.id,
           note,
           media: mediaToSave,
+          embeddedMedia: [],
           pageName: templatePageName,
           type: template?.type,
           templateVersion: template?.templateVersion,
@@ -1126,6 +1147,7 @@ const PageEditor = forwardRef(({
           pageName: templatePageName,
           shortNote,
           media: mediaToSave,
+          embeddedMedia: [],
           content: normalizedContent,
           type: template?.type,
           templateVersion: template?.templateVersion,
@@ -1176,8 +1198,16 @@ const PageEditor = forwardRef(({
     const plain = stripHtml(htmlToSave);
     const shortNote = plain.substring(0, 40) + (plain.length > 40 ? '...' : '');
 
-    // Get current blocks for reconciliation
+    // Preserve `/media` items, which are indexed on the page without a matching
+    // BlockNote block, alongside media explicitly embedded in the editor.
     const currentBlocks = quillRef.current?.getBlocks?.() || [];
+    const blockEmbeddedMedia = extractEmbeddedMedia(currentBlocks);
+    const indexedPageMedia = (Array.isArray(page.embeddedMedia) ? page.embeddedMedia : [])
+      .filter((item) => item?.source === 'pageMedia');
+    const embeddedMediaToSave = [...blockEmbeddedMedia, ...indexedPageMedia].filter((item, index, items) => {
+      const identity = item?.storagePath || item?.url;
+      return identity && items.findIndex((candidate) => (candidate?.storagePath || candidate?.url) === identity) === index;
+    });
 
     try {
       if (page.id.startsWith('temp_')) {
@@ -1187,6 +1217,7 @@ const PageEditor = forwardRef(({
           chapterId,
           note: htmlToSave,
           media: page.media || [],
+          embeddedMedia: embeddedMediaToSave,
           ...(page.pageName !== undefined ? { pageName: page.pageName } : {}),
           order: page.order
         });
@@ -1203,9 +1234,16 @@ const PageEditor = forwardRef(({
           pageId: page.id,
           note: htmlToSave,
           media: page.media || [],
+          embeddedMedia: embeddedMediaToSave,
           ...(page.pageName !== undefined ? { pageName: page.pageName } : {})
         });
-        onPageUpdate({ ...page, note: htmlToSave, pageName: page.pageName ?? '', shortNote });
+        onPageUpdate({
+          ...page,
+          note: htmlToSave,
+          pageName: page.pageName ?? '',
+          shortNote,
+          embeddedMedia: embeddedMediaToSave,
+        });
         if (!silent) {
           toast({ title: 'Success', description: 'Page saved.' });
         }
@@ -1339,10 +1377,32 @@ const PageEditor = forwardRef(({
     }
   };
 
+  // `/media` indexes media on the page without creating a BlockNote block. Only
+  // `/image` places an image in the note HTML.
+  const persistEmbeddedMedia = async (mediaItems = []) => {
+    const validItems = mediaItems.filter((item) => item?.url);
+    if (validItems.length === 0) return;
+
+    const pageRef = doc(firestore, 'books', bookId, 'chapters', chapterId, 'pages', page.id);
+    const embeddedItems = validItems.map((item) => ({ ...item, source: 'pageMedia' }));
+    await updateDoc(pageRef, { embeddedMedia: arrayUnion(...embeddedItems) });
+
+    const existingEmbeddedMedia = Array.isArray(page.embeddedMedia) ? page.embeddedMedia : [];
+    const knownKeys = new Set(existingEmbeddedMedia.map((item) => item?.storagePath || item?.url));
+    const additions = embeddedItems.filter((item) => {
+      const key = item.storagePath || item.url;
+      if (knownKeys.has(key)) return false;
+      knownKeys.add(key);
+      return true;
+    });
+    onPageUpdate({ ...page, embeddedMedia: [...existingEmbeddedMedia, ...additions] });
+  };
+
   const handleUpload = async (file) => {
     if (readOnly) return;
     if (!file || !user) return;
     if (!ensureMediaUploadAllowed()) return;
+    if (!ensurePersistedPageForMedia()) return;
 
     // Determine media type from file
     const isVideo = file.type.startsWith('video');
@@ -1430,23 +1490,26 @@ const PageEditor = forwardRef(({
       },
       () => {
         getDownloadURL(uploadTask.snapshot.ref).then(async (downloadURL) => {
-          // Insert as media block (image or video)
           const mediaData = {
             url: downloadURL,
             storagePath,
             name: file.name,
             type: mediaType,
+            mimeType: file.type || undefined,
+            albumId: bookId,
+            source: 'upload',
           };
 
           const isInlineContext = mediaPickerContext === MEDIA_PICKER_CONTEXT_INLINE;
-          const mediaToInsert = isInlineContext
-            ? [{ ...mediaData, previewWidth: 154 }]
-            : [mediaData];
-
-          if (isInlineContext && quillRef.current?.hasPendingDropzone?.() && quillRef.current?.replaceDropzoneWithMedia) {
-            quillRef.current.replaceDropzoneWithMedia(mediaToInsert);
-          } else if (quillRef.current?.insertMediaBlocks) {
-            quillRef.current.insertMediaBlocks(mediaToInsert);
+          if (isInlineContext) {
+            const mediaToInsert = [{ ...mediaData, previewWidth: 154 }];
+            if (quillRef.current?.hasPendingDropzone?.() && quillRef.current?.replaceDropzoneWithMedia) {
+              quillRef.current.replaceDropzoneWithMedia(mediaToInsert);
+            } else if (quillRef.current?.insertMediaBlocks) {
+              quillRef.current.insertMediaBlocks(mediaToInsert);
+            }
+          } else {
+            await persistEmbeddedMedia([mediaData]);
           }
 
           setUploadProgress(prev => {
@@ -1454,7 +1517,18 @@ const PageEditor = forwardRef(({
             delete next[file.name];
             return next;
           });
-          toast({ title: 'Upload Success', description: `"${file.name}" has been inserted.` });
+          toast({
+            title: 'Upload Success',
+            description: isInlineContext ? `"${file.name}" has been inserted.` : `"${file.name}" has been added to page media.`,
+          });
+        }).catch((error) => {
+          console.error('Failed to add uploaded media to the page:', error);
+          toast({ title: 'Upload Error', description: error.message || 'Could not add media to the page.', variant: 'destructive' });
+          setUploadProgress((prev) => {
+            const next = { ...prev };
+            delete next[file.name];
+            return next;
+          });
         });
       }
     );
@@ -1466,24 +1540,26 @@ const PageEditor = forwardRef(({
       // Determine media type
       const mediaType = asset.type === 'video' ? 'video' : 'image';
 
-      // Insert as media block (image or video)
       const mediaData = {
         url: asset.url,
         storagePath: asset.storagePath || asset.url,
         name: asset.name || 'Asset',
         albumId: selectedAlbumId, // Important for tracking
         type: mediaType,
+        ...(asset.mimeType ? { mimeType: asset.mimeType } : {}),
+        source: 'assetRegistry',
       };
 
       const isInlineContext = mediaPickerContext === MEDIA_PICKER_CONTEXT_INLINE;
-      const mediaToInsert = isInlineContext
-        ? [{ ...mediaData, previewWidth: 154 }]
-        : [mediaData];
-
-      if (isInlineContext && quillRef.current?.hasPendingDropzone?.() && quillRef.current?.replaceDropzoneWithMedia) {
-        quillRef.current.replaceDropzoneWithMedia(mediaToInsert);
-      } else if (quillRef.current?.insertMediaBlocks) {
-        quillRef.current.insertMediaBlocks(mediaToInsert);
+      if (isInlineContext) {
+        const mediaToInsert = [{ ...mediaData, previewWidth: 154 }];
+        if (quillRef.current?.hasPendingDropzone?.() && quillRef.current?.replaceDropzoneWithMedia) {
+          quillRef.current.replaceDropzoneWithMedia(mediaToInsert);
+        } else if (quillRef.current?.insertMediaBlocks) {
+          quillRef.current.insertMediaBlocks(mediaToInsert);
+        }
+      } else {
+        await persistEmbeddedMedia([mediaData]);
       }
 
       // Track usage for album assets (so they can't be deleted while in use)
@@ -1500,7 +1576,7 @@ const PageEditor = forwardRef(({
         console.error('Failed to track usage:', trackError);
       }
 
-      toast({ title: 'Asset added', description: `${mediaData.name} inserted from library.` });
+      toast({ title: 'Asset added', description: isInlineContext ? `${mediaData.name} inserted from library.` : `${mediaData.name} added to page media.` });
     } catch (error) {
       console.error('Failed to attach asset', error);
       toast({ title: 'Attach failed', description: error.message || 'Could not attach asset.', variant: 'destructive' });
@@ -1577,24 +1653,33 @@ const PageEditor = forwardRef(({
       return;
     }
 
-    // Prepare media data for block insertion (both images and videos)
+    // `/media` indexes page media; `/image` is the only inline block flow.
     const mediaToInsert = selectedAssets.map(asset => ({
       url: asset.url,
       storagePath: asset.storagePath || asset.url,
       name: asset.name || 'Asset',
       albumId: selectedAlbumId,
       type: asset.type === 'video' ? 'video' : 'image',
+      ...(asset.mimeType ? { mimeType: asset.mimeType } : {}),
+      source: 'assetRegistry',
     }));
 
     const isInlineContext = mediaPickerContext === MEDIA_PICKER_CONTEXT_INLINE;
-    const mediaToInsertWithLayout = isInlineContext
-      ? mediaToInsert.map((item) => ({ ...item, previewWidth: 154 }))
-      : mediaToInsert;
-
-    if (isInlineContext && quillRef.current?.hasPendingDropzone?.() && quillRef.current?.replaceDropzoneWithMedia) {
-      quillRef.current.replaceDropzoneWithMedia(mediaToInsertWithLayout);
-    } else if (quillRef.current?.insertMediaBlocks) {
-      quillRef.current.insertMediaBlocks(mediaToInsertWithLayout);
+    if (isInlineContext) {
+      const mediaToInsertWithLayout = mediaToInsert.map((item) => ({ ...item, previewWidth: 154 }));
+      if (quillRef.current?.hasPendingDropzone?.() && quillRef.current?.replaceDropzoneWithMedia) {
+        quillRef.current.replaceDropzoneWithMedia(mediaToInsertWithLayout);
+      } else if (quillRef.current?.insertMediaBlocks) {
+        quillRef.current.insertMediaBlocks(mediaToInsertWithLayout);
+      }
+    } else {
+      try {
+        await persistEmbeddedMedia(mediaToInsert);
+      } catch (error) {
+        console.error('Failed to attach media to page:', error);
+        toast({ title: 'Attach failed', description: error.message || 'Could not add media to the page.', variant: 'destructive' });
+        return;
+      }
     }
 
     // Track usage for all album assets
@@ -1615,7 +1700,9 @@ const PageEditor = forwardRef(({
 
     toast({
       title: 'Assets added',
-      description: `${mediaToInsert.length} media item(s) inserted from library.`
+      description: isInlineContext
+        ? `${mediaToInsert.length} media item(s) inserted from library.`
+        : `${mediaToInsert.length} media item(s) added to page media.`,
     });
 
     setSelectedAssets([]);
@@ -1712,6 +1799,7 @@ const PageEditor = forwardRef(({
   const submitGenImagePrompt = async () => {
     if (readOnly) return;
     if (genImgLoading) return;
+    if (!ensurePersistedPageForMedia()) return;
     const prompt = genImgPrompt.trim();
     if (!prompt) {
       toast({ title: 'Add a prompt', description: 'Describe the image you want to generate.', variant: 'warning' });
@@ -1743,6 +1831,8 @@ const PageEditor = forwardRef(({
         name: data.name || 'Generated image',
         albumId: data.albumId || bookId,
         type: 'image',
+        mimeType: data.mimeType || 'image/png',
+        source: 'generated',
       };
 
       if (mediaData.url && mediaData.storagePath && quillRef.current?.insertMediaBlocks) {
@@ -1897,18 +1987,25 @@ const PageEditor = forwardRef(({
   const standardHeightStyle = pageHeightPx
     ? { minHeight: `${pageHeightPx}px` }
     : { minHeight: `${fallbackHeightPx}px` };
-  const saveButtonLabel = pageIndex < totalPages - 1 ? 'Save Page' : 'Save + New';
   const hasAiInstruction = aiStyle.trim().length > 0;
+  const clipPrompt = aiStyle.trim();
+  const isLastPage = pageIndex >= totalPages - 1;
+  const showNewPageAction = isLastPage && typeof onAddPage === 'function';
   const showSidePageNav = !readOnly && isBabyTemplatePage && totalPages > 1 && typeof onNavigate === 'function';
   const showPageOverflowCue = !readOnly && !isTemplatePage && limitStatus === 'full';
   const overflowCueLabel = 'Recommended page length reached';
-  const handlePrimarySaveAction = async () => {
-    if (pageIndex < totalPages - 1) {
-      await handleSave();
-      return;
-    }
-    await handleSave();
+
+  const handleNewPageAction = async () => {
+    const didSave = await handleSave();
+    if (didSave === false) return;
     onAddPage?.(true, '', page.id);
+  };
+
+  const handleCreateVideoAction = async () => {
+    await onCreateVideo?.({
+      pageId: page.id,
+      instruction: clipPrompt,
+    });
   };
 
   return (
@@ -1991,9 +2088,11 @@ const PageEditor = forwardRef(({
             }}>
               <DialogContent className="media-picker-dialog max-w-4xl bg-white rounded-2xl shadow-2xl border border-gray-100 p-6">
                 <DialogHeader>
-                  <DialogTitle>Insert Media</DialogTitle>
+                  <DialogTitle>{mediaPickerContext === MEDIA_PICKER_CONTEXT_INLINE ? 'Insert Media' : 'Add Media'}</DialogTitle>
                   <DialogDescription>
-                    Upload from your computer or select from your asset library. Select up to 5 media items at a time.
+                    {mediaPickerContext === MEDIA_PICKER_CONTEXT_INLINE
+                      ? 'Upload from your computer or select from your asset library to insert inside the page text.'
+                      : 'Upload from your computer or select from your asset library to add to this page without changing its text.'} Select up to 5 media items at a time.
                   </DialogDescription>
                 </DialogHeader>
 
@@ -2431,15 +2530,40 @@ const PageEditor = forwardRef(({
                     </div>
                   )}
                   <div className="flex items-center gap-2">
+                    {canCreateVideo && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 whitespace-nowrap rounded-full px-4"
+                        data-testid="book-detail-create-video"
+                        onClick={handleCreateVideoAction}
+                        disabled={creatingVideoJob || isSaving || babyReflectionLimits.hasOverLimit}
+                      >
+                        {creatingVideoJob ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Clapperboard className="h-4 w-4 mr-1" />}
+                        Generate Clip
+                      </Button>
+                    )}
                     <Button
                       variant="appSuccess"
                       size="sm"
                       className="h-9 whitespace-nowrap min-w-[140px] rounded-full px-5"
-                      onClick={handlePrimarySaveAction}
+                      onClick={handleSave}
                       disabled={isSaving || babyReflectionLimits.hasOverLimit}
                     >
-                      {saveButtonLabel}
+                      {isSaving ? 'Saving...' : 'Save'}
                     </Button>
+                    {showNewPageAction && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 whitespace-nowrap rounded-full px-4"
+                        onClick={handleNewPageAction}
+                        disabled={isSaving || creatingVideoJob || babyReflectionLimits.hasOverLimit}
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        New Page
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2491,7 +2615,7 @@ const PageEditor = forwardRef(({
                       <Input
                         value={aiStyle}
                         onChange={(e) => setAiStyle(e.target.value)}
-                        placeholder="AI instruction..."
+                        placeholder="Prompt for rewrite or clip..."
                         className="editor-ai-input h-8 w-28 sm:w-40 text-xs bg-white"
                       />
                       <Button
@@ -2532,29 +2656,40 @@ const PageEditor = forwardRef(({
                       <Sparkles className="h-4 w-4 mr-1 text-app-iris" />
                       Rewrite
                     </Button>
+                    {canCreateVideo && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 whitespace-nowrap"
+                        data-testid="book-detail-create-video"
+                        onClick={handleCreateVideoAction}
+                        disabled={creatingVideoJob || isSaving}
+                      >
+                        {creatingVideoJob ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Clapperboard className="h-4 w-4 mr-1" />}
+                        Generate Clip
+                      </Button>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {pageIndex < totalPages - 1 ? (
+                    <Button
+                      variant="appSuccess"
+                      size="sm"
+                      className="editor-save-btn h-8 whitespace-nowrap min-w-[110px]"
+                      onClick={handleSave}
+                    >
+                      {isSaving ? 'Saving...' : 'Save'}
+                    </Button>
+                    {showNewPageAction && (
                       <Button
-                        variant="appSuccess"
+                        variant="outline"
                         size="sm"
-                        className="editor-save-btn h-8 whitespace-nowrap min-w-[110px]"
-                        onClick={handleSave}
+                        className="h-8 whitespace-nowrap min-w-[110px]"
+                        onClick={handleNewPageAction}
+                        disabled={isSaving || creatingVideoJob}
                       >
-                        Save Page
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="appSuccess"
-                        size="sm"
-                        className="editor-save-btn h-8 whitespace-nowrap min-w-[110px]"
-                        onClick={async () => {
-                          await handleSave();
-                          onAddPage?.(true, '', page.id);
-                        }}
-                      >
-                        Save + New
+                        <Plus className="h-4 w-4 mr-1" />
+                        New Page
                       </Button>
                     )}
                   </div>
@@ -2606,7 +2741,7 @@ const PageEditor = forwardRef(({
                         <Input
                           value={aiStyle}
                           onChange={(e) => setAiStyle(e.target.value)}
-                          placeholder="AI instruction..."
+                          placeholder="Prompt for rewrite or clip..."
                           className="editor-ai-input h-8 w-28 sm:w-40 md:w-56 text-xs"
                         />
                         <Button
@@ -2647,27 +2782,38 @@ const PageEditor = forwardRef(({
                         <Sparkles className="h-4 w-4 mr-1" />
                         Rewrite
                       </Button>
+                      {canCreateVideo && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 whitespace-nowrap"
+                          data-testid="book-detail-create-video"
+                          onClick={handleCreateVideoAction}
+                          disabled={creatingVideoJob || isSaving}
+                        >
+                          {creatingVideoJob ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Clapperboard className="h-4 w-4 mr-1" />}
+                          Generate Clip
+                        </Button>
+                      )}
                     </div>
-                    {pageIndex < totalPages - 1 ? (
+                    <Button
+                      variant="appSuccess"
+                      size="sm"
+                      className="editor-save-btn h-8 whitespace-nowrap min-w-[110px]"
+                      onClick={handleSave}
+                    >
+                      {isSaving ? 'Saving...' : 'Save'}
+                    </Button>
+                    {showNewPageAction && (
                       <Button
-                        variant="appSuccess"
+                        variant="outline"
                         size="sm"
-                        className="editor-save-btn h-8 whitespace-nowrap min-w-[110px]"
-                        onClick={handleSave}
+                        className="h-8 whitespace-nowrap min-w-[110px]"
+                        onClick={handleNewPageAction}
+                        disabled={isSaving || creatingVideoJob}
                       >
-                        Save Page
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="appSuccess"
-                        size="sm"
-                        className="editor-save-btn h-8 whitespace-nowrap min-w-[110px]"
-                        onClick={async () => {
-                          await handleSave();
-                          onAddPage?.(true, '', page.id);
-                        }}
-                      >
-                        Save + New
+                        <Plus className="h-4 w-4 mr-1" />
+                        New Page
                       </Button>
                     )}
                   </div>

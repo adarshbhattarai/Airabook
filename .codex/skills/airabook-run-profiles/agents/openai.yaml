@@ -1,0 +1,4 @@
+interface:
+  display_name: "Airabook Run Profiles"
+  short_description: "Launch and validate local or dev profiles"
+  default_prompt: "Use $airabook-run-profiles to launch Airabook with the appropriate local or dev services."

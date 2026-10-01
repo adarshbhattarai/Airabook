@@ -17,6 +17,7 @@ PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 FUNCTIONS_DIR="$PROJECT_DIR/functions"
 RUNTIME_CONFIG_FILE="$FUNCTIONS_DIR/.runtimeconfig.json"
 WEBHOOK_URL="http://localhost:5001/demo-project/us-central1/stripeWebhook"
+EMULATOR_DATA_DIR="$PROJECT_DIR/emulator-data"
 
 # Function to extract webhook secret
 extract_webhook_secret() {
@@ -106,6 +107,7 @@ start_stripe_cli() {
 
 # Function to cleanup on exit
 cleanup() {
+    trap - EXIT
     echo ""
     echo -e "${YELLOW}Shutting down...${NC}"
     
@@ -119,16 +121,13 @@ cleanup() {
         rm -f /tmp/stripe-cli.pid
     fi
     
-    # Kill Firebase emulators
-    pkill -f "firebase.*emulator" || true
-    pkill -f "cloud-firestore-emulator" || true
-    
     echo -e "${GREEN}✓ Cleanup complete${NC}"
-    exit 0
 }
 
 # Set up trap for cleanup
-trap cleanup SIGINT SIGTERM EXIT
+trap cleanup EXIT
+trap 'exit 130' SIGINT
+trap 'exit 143' SIGTERM
 
 # Main execution
 main() {
@@ -136,7 +135,7 @@ main() {
     echo ""
     
     # Start Stripe CLI first (in background)
-    start_stripe_cli
+    start_stripe_cli || true
     
     # Wait a moment for Stripe to initialize
     sleep 2
@@ -147,9 +146,23 @@ main() {
     
     # Start Firebase emulators (this will block)
     cd "$PROJECT_DIR"
-    firebase emulators:start --project local --inspect-functions
+    EMULATOR_ARGS=(
+        emulators:start
+        --project local
+        --only auth,firestore,storage,functions
+        --inspect-functions
+        --export-on-exit="$EMULATOR_DATA_DIR"
+    )
+
+    if [ -d "$EMULATOR_DATA_DIR" ]; then
+        echo -e "${BLUE}Restoring emulator data from $EMULATOR_DATA_DIR${NC}"
+        EMULATOR_ARGS+=(--import="$EMULATOR_DATA_DIR")
+    else
+        echo -e "${YELLOW}No saved emulator data yet; it will be created on shutdown.${NC}"
+    fi
+
+    firebase "${EMULATOR_ARGS[@]}"
 }
 
 # Run main function
 main
-

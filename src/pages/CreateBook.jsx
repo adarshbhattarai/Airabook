@@ -521,6 +521,7 @@ const CreateBook = () => {
                     </Button>
                     <Button
                       type="submit"
+                      data-testid="create-book-submit"
                       variant="appSuccess"
                       className="text-sm"
                       disabled={!title.trim() || loading}

@@ -272,10 +272,20 @@ exports.deleteAlbumAssets = onCall({ region: "us-central1", cors: true }, async 
               if (pageSnap.exists) {
                 const pageData = pageSnap.data() || {};
                 const mediaArr = pageData.media || [];
+                const embeddedMediaArr = pageData.embeddedMedia || [];
                 const filtered = mediaArr.filter((m) => m.storagePath !== mediaItem.storagePath);
+                const filteredEmbeddedMedia = embeddedMediaArr.filter(
+                  (m) => m.storagePath !== mediaItem.storagePath
+                );
 
-                if (filtered.length !== mediaArr.length) {
-                  await pageRef.update({ media: filtered });
+                if (
+                  filtered.length !== mediaArr.length
+                  || filteredEmbeddedMedia.length !== embeddedMediaArr.length
+                ) {
+                  await pageRef.update({
+                    media: filtered,
+                    embeddedMedia: filteredEmbeddedMedia,
+                  });
                   console.log(`✅ Removed ${mediaItem.storagePath} from page ${usage.pageId}`);
                 }
               }

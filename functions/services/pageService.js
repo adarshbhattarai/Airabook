@@ -148,6 +148,7 @@ const createChapterPage = async ({ db, userId, bookId, chapterId, markdown }) =>
       embeddingModel: null,
       embeddingStatus: plainText ? 'pending' : 'ready',
       media: [],
+      embeddedMedia: [],
       order: newPageOrder,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),

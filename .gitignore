@@ -1,10 +1,12 @@
 node_modules
 .env
 .env.development
+.env.development.local
 .env.qa
 .env.go
 .env.dev2
 .env.production
+emulator-data/
 functions/.env
 functions/.env.local
 *.log
@@ -16,3 +18,6 @@ dist/
 .DS_Store
 .cursor/
 .idea/
+# Debug / throwaway e2e test files
+e2e/debug-*.spec.mjs
+test-results/

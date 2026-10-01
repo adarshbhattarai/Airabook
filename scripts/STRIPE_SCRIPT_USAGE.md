@@ -9,6 +9,13 @@ Two scripts are available to automate Stripe webhook secret management:
 
 ## Quick Start
 
+Install Stripe CLI first on a new laptop:
+
+```bash
+brew install stripe/stripe-cli/stripe
+stripe login
+```
+
 ### Option 1: Automated Setup (Recommended)
 
 Run the full setup script which handles everything:
@@ -26,6 +33,8 @@ This will:
 6. Keep Stripe CLI running
 
 **Press Ctrl+C to stop.**
+
+If you use `npm run emulators:local`, the repo already starts this same Stripe listener for you.
 
 ### Option 2: Manual Update
 
@@ -218,4 +227,3 @@ Check logs if something goes wrong:
 ```bash
 tail -f functions/stripe-webhook.log
 ```
-
