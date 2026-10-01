@@ -151,6 +151,7 @@ const main = async () => {
       'e2e/critical-path.spec.mjs',
       'e2e/auth.spec.mjs',
       'e2e/book-flow.spec.mjs',
+      'e2e/chapter-navigation.spec.mjs',
       'e2e/manim-video-dialog.spec.mjs',
     ];
   const playwrightArgs = ['playwright', 'test', ...testFiles, '--workers=1', '--reporter=line'];

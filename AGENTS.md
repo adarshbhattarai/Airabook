@@ -60,6 +60,7 @@ When a feature touches both repos, inspect both before changing behavior.
 - Keep privileged logic in `functions/`, not `src/`.
 - If the UI calls Spring endpoints, trace the contract through `src/config/serviceEndpoints.js` and the backend repo.
 - If a feature depends on auth or per-user data, follow the full flow through Firebase Auth, browser service layer, and backend/Firebase function boundary.
+- For user-facing functionality and bug fixes, use `.codex/skills/airabook-playwright-regression/SKILL.md` to consider a focused Playwright regression against the local Firebase emulators.
 - Update docs when routes, API boundaries, environment rules, or feature ownership change.
 - After meaningful changes, run `scripts/refresh_frontend_context.sh`.
 
