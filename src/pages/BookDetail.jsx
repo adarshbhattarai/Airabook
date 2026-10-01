@@ -133,6 +133,13 @@ const BookDetail = () => {
     const value = new URLSearchParams(location.search).get('page');
     return value || null;
   }, [location.search]);
+  const navigateToChapter = useCallback((chapterId) => {
+    const query = new URLSearchParams(location.search);
+    query.set('chapter', chapterId);
+    query.delete('page');
+    navigate(`${location.pathname}?${query.toString()}`, { replace: true });
+  }, [location.pathname, location.search, navigate]);
+  const lastAppliedChapterQueryRef = useRef(null);
   const [pageTurnAnimatingId, setPageTurnAnimatingId] = useState(null);
   const lastActivePageIndexRef = useRef(-1);
   const pageTurnTimeoutRef = useRef(null);
@@ -746,6 +753,10 @@ const BookDetail = () => {
     if (!focusedChapterIdFromQuery || chapters.length === 0) return;
     const chapterExists = chapters.some((chapter) => chapter.id === focusedChapterIdFromQuery);
     if (!chapterExists) return;
+    // Page snapshots refresh chapters; they must not replay an already handled deep link.
+    const queryKey = `${bookId}:${isForcedReadRoute}:${focusedChapterIdFromQuery}:${focusedPageIdFromQuery || ''}`;
+    if (lastAppliedChapterQueryRef.current === queryKey) return;
+    lastAppliedChapterQueryRef.current = queryKey;
 
     setExpandedChapters((prev) => {
       const next = new Set(prev);
@@ -756,7 +767,7 @@ const BookDetail = () => {
     if (!isForcedReadRoute && !focusedPageIdFromQuery) {
       setViewMode('chapter');
     }
-  }, [focusedChapterIdFromQuery, focusedPageIdFromQuery, chapters, isForcedReadRoute]);
+  }, [bookId, focusedChapterIdFromQuery, focusedPageIdFromQuery, chapters, isForcedReadRoute]);
 
   useEffect(() => {
     if (!focusedPageIdFromQuery) return;
@@ -1258,6 +1269,7 @@ const BookDetail = () => {
         return next;
       });
       setSelectedChapterId(createdChapter.id);
+      navigateToChapter(createdChapter.id);
 
       toast({
         title: 'Chapter created',
@@ -1269,7 +1281,7 @@ const BookDetail = () => {
       isCreatingChapterRef.current = false;
       setIsCreatingChapter(false);
     }
-  }, [bookId, chapters, compareOrder, user?.uid, toast]);
+  }, [bookId, chapters, compareOrder, navigateToChapter, user?.uid, toast]);
 
   const handlePlannerApplied = useCallback(async ({ resolvedTarget }) => {
     const targetScope = resolvedTarget?.scope;
@@ -1290,6 +1302,7 @@ const BookDetail = () => {
         return next;
       });
       setSelectedChapterId(targetChapterId);
+      navigateToChapter(targetChapterId);
       await fetchPages(targetChapterId);
       routeToChapters();
       return;
@@ -1299,7 +1312,7 @@ const BookDetail = () => {
       await fetchPages(selectedChapterId);
     }
     routeToChapters();
-  }, [fetchChapters, fetchPages, handlePhotoPlannerOpenChange, isForcedReadRoute, selectedChapterId]);
+  }, [fetchChapters, fetchPages, handlePhotoPlannerOpenChange, isForcedReadRoute, navigateToChapter, selectedChapterId]);
 
   // Fetch co-author user details while modal is open.
   useEffect(() => {
@@ -1595,6 +1608,7 @@ const BookDetail = () => {
         return next;
       });
       setSelectedChapterId(chapterId);
+      navigateToChapter(chapterId);
       setNewChapterTitle('');
       toast({ title: 'Chapter created' });
     } catch (error) {
@@ -2013,6 +2027,7 @@ const BookDetail = () => {
       setExpandedChapters(new Set([nextChapter.id]));
       setViewMode('pages');
       setSelectedChapterId(nextChapter.id);
+      navigateToChapter(nextChapter.id);
       setSelectedPageId(null);
 
       const container = scrollContainerRef.current;
@@ -2037,6 +2052,7 @@ const BookDetail = () => {
     isSelectedPageDirty,
     saveSelectedDraft,
     fetchPages,
+    navigateToChapter,
     scrollToPageHorizontally
   ]);
 
@@ -2797,6 +2813,7 @@ const BookDetail = () => {
                                 return;
                               }
                               setSelectedChapterId(chapter.id);
+                              navigateToChapter(chapter.id);
                               if (isForcedReadRoute) {
                                 setViewMode('pages');
                               } else {

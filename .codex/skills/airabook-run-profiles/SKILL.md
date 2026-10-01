@@ -57,6 +57,9 @@ Do not create test data, seed dev, run hybrid Functions, deploy, reauthenticate 
 
 ## Local QA Navigation And Test Workflow
 
+For deciding when to add a browser regression for new Airabook behavior, use
+`../airabook-playwright-regression/SKILL.md`.
+
 For browser QA, use the isolated `local` profile and the seeded emulator user:
 
 ```bash
@@ -89,8 +92,8 @@ locators include `add-page-btn`, `view-pages-btn`, `book-detail-create-video`,
 `--workers=1` because emulator seed data is intentionally shared by the smoke
 scenario.
 
-The critical test is `e2e/critical-path.spec.mjs`. The related auth, book-flow,
-and video-dialog suites also run in the local QA command. Spring video calls are
+The critical test is `e2e/critical-path.spec.mjs`. The auth, book-flow,
+chapter-navigation, and video-dialog suites also run in the local QA command. Spring video calls are
 mocked in browser tests, but authenticated request headers and key request fields
 must still be asserted. Run the Python ADK unit suite separately from
 `/Users/adarshbhattarai/code/Airabook/Agent/manim-runner` with
