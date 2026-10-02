@@ -11,6 +11,7 @@ import Login from '@/pages/Login';
 import Signup from '@/pages/Signup';
 import ForgotPassword from '@/pages/ForgotPassword';
 import EnterpriseHome from '@/pages/EnterpriseHome';
+import EnterpriseWorkspaceHub from '@/pages/EnterpriseWorkspaceHub';
 import Dashboard from '@/pages/Dashboard';
 import Books from '@/pages/Books';
 import Movies from '@/pages/Movies';
@@ -27,9 +28,10 @@ import NoteDetail from '@/pages/NoteDetail';
 import ErrorPage from '@/pages/ErrorPage';
 import ProfileSettings from '@/pages/ProfileSettings';
 import AdminDashboard from '@/pages/admin/AdminDashboard';
+import EnterpriseApprovals from '@/pages/admin/EnterpriseApprovals';
 import AdminRoute from '@/components/AdminRoute';
 import {
-  EnterpriseLogin,
+  EnterpriseRequestPending,
   EnterpriseSignup,
   PersonalLogin,
   PersonalSignup,
@@ -78,7 +80,7 @@ function App() {
             <Route path="/v2/login" element={<V2AccountSelector />} />
             <Route path="/v2/personal-login" element={<PersonalLogin />} />
             <Route path="/v2/personal-signup" element={<PersonalSignup />} />
-            <Route path="/v2/enterprise-login" element={<EnterpriseLogin />} />
+            <Route path="/v2/enterprise-login" element={<Navigate to="/v2/personal-login" replace state={{ from: { pathname: '/v2/workspaces' } }} />} />
             <Route
               path="/v2/enterprise-signup"
               element={
@@ -89,7 +91,34 @@ function App() {
                 </PrivateRoute>
               }
             />
-            <Route path="/v2/enterprise-home" element={<EnterpriseHome />} />
+            <Route
+              path="/v2/enterprise-request-pending"
+              element={
+                <PrivateRoute loginPath="/v2/personal-login">
+                  <ThemedAppShell>
+                    <EnterpriseRequestPending />
+                  </ThemedAppShell>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/v2/enterprise-home"
+              element={
+                <PrivateRoute loginPath="/v2/personal-login">
+                  <EnterpriseHome />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/v2/workspaces"
+              element={
+                <PrivateRoute loginPath="/v2/personal-login">
+                  <ThemedAppShell>
+                    <EnterpriseWorkspaceHub />
+                  </ThemedAppShell>
+                </PrivateRoute>
+              }
+            />
 
             {/* Authenticated app routes */}
             <Route
@@ -256,6 +285,16 @@ function App() {
                 <AdminRoute>
                   <ThemedAppShell>
                     <AdminDashboard />
+                  </ThemedAppShell>
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/enterprise-approvals"
+              element={
+                <AdminRoute>
+                  <ThemedAppShell>
+                    <EnterpriseApprovals />
                   </ThemedAppShell>
                 </AdminRoute>
               }

@@ -23,7 +23,7 @@ const V2AccountSelector = () => {
           <div className="mb-6 mt-8">
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-violet-600">Account access</p>
           <h2 className="text-3xl font-semibold tracking-[-0.035em] text-slate-950 sm:text-4xl">How would you like to sign in?</h2>
-          <p className="mt-3 max-w-md text-sm leading-6 text-slate-600">Select the space you need. Personal and enterprise accounts use separate, secure sign-in flows.</p>
+          <p className="mt-3 max-w-md text-sm leading-6 text-slate-600">Sign in once with your Personal Account, then choose the approved workspaces and invitations available to you.</p>
           </div>
         </div>
         <div className="pb-2">
@@ -36,11 +36,11 @@ const V2AccountSelector = () => {
             </span>
             <ArrowRight className="h-5 w-5 text-violet-400 transition group-hover:translate-x-1" />
           </button>
-          <button type="button" onClick={() => navigate('/v2/enterprise-login')} className="group flex w-full items-center gap-4 rounded-2xl border border-violet-200 bg-gradient-to-br from-white to-violet-50/60 p-5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-violet-400 hover:shadow-lg hover:shadow-violet-950/5 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:ring-offset-2">
+          <button type="button" onClick={() => navigate('/v2/personal-login', { state: { from: { pathname: '/v2/workspaces' } } })} className="group flex w-full items-center gap-4 rounded-2xl border border-violet-200 bg-gradient-to-br from-white to-violet-50/60 p-5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-violet-400 hover:shadow-lg hover:shadow-violet-950/5 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:ring-offset-2">
             <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-violet-700 text-white shadow-md shadow-violet-700/20"><Building2 className="h-5 w-5" /></span>
             <span className="flex-1">
               <span className="flex items-center gap-2 text-base font-semibold text-slate-900">Enterprise Workspace <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-violet-700">Teams</span></span>
-              <span className="mt-1 block text-sm leading-5 text-slate-600">Your organization’s managed and secure workspace.</span>
+              <span className="mt-1 block text-sm leading-5 text-slate-600">Open approved workspaces, manage invitations, or request a new one.</span>
             </span>
             <ArrowRight className="h-5 w-5 text-violet-400 transition group-hover:translate-x-1" />
           </button>

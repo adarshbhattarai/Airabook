@@ -5,6 +5,7 @@ import { Lock, Mail, User, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/context/AuthContext';
+import { getPostLoginDestination } from '@/services/postLoginRouting';
 import AccountSwitcher from './components/AccountSwitcher';
 import AuthField from './components/AuthField';
 import AuthFooter from './components/AuthFooter';
@@ -22,15 +23,14 @@ const PersonalSignup = () => {
   const location = useLocation();
   const { toast } = useToast();
   const { signup, signInWithGoogle } = useAuth();
-  const from = location.state?.from?.pathname || '/dashboard';
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     setIsLoading(true);
     try {
-      await signup(name, email, password);
+      const credential = await signup(name, email, password);
       toast({ title: '✅ Account created!', description: 'Welcome! Please check your email to verify your account.' });
-      navigate(from, { replace: true });
+      navigate(await getPostLoginDestination(credential.user.uid, location.state?.from), { replace: true });
     } catch (error) {
       console.error('Failed to sign up', error);
       toast({ title: 'Unable to create your account', description: 'Please check your details and try again.', variant: 'destructive' });
@@ -41,8 +41,8 @@ const PersonalSignup = () => {
 
   const handleGoogleSignUp = async () => {
     try {
-      await signInWithGoogle();
-      navigate(from, { replace: true });
+      const credential = await signInWithGoogle();
+      navigate(await getPostLoginDestination(credential.user.uid, location.state?.from), { replace: true });
     } catch (error) {
       console.error('Failed to sign up with Google', error);
       toast({ title: 'Unable to sign up with Google', description: 'Please try again later.', variant: 'destructive' });

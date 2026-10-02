@@ -38,6 +38,7 @@
     "seed:emulator": "node functions/create_emulator_user.mjs && node functions/seed_emulator.mjs && node functions/seed_user.mjs",
     "test:auth": "cd functions && node test-auth.cjs",
     "test:e2e": "npx playwright test",
+    "test:enterprise-team": "playwright test --config playwright.enterprise.config.mjs",
     "test:e2e:movies": "npx playwright test e2e/movies.spec.mjs",
     "create:emulator-user": "cd functions && node create-emulator-user.cjs",
     "stripe:setup": "bash scripts/setup-stripe-webhook.sh",

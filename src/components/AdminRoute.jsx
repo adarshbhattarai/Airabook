@@ -1,37 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Loader2 } from 'lucide-react';
+import { useSystemAdminAccess } from '@/hooks/useSystemAdminAccess';
 
 const AdminRoute = ({ children }) => {
     const { user, loading } = useAuth();
-    const [isAdmin, setIsAdmin] = useState(false);
-    const [checking, setChecking] = useState(true);
+    const { isSystemAdmin, checkingSystemAdmin } = useSystemAdminAccess();
 
-    useEffect(() => {
-        const checkAdmin = async () => {
-            if (user) {
-                try {
-                    const tokenResult = await user.getIdTokenResult(true); // Force refresh to get latest claims
-                    setIsAdmin(!!tokenResult.claims.admin);
-                } catch (error) {
-                    console.error("Error checking admin status:", error);
-                    setIsAdmin(false);
-                }
-            }
-            setChecking(false);
-        };
-
-        if (!loading) {
-            if (user) {
-                checkAdmin();
-            } else {
-                setChecking(false);
-            }
-        }
-    }, [user, loading]);
-
-    if (loading || checking) {
+    if (loading || checkingSystemAdmin) {
         return (
             <div className="flex items-center justify-center min-h-screen">
                 <Loader2 className="h-8 w-8 animate-spin text-app-iris" />
@@ -43,7 +20,7 @@ const AdminRoute = ({ children }) => {
         return <Navigate to="/v2/login" replace />;
     }
 
-    if (!isAdmin) {
+    if (!isSystemAdmin) {
         return <Navigate to="/dashboard" replace />;
     }
 

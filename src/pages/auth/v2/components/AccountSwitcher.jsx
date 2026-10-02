@@ -12,7 +12,8 @@ const AccountSwitcher = ({ active }) => (
       <User className="h-4 w-4" /> Personal Account
     </Link>
     <Link
-      to="/v2/enterprise-login"
+      to="/v2/personal-login"
+      state={{ from: { pathname: '/v2/workspaces' } }}
       className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-xs font-semibold transition sm:text-sm ${active === 'enterprise' ? 'bg-white text-violet-700 shadow-sm ring-1 ring-slate-100' : 'text-slate-500 hover:bg-white/70 hover:text-slate-800'}`}
       aria-current={active === 'enterprise' ? 'page' : undefined}
     >

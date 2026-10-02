@@ -78,6 +78,26 @@ Frontend Spring integration points currently show up in:
 - `src/services/ApiService.js`
 - feature-specific browser services under `src/services/`
 
+### Enterprise onboarding administration
+- The System Admin queue is routed at `/admin/enterprise-approvals` and rendered by `src/pages/admin/EnterpriseApprovals.jsx`.
+- Queue, detail, approve, and decline calls use `/api/v1/admin/enterpriseOnboardingRequest` through `src/services/enterpriseOnboardingService.js`.
+- The route and Admin navigation visibility resolve `SYSTEM_ADMIN` from the authenticated Spring `/api/v1/me` response. The backend controller is `agent/src/main/java/com/ethela/agent/controller/EnterpriseOnboardingAdminController.java` in the Spring repo; authorization remains enforced by its `SYSTEM_ADMIN` role requirement.
+
+### Post-login workspace routing
+- Personal Firebase login/signup loads `/api/v1/me` and resolves the user's active memberships before choosing a destination. A valid saved workspace preference is stored per Firebase UID in browser local storage; it is never an authorization credential.
+- `/v2/workspaces` is the selector and status hub for active workspaces, invitations, and onboarding requests. Enterprise selection is revalidated against `/me`; Enterprise APIs still authorize the requested account on each call.
+- Enterprise signup and requester status use `/api/v1/enterpriseOnboardingRequest` and `/api/v1/enterpriseOnboardingRequest/mine`, connecting the user's status UI to the same request records reviewed by the Step 6 admin dashboard.
+- System Admin access is presented separately from workspace cards and continues to be authorized by the backend role.
+
+### Enterprise team administration (Step 8)
+- `EnterpriseHome` renders `components/workspace/EnterpriseTeamManagement.jsx` with current memberships, the caller's workspace role, and invitation history. Every mutation reloads `/me` and the member/invitation lists.
+- Owners invite `ADMIN` or `MEMBER`, change non-owner roles, and suspend/restore/remove non-owner members. Admins invite and manage `MEMBER` access only. The protected owner cannot be changed through this screen.
+- Role/status patches and soft removal use `/api/v1/enterprise/accounts/{accountId}/members/{userId}/role`, `/status`, and `DELETE` on the member resource. Search uses the camelCase `/eligibleUsers` endpoint; the backend retains the former hyphenated alias.
+- Removed membership records stay in PostgreSQL as `REMOVED`. Rejoining requires a new invitation and recipient acceptance. Suspended members can be restored by an authorized administrator.
+- Invitation acceptance/decline remains in `/v2/workspaces`. The team screen lists invitation history by status and can revoke pending invitations within the caller's role authority. Email delivery belongs to Step 9.
+- Backend migration `013_account_invitations.sql` must be applied after `001`–`012` before using the updated backend. It preserves invitation data and supplies an updatable `enterprise_invitations` compatibility view.
+- `npm run test:enterprise-team` runs isolated browser regression fixtures using real screens and API clients with mocked identity/API responses; it does not use Firebase credentials or write to Supabase. Set `PLAYWRIGHT_CHANNEL=chrome` to use installed Chrome instead of bundled Chromium.
+
 ## Request Path Patterns
 
 ### Firebase-native feature

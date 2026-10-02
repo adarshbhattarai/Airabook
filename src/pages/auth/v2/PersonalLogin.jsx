@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/context/AuthContext';
+import { getPostLoginDestination } from '@/services/postLoginRouting';
 import AccountSwitcher from './components/AccountSwitcher';
 import AuthField from './components/AuthField';
 import AuthFooter from './components/AuthFooter';
@@ -24,7 +25,6 @@ const PersonalLogin = () => {
   const { user, login, signInWithGoogle, resendVerificationEmail } = useAuth();
   const isEnterpriseSignupRedirect = location.state?.from?.pathname === '/v2/enterprise-signup';
   const [showEnterpriseLoginNotice, setShowEnterpriseLoginNotice] = useState(isEnterpriseSignupRedirect);
-  const from = location.state?.from?.pathname || '/dashboard';
 
   useEffect(() => {
     if (user && !user.emailVerified) {
@@ -56,9 +56,9 @@ const PersonalLogin = () => {
     event.preventDefault();
     setIsLoading(true);
     try {
-      await login(email, password);
+      const credential = await login(email, password);
       toast({ title: '🎉 Welcome back!', description: "You've successfully logged in." });
-      navigate(from, { replace: true });
+      navigate(await getPostLoginDestination(credential.user.uid, location.state?.from), { replace: true });
     } catch (error) {
       console.error('Failed to log in', error);
       toast({ title: 'Unable to sign in', description: 'Please check your email and password and try again.', variant: 'destructive' });
@@ -69,8 +69,8 @@ const PersonalLogin = () => {
 
   const handleGoogleSignIn = async () => {
     try {
-      await signInWithGoogle();
-      navigate(from, { replace: true });
+      const credential = await signInWithGoogle();
+      navigate(await getPostLoginDestination(credential.user.uid, location.state?.from), { replace: true });
     } catch (error) {
       console.error('Failed to sign in with Google', error);
       toast({ title: 'Unable to sign in with Google', description: 'Please try again later.', variant: 'destructive' });

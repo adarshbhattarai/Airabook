@@ -48,6 +48,40 @@ export const SERVICE_ENDPOINTS = {
         import.meta.env.VITE_SPRING_VIDEO_PAGE_CLIPS_STREAM_ENDPOINT || 'api/v1/videos/page-clips/{jobId}/stream',
       videoPageClipsByBook:
         import.meta.env.VITE_SPRING_VIDEO_PAGE_CLIPS_BY_BOOK_ENDPOINT || 'api/v1/videos/books/{bookId}',
+      enterpriseSyncUser:
+        import.meta.env.VITE_SPRING_ENTERPRISE_SYNC_USER_ENDPOINT || 'api/v1/auth/sync',
+      enterpriseCurrentUser:
+        import.meta.env.VITE_SPRING_ENTERPRISE_CURRENT_USER_ENDPOINT || 'api/v1/me',
+      enterpriseAccounts:
+        import.meta.env.VITE_SPRING_ENTERPRISE_ACCOUNTS_ENDPOINT || 'api/v1/enterprise/accounts',
+      enterpriseLogin:
+        import.meta.env.VITE_SPRING_ENTERPRISE_LOGIN_ENDPOINT || 'api/v1/enterprise/auth/login',
+      enterpriseAccountMembers:
+        import.meta.env.VITE_SPRING_ENTERPRISE_ACCOUNT_MEMBERS_ENDPOINT || 'api/v1/enterprise/accounts/{accountId}/members',
+      enterpriseRequestsMine:
+        import.meta.env.VITE_SPRING_ENTERPRISE_REQUESTS_MINE_ENDPOINT || 'api/v1/enterprise/requests/mine',
+      enterpriseEligibleUsers:
+        import.meta.env.VITE_SPRING_ENTERPRISE_ELIGIBLE_USERS_ENDPOINT || 'api/v1/enterprise/accounts/{accountId}/eligibleUsers',
+      enterpriseAccountMember:
+        import.meta.env.VITE_SPRING_ENTERPRISE_ACCOUNT_MEMBER_ENDPOINT || 'api/v1/enterprise/accounts/{accountId}/members/{userId}',
+      enterpriseAccountInvitations:
+        import.meta.env.VITE_SPRING_ENTERPRISE_ACCOUNT_INVITATIONS_ENDPOINT || 'api/v1/enterprise/accounts/{accountId}/invitations',
+      enterpriseReceivedInvitations:
+        import.meta.env.VITE_SPRING_ENTERPRISE_RECEIVED_INVITATIONS_ENDPOINT || 'api/v1/enterprise/invitations',
+      enterpriseInvitation:
+        import.meta.env.VITE_SPRING_ENTERPRISE_INVITATION_ENDPOINT || 'api/v1/enterprise/invitations/{invitationId}',
+      enterpriseReviewQueue:
+        import.meta.env.VITE_SPRING_ENTERPRISE_REVIEW_QUEUE_ENDPOINT || 'api/v1/admin/enterprise/accounts',
+      enterpriseReviewAction:
+        import.meta.env.VITE_SPRING_ENTERPRISE_REVIEW_ACTION_ENDPOINT || 'api/v1/admin/enterprise/accounts/{accountId}/{action}',
+      enterpriseOnboardingRequests:
+        import.meta.env.VITE_SPRING_ENTERPRISE_ONBOARDING_REQUESTS_ENDPOINT || 'api/v1/enterpriseOnboardingRequest',
+      enterpriseOnboardingMyRequests:
+        import.meta.env.VITE_SPRING_ENTERPRISE_ONBOARDING_MY_REQUESTS_ENDPOINT || 'api/v1/enterpriseOnboardingRequest/mine',
+      enterpriseOnboardingAdminRequests:
+        import.meta.env.VITE_SPRING_ENTERPRISE_ONBOARDING_ADMIN_REQUESTS_ENDPOINT || 'api/v1/admin/enterpriseOnboardingRequest',
+      enterpriseOnboardingAdminRequest:
+        import.meta.env.VITE_SPRING_ENTERPRISE_ONBOARDING_ADMIN_REQUEST_ENDPOINT || 'api/v1/admin/enterpriseOnboardingRequest/{requestId}',
     },
   },
 };

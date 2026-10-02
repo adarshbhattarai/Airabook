@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/lib/firebase';
+import { useSystemAdminAccess } from '@/hooks/useSystemAdminAccess';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
@@ -37,7 +38,7 @@ const baseSections = [
   {
     label: 'Enterprise',
     items: [
-      { name: 'Enterprise Account Request', icon: Building2, to: '/v2/enterprise-signup' },
+      { name: 'Workspaces', icon: Building2, to: '/v2/workspaces' },
     ],
   },
 ];
@@ -45,25 +46,11 @@ const baseSections = [
 const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile }) => {
   const { user, appUser, billing } = useAuth();
   const { pathname } = useLocation();
-  const [isAdmin, setIsAdmin] = useState(false);
+  const { isSystemAdmin: isAdmin } = useSystemAdminAccess();
   const [usageDialogOpen, setUsageDialogOpen] = useState(false);
   const [usageLoading, setUsageLoading] = useState(false);
   const [usageSummary, setUsageSummary] = useState(null);
   const [usageError, setUsageError] = useState('');
-
-  useEffect(() => {
-    const checkAdmin = async () => {
-      if (user) {
-        try {
-          const tokenResult = await user.getIdTokenResult();
-          setIsAdmin(!!tokenResult.claims.admin);
-        } catch (error) {
-          console.error("Error checking sidebar admin:", error);
-        }
-      }
-    };
-    checkAdmin();
-  }, [user]);
 
   const hasBooks = useMemo(
     () => Array.isArray(appUser?.accessibleBookIds) && appUser.accessibleBookIds.length > 0,
@@ -74,6 +61,7 @@ const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile }) => 
     label: 'Admin',
     items: [
       { name: 'Admin Dashboard', icon: ShieldCheck, to: '/admin' },
+      { name: 'Enterprise Requests', icon: Building2, to: '/admin/enterprise-approvals' },
     ],
   } : null;
 

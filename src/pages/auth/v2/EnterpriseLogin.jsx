@@ -3,7 +3,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { ArrowRight, Building2, Lock, Mail, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { submitEnterpriseLoginDemo } from '@/services/enterpriseOnboardingService';
+import { useAuth } from '@/context/AuthContext';
+import {
+  loginEnterpriseAccount,
+} from '@/services/enterpriseOnboardingService';
 import AccountSwitcher from './components/AccountSwitcher';
 import AuthField from './components/AuthField';
 import AuthFooter from './components/AuthFooter';
@@ -17,6 +20,7 @@ const EnterpriseLogin = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -25,11 +29,24 @@ const EnterpriseLogin = () => {
     setIsSubmitting(true);
     setSubmitError('');
     try {
-      await submitEnterpriseLoginDemo({ workspaceSlug: workspace, email, password });
-      navigate('/v2/enterprise-home', { state: { workspace } });
+      // Firebase owns credentials. Spring receives only the verified Firebase ID token.
+      await login(email.trim(), password);
+      const result = await loginEnterpriseAccount({ workspaceSlug: workspace });
+      navigate('/v2/enterprise-home', {
+        replace: true,
+        state: { account: result.account, membership: result.membership },
+      });
     } catch (error) {
-      console.error('Unable to submit enterprise login demo', error);
-      setSubmitError('We could not reach the demo service. Make sure localhost:8000 is running and try again.');
+      console.error('Unable to sign in to enterprise workspace', error);
+      if (error.status === 404) {
+        setSubmitError('We could not find an active workspace membership for this account.');
+      } else if (error.status === 403) {
+        setSubmitError('This workspace is not active yet. If you recently registered it, wait for System Administrator approval before signing in.');
+      } else if (error.status === 401) {
+        setSubmitError('Your session is not authorized. Please sign in again.');
+      } else {
+        setSubmitError(error.message || 'Unable to sign in to this workspace. Please try again.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -68,7 +85,7 @@ const EnterpriseLogin = () => {
         <div className="shrink-0 pt-3">
           <div className="mb-2 flex items-center gap-3"><div className="h-px flex-1 bg-slate-200" /><span className="text-xs text-slate-500">New to Enterprise?</span><div className="h-px flex-1 bg-slate-200" /></div>
           <div className="rounded-2xl border border-violet-100 bg-violet-50/70 p-4">
-            <div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-violet-700 shadow-sm"><ShieldCheck className="h-4 w-4" /></span><div><h3 className="text-sm font-semibold text-slate-900">Need a managed workspace?</h3><p className="mt-1 text-xs leading-5 text-slate-600">Sign in with your Personal Account first, then submit a request for System Admin approval.</p></div></div>
+            <div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-violet-700 shadow-sm"><ShieldCheck className="h-4 w-4" /></span><div><h3 className="text-sm font-semibold text-slate-900">Need a managed workspace?</h3><p className="mt-1 text-xs leading-5 text-slate-600">Sign in with your Personal Account first, then submit a request for System Administrator approval.</p></div></div>
             <Link to="/v2/enterprise-signup" className="mt-3 flex items-center justify-center gap-2 rounded-lg border border-violet-600 px-4 py-2.5 text-xs font-semibold text-violet-700 transition hover:bg-white">Request an Enterprise account <ArrowRight className="h-3.5 w-3.5" /></Link>
           </div>
         </div>
