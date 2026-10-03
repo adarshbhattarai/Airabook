@@ -145,3 +145,15 @@ export const declineAdminEnterpriseRequest = (requestId, reason) => apiService.p
   `${ENTERPRISE_PATHS.enterpriseOnboardingAdminRequest.replace('{requestId}', encodeURIComponent(requestId))}/decline`,
   { reason: reason.trim() }
 );
+
+const verificationPath = (requestId) => `${ENTERPRISE_PATHS.enterpriseOnboardingAdminRequest
+  .replace('{requestId}', encodeURIComponent(requestId))}/verifications`;
+export const getAdminEnterpriseVerificationHistory = (requestId) => apiService.get(verificationPath(requestId));
+export const recordAdminEnterpriseVerification = (requestId, outcome, reasonCode) => apiService.post(
+  verificationPath(requestId), { outcome, reasonCode }
+);
+export const getEnterpriseNotificationSummary = () => apiService.get(`${ENTERPRISE_PATHS.enterpriseOperations}/notifications`);
+export const getEnterpriseDeadLetters = () => apiService.get(`${ENTERPRISE_PATHS.enterpriseOperations}/deadLetters?limit=20`);
+export const retryEnterpriseNotification = (eventId) => apiService.post(
+  `${ENTERPRISE_PATHS.enterpriseOperations}/notifications/${encodeURIComponent(eventId)}/retry`, {}
+);

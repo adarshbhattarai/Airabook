@@ -82,6 +82,8 @@ export const SERVICE_ENDPOINTS = {
         import.meta.env.VITE_SPRING_ENTERPRISE_ONBOARDING_ADMIN_REQUESTS_ENDPOINT || 'api/v1/admin/enterpriseOnboardingRequest',
       enterpriseOnboardingAdminRequest:
         import.meta.env.VITE_SPRING_ENTERPRISE_ONBOARDING_ADMIN_REQUEST_ENDPOINT || 'api/v1/admin/enterpriseOnboardingRequest/{requestId}',
+      enterpriseOperations:
+        import.meta.env.VITE_SPRING_ENTERPRISE_OPERATIONS_ENDPOINT || 'api/v1/admin/enterpriseOperations',
     },
   },
 };

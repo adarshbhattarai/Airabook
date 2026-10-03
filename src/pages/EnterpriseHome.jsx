@@ -17,18 +17,18 @@ import {
   ShieldCheck,
   Share2,
   Upload,
-  User,
   Users,
   X,
 } from 'lucide-react';
 import EnterpriseTeamManagement from '@/components/workspace/EnterpriseTeamManagement';
+import { WorkspaceProfileMenu, WorkspaceSwitcher } from '@/components/workspace/WorkspaceMenu';
 import { useAuth } from '@/context/AuthContext';
 import {
   getEnterpriseAccountInvitations,
   getCurrentEnterpriseUser,
   getEnterpriseMembers,
 } from '@/services/enterpriseOnboardingService';
-import { clearPreferredWorkspaceId, getActiveWorkspaces, getPreferredWorkspaceId, savePreferredWorkspaceId } from '@/services/workspaceSelection';
+import { clearPreferredWorkspaceId, getActiveWorkspaces, getPreferredWorkspaceId, savePreferredWorkspaceId, WORKSPACE_CHOOSER_PATH } from '@/services/workspaceSelection';
 
 const navigation = [
   { label: 'Management Studio', detail: 'Enterprise Admin', icon: LayoutDashboard },
@@ -58,6 +58,7 @@ const EnterpriseHome = () => {
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const requestedAccountId = new URLSearchParams(location.search).get('accountId') || location.state?.account?.id;
 
   useEffect(() => {
     let isCurrent = true;
@@ -65,21 +66,24 @@ const EnterpriseHome = () => {
     const loadWorkspace = async () => {
         setIsLoading(true);
         setLoadError('');
+        setWorkspace(null);
+        setMembers([]);
+        setInvitations([]);
       try {
         const currentUser = await getCurrentEnterpriseUser();
         const enterpriseAccounts = getActiveWorkspaces(currentUser)
           .filter((account) => account.type === 'ENTERPRISE');
         const preferredAccountId = getPreferredWorkspaceId(firebaseUser?.uid);
-        const requestedIds = [location.state?.account?.id, preferredAccountId].filter(Boolean);
+        const requestedIds = (requestedAccountId ? [requestedAccountId] : [preferredAccountId]).filter(Boolean);
         let selectedAccount = requestedIds
           .map((id) => enterpriseAccounts.find((account) => String(account.id) === String(id)))
           .find(Boolean);
 
         if (!selectedAccount && preferredAccountId) clearPreferredWorkspaceId(firebaseUser?.uid);
-        if (!selectedAccount && enterpriseAccounts.length === 1) selectedAccount = enterpriseAccounts[0];
+        if (!selectedAccount && !requestedAccountId && enterpriseAccounts.length === 1) selectedAccount = enterpriseAccounts[0];
 
         if (!selectedAccount) {
-          if (isCurrent) navigate('/v2/workspaces', { replace: true });
+          if (isCurrent) navigate(WORKSPACE_CHOOSER_PATH, { replace: true });
           return;
         }
 
@@ -112,7 +116,7 @@ const EnterpriseHome = () => {
     return () => {
       isCurrent = false;
     };
-  }, [firebaseUser?.uid, location.state?.account?.id, navigate, refreshVersion, invitationStatus]);
+  }, [firebaseUser?.uid, requestedAccountId, navigate, refreshVersion, invitationStatus]);
 
   const handleNavigation = (label) => {
     setActiveNav(label);
@@ -122,10 +126,10 @@ const EnterpriseHome = () => {
   return (
     <div className="min-h-screen bg-[#fafaff] text-slate-900">
       <div className="flex min-h-screen">
-        <EnterpriseSidebar activeNav={activeNav} mobileOpen={mobileNavOpen} onNavigate={handleNavigation} onClose={() => setMobileNavOpen(false)} onSwitchWorkspace={() => navigate('/v2/workspaces')} />
+        <EnterpriseSidebar account={workspace?.account} activeNav={activeNav} mobileOpen={mobileNavOpen} onNavigate={handleNavigation} onClose={() => setMobileNavOpen(false)} />
 
         <div className="min-w-0 flex-1">
-          <EnterpriseHeader workspace={workspace?.account} user={workspace?.user} onMenu={() => setMobileNavOpen(true)} onSwitchWorkspace={() => navigate('/v2/workspaces')} />
+          <EnterpriseHeader workspace={workspace?.account} onMenu={() => setMobileNavOpen(true)} />
           <main className="mx-auto max-w-[1480px] px-5 py-7 sm:px-8 sm:py-9 xl:px-12">
             <div className="mb-7">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-violet-600">Management Studio · Enterprise</p>
@@ -158,7 +162,7 @@ const EnterpriseHome = () => {
   );
 };
 
-const EnterpriseSidebar = ({ activeNav, mobileOpen, onNavigate, onClose, onSwitchWorkspace }) => (
+const EnterpriseSidebar = ({ account, activeNav, mobileOpen, onNavigate, onClose }) => (
   <>
     {mobileOpen && <button type="button" aria-label="Close navigation" onClick={onClose} className="fixed inset-0 z-30 bg-slate-950/25 lg:hidden" />}
     <aside className={`fixed inset-y-0 left-0 z-40 flex w-[238px] shrink-0 flex-col border-r border-violet-100 bg-[#f1f0ff] transition-transform duration-200 lg:static lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
@@ -183,7 +187,9 @@ const EnterpriseSidebar = ({ activeNav, mobileOpen, onNavigate, onClose, onSwitc
       </nav>
 
       <div className="space-y-1 border-t border-violet-100 px-3 py-5">
-        <button type="button" onClick={onSwitchWorkspace} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-xs font-semibold text-violet-700 transition hover:bg-white/75"><Building2 className="h-4 w-4" />Switch workspace</button>
+        <WorkspaceSwitcher mode="enterprise" account={account} onSelected={onClose}>
+          <button type="button" className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-xs font-semibold text-violet-700 transition hover:bg-white/75"><Building2 className="h-4 w-4" />Switch workspace</button>
+        </WorkspaceSwitcher>
         <button type="button" onClick={() => onNavigate('Settings')} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-xs font-semibold text-slate-600 transition hover:bg-white/75 hover:text-violet-700"><Settings className="h-4 w-4" />Settings</button>
         <button type="button" onClick={() => onNavigate('Support')} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-xs font-semibold text-slate-600 transition hover:bg-white/75 hover:text-violet-700"><HelpCircle className="h-4 w-4" />Support</button>
       </div>
@@ -191,16 +197,18 @@ const EnterpriseSidebar = ({ activeNav, mobileOpen, onNavigate, onClose, onSwitc
   </>
 );
 
-const EnterpriseHeader = ({ workspace, user, onMenu, onSwitchWorkspace }) => (
+const EnterpriseHeader = ({ workspace, onMenu }) => (
   <header className="flex h-[74px] items-center justify-between border-b border-violet-100 bg-white/80 px-5 backdrop-blur sm:px-8 xl:px-12">
     <button type="button" aria-label="Open navigation" onClick={onMenu} className="mr-3 rounded-lg p-2 text-slate-500 hover:bg-violet-50 lg:hidden"><Menu className="h-5 w-5" /></button>
     <div className="relative hidden w-full max-w-[300px] sm:block"><Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" /><input aria-label="Search enterprise workspace" placeholder="Search..." className="h-9 w-full rounded-full border-0 bg-[#e9eaff] pl-9 pr-4 text-xs text-slate-700 outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-violet-200" /></div>
     <div className="ml-auto flex items-center gap-2 sm:gap-4">
-      <button type="button" onClick={onSwitchWorkspace} aria-label="Switch workspace" title="Switch workspace" className="hidden max-w-[220px] items-center gap-2 rounded-full bg-violet-700 px-4 py-2 text-[10px] font-bold text-white shadow-sm transition hover:bg-violet-800 sm:flex"><Building2 className="h-3 w-3" /><span className="truncate">{workspace?.name || 'Workspace'}</span><ChevronDown className="h-3 w-3 shrink-0" /></button>
+      <WorkspaceSwitcher mode="enterprise" account={workspace}>
+        <button type="button" aria-label="Switch workspace" title="Switch workspace" className="hidden max-w-[220px] items-center gap-2 rounded-full bg-violet-700 px-4 py-2 text-[10px] font-bold text-white shadow-sm transition hover:bg-violet-800 sm:flex"><Building2 className="h-3 w-3" /><span className="truncate">{workspace?.name || 'Workspace'}</span><ChevronDown className="h-3 w-3 shrink-0" /></button>
+      </WorkspaceSwitcher>
       <button type="button" aria-label="Notifications" className="rounded-lg p-2 text-slate-500 transition hover:bg-violet-50 hover:text-violet-700"><Bell className="h-4 w-4" /></button>
       <button type="button" aria-label="Usage" className="hidden rounded-lg p-2 text-slate-500 transition hover:bg-violet-50 hover:text-violet-700 sm:block"><BarChart3 className="h-4 w-4" /></button>
       <button type="button" aria-label="Help" className="hidden rounded-lg p-2 text-slate-500 transition hover:bg-violet-50 hover:text-violet-700 sm:block"><HelpCircle className="h-4 w-4" /></button>
-      <span title={user?.email || ''} className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-amber-200 text-slate-600 shadow-sm"><User className="h-4 w-4" /></span>
+      <WorkspaceProfileMenu mode="enterprise" account={workspace} />
     </div>
   </header>
 );

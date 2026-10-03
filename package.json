@@ -39,6 +39,8 @@
     "test:auth": "cd functions && node test-auth.cjs",
     "test:e2e": "npx playwright test",
     "test:enterprise-team": "playwright test --config playwright.enterprise.config.mjs",
+    "test:workspace-selection": "playwright test --config playwright.workspaces.config.mjs",
+    "test:workspace-routing": "node --test scripts/workspaceSelection.test.mjs",
     "test:e2e:movies": "npx playwright test e2e/movies.spec.mjs",
     "create:emulator-user": "cd functions && node create-emulator-user.cjs",
     "stripe:setup": "bash scripts/setup-stripe-webhook.sh",

@@ -36,7 +36,7 @@ const V2AccountSelector = () => {
             </span>
             <ArrowRight className="h-5 w-5 text-violet-400 transition group-hover:translate-x-1" />
           </button>
-          <button type="button" onClick={() => navigate('/v2/personal-login', { state: { from: { pathname: '/v2/workspaces' } } })} className="group flex w-full items-center gap-4 rounded-2xl border border-violet-200 bg-gradient-to-br from-white to-violet-50/60 p-5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-violet-400 hover:shadow-lg hover:shadow-violet-950/5 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:ring-offset-2">
+          <button type="button" onClick={() => navigate('/v2/personal-login')} className="group flex w-full items-center gap-4 rounded-2xl border border-violet-200 bg-gradient-to-br from-white to-violet-50/60 p-5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-violet-400 hover:shadow-lg hover:shadow-violet-950/5 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:ring-offset-2">
             <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-violet-700 text-white shadow-md shadow-violet-700/20"><Building2 className="h-5 w-5" /></span>
             <span className="flex-1">
               <span className="flex items-center gap-2 text-base font-semibold text-slate-900">Enterprise Workspace <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-violet-700">Teams</span></span>

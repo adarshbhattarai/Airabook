@@ -30,7 +30,8 @@ const PersonalSignup = () => {
     try {
       const credential = await signup(name, email, password);
       toast({ title: '✅ Account created!', description: 'Welcome! Please check your email to verify your account.' });
-      navigate(await getPostLoginDestination(credential.user.uid, location.state?.from), { replace: true });
+      const destination = await getPostLoginDestination(credential.user.uid, location.state?.from);
+      navigate(destination, { replace: true, state: destination.state });
     } catch (error) {
       console.error('Failed to sign up', error);
       toast({ title: 'Unable to create your account', description: 'Please check your details and try again.', variant: 'destructive' });
@@ -42,7 +43,8 @@ const PersonalSignup = () => {
   const handleGoogleSignUp = async () => {
     try {
       const credential = await signInWithGoogle();
-      navigate(await getPostLoginDestination(credential.user.uid, location.state?.from), { replace: true });
+      const destination = await getPostLoginDestination(credential.user.uid, location.state?.from);
+      navigate(destination, { replace: true, state: destination.state });
     } catch (error) {
       console.error('Failed to sign up with Google', error);
       toast({ title: 'Unable to sign up with Google', description: 'Please try again later.', variant: 'destructive' });

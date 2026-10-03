@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Helmet } from 'react-helmet';
 import { UserPlus, User, Mail, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/context/AuthContext';
+import { getPostLoginDestination } from '@/services/postLoginRouting';
 
 const GoogleIcon = () => (
   <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
@@ -34,6 +35,7 @@ const Signup = () => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const { signup, signInWithGoogle } = useAuth();
 
@@ -41,12 +43,13 @@ const Signup = () => {
     e.preventDefault();
     setIsLoading(true);
     try {
-      await signup(name, email, password);
+      const credential = await signup(name, email, password);
       toast({
         title: "✅ Account created!",
         description: "Welcome! Please check your email to verify your account.",
       });
-      navigate('/dashboard');
+      const destination = await getPostLoginDestination(credential.user.uid, location.state?.from);
+      navigate(destination, { replace: true, state: destination.state });
     } catch (error) {
       console.error("Failed to sign up", error);
       toast({
@@ -60,8 +63,9 @@ const Signup = () => {
 
   const handleGoogleSignIn = async () => {
     try {
-      await signInWithGoogle();
-      navigate('/dashboard');
+      const credential = await signInWithGoogle();
+      const destination = await getPostLoginDestination(credential.user.uid, location.state?.from);
+      navigate(destination, { replace: true, state: destination.state });
     } catch (error) {
       console.error("Failed to sign in with Google", error);
       toast({

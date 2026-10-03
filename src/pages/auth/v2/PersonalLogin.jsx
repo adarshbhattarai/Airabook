@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { Lock, LogIn, Mail, ShieldCheck } from 'lucide-react';
@@ -27,6 +27,21 @@ const PersonalLogin = () => {
   const [showEnterpriseLoginNotice, setShowEnterpriseLoginNotice] = useState(isEnterpriseSignupRedirect);
 
   useEffect(() => {
+    if (isEnterpriseSignupRedirect) {
+      setShowEnterpriseLoginNotice(true);
+    }
+  }, [isEnterpriseSignupRedirect]);
+
+  const handleResendVerification = useCallback(async () => {
+    try {
+      await resendVerificationEmail();
+      toast({ title: '✅ Verification email sent!', description: 'Please check your inbox.' });
+    } catch (error) {
+      toast({ title: 'Unable to resend email', description: 'Please try again later.', variant: 'destructive' });
+    }
+  }, [resendVerificationEmail, toast]);
+
+  useEffect(() => {
     if (user && !user.emailVerified) {
       toast({
         title: '📧 Please verify your email',
@@ -35,22 +50,7 @@ const PersonalLogin = () => {
         action: <Button onClick={handleResendVerification}>Resend</Button>,
       });
     }
-  }, [user]);
-
-  useEffect(() => {
-    if (isEnterpriseSignupRedirect) {
-      setShowEnterpriseLoginNotice(true);
-    }
-  }, [isEnterpriseSignupRedirect]);
-
-  const handleResendVerification = async () => {
-    try {
-      await resendVerificationEmail();
-      toast({ title: '✅ Verification email sent!', description: 'Please check your inbox.' });
-    } catch (error) {
-      toast({ title: 'Unable to resend email', description: 'Please try again later.', variant: 'destructive' });
-    }
-  };
+  }, [user, toast, handleResendVerification]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -58,7 +58,8 @@ const PersonalLogin = () => {
     try {
       const credential = await login(email, password);
       toast({ title: '🎉 Welcome back!', description: "You've successfully logged in." });
-      navigate(await getPostLoginDestination(credential.user.uid, location.state?.from), { replace: true });
+      const destination = await getPostLoginDestination(credential.user.uid, location.state?.from);
+      navigate(destination, { replace: true, state: destination.state });
     } catch (error) {
       console.error('Failed to log in', error);
       toast({ title: 'Unable to sign in', description: 'Please check your email and password and try again.', variant: 'destructive' });
@@ -70,7 +71,8 @@ const PersonalLogin = () => {
   const handleGoogleSignIn = async () => {
     try {
       const credential = await signInWithGoogle();
-      navigate(await getPostLoginDestination(credential.user.uid, location.state?.from), { replace: true });
+      const destination = await getPostLoginDestination(credential.user.uid, location.state?.from);
+      navigate(destination, { replace: true, state: destination.state });
     } catch (error) {
       console.error('Failed to sign in with Google', error);
       toast({ title: 'Unable to sign in with Google', description: 'Please try again later.', variant: 'destructive' });

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Building2,
   CalendarDays,
@@ -30,7 +30,10 @@ import {
   declineAdminEnterpriseRequest,
   getAdminEnterpriseRequest,
   getAdminEnterpriseRequests,
+  getAdminEnterpriseVerificationHistory,
+  recordAdminEnterpriseVerification,
 } from '@/services/enterpriseOnboardingService';
+import EnterpriseNotificationStatus from '@/components/workspace/EnterpriseNotificationStatus';
 
 const PAGE_SIZE = 20;
 const STATUS_FILTERS = [
@@ -81,6 +84,10 @@ const EnterpriseApprovals = () => {
   const [declineReason, setDeclineReason] = useState('');
   const [declineMode, setDeclineMode] = useState(false);
   const [action, setAction] = useState('');
+  const [verification, setVerification] = useState(null);
+  const [verificationOutcome, setVerificationOutcome] = useState('PASSED');
+  const [verificationReason, setVerificationReason] = useState('MANUAL_REVIEW_COMPLETED');
+  const detailVersion = useRef(0);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -118,27 +125,58 @@ const EnterpriseApprovals = () => {
   );
 
   const openRequest = async (request) => {
+    const version = ++detailVersion.current;
     setSelectedRequest(request);
+    setVerification(null);
     setDetailLoading(true);
     setDetailError('');
     setApprovalNotes('');
     setDeclineReason('');
     setDeclineMode(false);
     try {
-      setSelectedRequest(await getAdminEnterpriseRequest(request.id));
+      const [detail, history] = await Promise.all([
+        getAdminEnterpriseRequest(request.id), getAdminEnterpriseVerificationHistory(request.id),
+      ]);
+      if (version !== detailVersion.current) return;
+      setSelectedRequest(detail);
+      setVerification(history);
     } catch (loadError) {
+      if (version !== detailVersion.current) return;
       setDetailError(loadError.message || 'Unable to load request details.');
     } finally {
-      setDetailLoading(false);
+      if (version === detailVersion.current) setDetailLoading(false);
     }
   };
 
   const closeRequest = (open) => {
     if (action) return;
     if (!open) {
+      detailVersion.current += 1;
       setSelectedRequest(null);
       setDetailError('');
       setDeclineMode(false);
+    }
+  };
+
+  const verifyRequest = async () => {
+    if (!selectedRequest) return;
+    setAction('verify');
+    setDetailError('');
+    try {
+      await recordAdminEnterpriseVerification(selectedRequest.id, verificationOutcome, verificationReason);
+      // A saved outcome invalidates the previous approval gate until fresh history loads.
+      setVerification(null);
+      const [detail, history] = await Promise.all([
+        getAdminEnterpriseRequest(selectedRequest.id), getAdminEnterpriseVerificationHistory(selectedRequest.id),
+      ]);
+      setSelectedRequest(detail);
+      setVerification(history);
+      toast({ title: 'Business verification recorded', description: 'The review result has been saved.' });
+      await loadDashboard();
+    } catch (actionError) {
+      setDetailError(actionError.message || 'Unable to record verification.');
+    } finally {
+      setAction('');
     }
   };
 
@@ -291,6 +329,16 @@ const EnterpriseApprovals = () => {
         declineReason={declineReason}
         declineMode={declineMode}
         action={action}
+        verification={verification}
+        verificationOutcome={verificationOutcome}
+        verificationReason={verificationReason}
+        onVerificationOutcomeChange={(outcome) => {
+          setVerificationOutcome(outcome);
+          setVerificationReason(outcome === 'PASSED' ? 'MANUAL_REVIEW_COMPLETED' : 'INSUFFICIENT_INFORMATION');
+        }}
+        onVerificationReasonChange={setVerificationReason}
+        onVerify={verifyRequest}
+        onReload={() => openRequest(selectedRequest)}
         onOpenChange={closeRequest}
         onApprovalNotesChange={setApprovalNotes}
         onDeclineReasonChange={setDeclineReason}
@@ -298,6 +346,7 @@ const EnterpriseApprovals = () => {
         onApprove={approve}
         onDecline={decline}
       />
+      <EnterpriseNotificationStatus />
     </div>
   );
 };
@@ -361,6 +410,13 @@ const RequestDetailDialog = ({
   declineReason,
   declineMode,
   action,
+  verification,
+  verificationOutcome,
+  verificationReason,
+  onVerificationOutcomeChange,
+  onVerificationReasonChange,
+  onVerify,
+  onReload,
   onOpenChange,
   onApprovalNotesChange,
   onDeclineReasonChange,
@@ -369,6 +425,7 @@ const RequestDetailDialog = ({
   onDecline,
 }) => {
   const reviewable = REVIEWABLE_STATUSES.has(request?.status);
+  const approvalBlocked = !verification || (verification.requiredForApproval && verification.items?.[0]?.outcome !== 'PASSED');
   return (
     <Dialog open={Boolean(request)} onOpenChange={onOpenChange}>
       <DialogContent className="!max-w-3xl max-h-[92vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-0 text-slate-900 shadow-2xl" overlayClassName="bg-slate-950/45 backdrop-blur-[2px]">
@@ -413,7 +470,38 @@ const RequestDetailDialog = ({
                   </section>
                 )}
 
-                {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</div>}
+                {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}
+                  {!verification && <button type="button" onClick={onReload} className="ml-2 underline">Reload details</button>}
+                </div>}
+
+                {verification && (
+                  <section className="rounded-xl border border-slate-200 p-4" aria-label="Business verification">
+                    <h3 className="text-sm font-semibold">Business verification</h3>
+                    <p className="mt-1 text-xs text-slate-500">{verification.requiredForApproval
+                      ? 'A passed verification is required before approval.' : 'Verification is optional under the current review policy.'}</p>
+                    {verification.items?.slice(0, 3).map((item) => (
+                      <p key={item.id} className="mt-2 text-xs text-slate-600">{formatStatus(item.outcome)} · {formatStatus(item.reasonCode)} · {formatDate(`${item.createdAt}Z`)}</p>
+                    ))}
+                    {reviewable && <div className="mt-3 flex flex-wrap items-end gap-3">
+                      <label className="text-xs text-slate-600">Outcome
+                        <select aria-label="Verification outcome" value={verificationOutcome} onChange={(event) => onVerificationOutcomeChange(event.target.value)} disabled={Boolean(action)} className="mt-1 block rounded border border-slate-200 px-2 py-2 text-sm">
+                          <option value="PASSED">Passed</option><option value="FAILED">Failed</option>
+                        </select>
+                      </label>
+                      <label className="text-xs text-slate-600">Reason
+                        <select aria-label="Verification reason" value={verificationReason} onChange={(event) => onVerificationReasonChange(event.target.value)} disabled={Boolean(action)} className="mt-1 block rounded border border-slate-200 px-2 py-2 text-sm">
+                          {(verificationOutcome === 'PASSED'
+                            ? ['MANUAL_REVIEW_COMPLETED', 'BUSINESS_DETAILS_CONFIRMED', 'DOMAIN_CONFIRMED']
+                            : ['INSUFFICIENT_INFORMATION', 'BUSINESS_DETAILS_INVALID', 'DOMAIN_NOT_CONFIRMED'])
+                            .map((reason) => <option key={reason} value={reason}>{formatStatus(reason)}</option>)}
+                        </select>
+                      </label>
+                      <Button variant="outline" onClick={onVerify} disabled={Boolean(action)}>
+                        {action === 'verify' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Record verification
+                      </Button>
+                    </div>}
+                  </section>
+                )}
 
                 {reviewable && (
                   <section className="border-t border-slate-200 pt-5">
@@ -431,7 +519,7 @@ const RequestDetailDialog = ({
                         />
                         <div className="mt-4 flex flex-col-reverse justify-end gap-2 sm:flex-row">
                           <Button variant="outline" onClick={() => onDeclineModeChange(true)} disabled={Boolean(action)} className="border-rose-200 text-rose-700 hover:bg-rose-50">Decline request</Button>
-                          <Button onClick={onApprove} disabled={Boolean(action)} className="bg-emerald-700 text-white hover:bg-emerald-800">
+                          <Button onClick={onApprove} disabled={Boolean(action) || approvalBlocked} className="bg-emerald-700 text-white hover:bg-emerald-800">
                             {action === 'approve' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
                             Approve Enterprise
                           </Button>

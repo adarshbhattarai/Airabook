@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Helmet } from 'react-helmet';
@@ -6,6 +6,7 @@ import { LogIn, Mail, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/context/AuthContext';
+import { getPostLoginDestination } from '@/services/postLoginRouting';
 
 const GoogleIcon = () => (
   <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
@@ -37,30 +38,17 @@ const Login = () => {
   const { toast } = useToast();
   const { user, login, signInWithGoogle, resendVerificationEmail } = useAuth();
 
-  // Redirect to dashboard by default, but respect the 'from' location if it exists
-  const from = location.state?.from?.pathname || "/dashboard";
-
-  useEffect(() => {
-    if (user && !user.emailVerified) {
-      toast({
-        title: "📧 Please verify your email",
-        description: "You must verify your email to access all features.",
-        variant: "warning",
-        action: <Button onClick={handleResendVerification}>Resend</Button>,
-      });
-    }
-  }, [user]);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
     try {
-      await login(email, password);
+      const credential = await login(email, password);
       toast({
         title: "🎉 Welcome back!",
         description: "You've successfully logged in.",
       });
-      navigate(from, { replace: true });
+      const destination = await getPostLoginDestination(credential.user.uid, location.state?.from);
+      navigate(destination, { replace: true, state: destination.state });
     } catch (error) {
       console.error("Failed to log in", error);
       toast({
@@ -74,8 +62,9 @@ const Login = () => {
 
   const handleGoogleSignIn = async () => {
     try {
-      await signInWithGoogle();
-      navigate(from, { replace: true });
+      const credential = await signInWithGoogle();
+      const destination = await getPostLoginDestination(credential.user.uid, location.state?.from);
+      navigate(destination, { replace: true, state: destination.state });
     } catch (error) {
       console.error("Failed to sign in with Google", error);
       toast({
@@ -86,7 +75,7 @@ const Login = () => {
     }
   };
 
-  const handleResendVerification = async () => {
+  const handleResendVerification = useCallback(async () => {
     try {
       await resendVerificationEmail();
       toast({
@@ -100,7 +89,18 @@ const Login = () => {
         variant: 'destructive'
       });
     }
-  };
+  }, [resendVerificationEmail, toast]);
+
+  useEffect(() => {
+    if (user && !user.emailVerified) {
+      toast({
+        title: '📧 Please verify your email',
+        description: 'You must verify your email to access all features.',
+        variant: 'warning',
+        action: <Button onClick={handleResendVerification}>Resend</Button>,
+      });
+    }
+  }, [user, toast, handleResendVerification]);
 
   return (
     <>

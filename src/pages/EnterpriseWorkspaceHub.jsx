@@ -96,8 +96,9 @@ const EnterpriseWorkspaceHub = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
+    <div className="min-h-full bg-background px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-5xl">
+        <Link to="/dashboard" className="mb-6 inline-flex text-sm font-medium text-violet-700 hover:underline">← Dashboard</Link>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-600">Workspace access</p>

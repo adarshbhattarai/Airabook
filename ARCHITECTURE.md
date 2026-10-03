@@ -84,10 +84,15 @@ Frontend Spring integration points currently show up in:
 - The route and Admin navigation visibility resolve `SYSTEM_ADMIN` from the authenticated Spring `/api/v1/me` response. The backend controller is `agent/src/main/java/com/ethela/agent/controller/EnterpriseOnboardingAdminController.java` in the Spring repo; authorization remains enforced by its `SYSTEM_ADMIN` role requirement.
 
 ### Post-login workspace routing
-- Personal Firebase login/signup loads `/api/v1/me` and resolves the user's active memberships before choosing a destination. A valid saved workspace preference is stored per Firebase UID in browser local storage; it is never an authorization credential.
-- `/v2/workspaces` is the selector and status hub for active workspaces, invitations, and onboarding requests. Enterprise selection is revalidated against `/me`; Enterprise APIs still authorize the requested account on each call.
+- Firebase login/signup (legacy and v2, email and Google) loads `/api/v1/me`. Only a single active Personal workspace without System Admin access skips selection and enters `/dashboard`. All other users enter the standalone `/v2/chooseWorkspace` page. A saved preference never bypasses this post-login choice.
+- `WorkspaceChooser` lists active Enterprise workspaces and Personal access, plus a distinct Admin dashboard row only for backend `SYSTEM_ADMIN`. It revalidates `/me` on selection and preserves deep links only inside the selected destination category.
+- Personal pages retain `AppShell`; Enterprise pages use their own sidebar/header; platform administration uses the separate `AdminShell`. Personal navigation no longer mixes platform Admin links into its sidebar. Each shell offers an in-place Switch workspace dropdown and a shared profile menu with identity and sign-out. Desktop profiles use a workspace submenu; mobile profiles expand choices in the same popover. The active destination is checked, and selecting it preserves the current page. Other selections route directly into the appropriate shell, not the login chooser.
+- `WorkspaceMenu.jsx` and `useWorkspaceMenu.js` load current `/me` access when opened and revalidate before selection. Only `SYSTEM_ADMIN` adds the Admin destination. Failed loads/selections stay in the menu with retry. Browser preferences remain non-authoritative.
+- Enterprise URLs include `accountId` (`/v2/enterprise-home?accountId={id}`), which is validated against `/me` on refresh. A missing/unauthorized explicit ID never silently falls back to another team. A valid saved preference still supports older Enterprise URLs without an ID; it is never an authorization credential.
+- `/v2/workspaces` is the Personal-shell hub for active workspaces, invitations, and onboarding requests. It preserves the Personal sidebar, desktop/mobile top navigation, profile menu, and theme, including on refresh and during loading/errors. Only `/v2/chooseWorkspace` is the standalone post-login chooser. Enterprise APIs still authorize the requested account on each call.
 - Enterprise signup and requester status use `/api/v1/enterpriseOnboardingRequest` and `/api/v1/enterpriseOnboardingRequest/mine`, connecting the user's status UI to the same request records reviewed by the Step 6 admin dashboard.
 - System Admin access is presented separately from workspace cards and continues to be authorized by the backend role.
+- See `WORKSPACE_SELECTION.md` for the routing contract and browser regression commands.
 
 ### Enterprise team administration (Step 8)
 - `EnterpriseHome` renders `components/workspace/EnterpriseTeamManagement.jsx` with current memberships, the caller's workspace role, and invitation history. Every mutation reloads `/me` and the member/invitation lists.
@@ -99,6 +104,22 @@ Frontend Spring integration points currently show up in:
 - `npm run test:enterprise-team` runs isolated browser regression fixtures using real screens and API clients with mocked identity/API responses; it does not use Firebase credentials or write to Supabase. Set `PLAYWRIGHT_CHANNEL=chrome` to use installed Chrome instead of bundled Chromium.
 
 ## Request Path Patterns
+
+### Enterprise operations (Step 9)
+- The existing Enterprise approval dialog reads the optional business-verification
+  policy/history and records PASSED/FAILED results through the backend's protected
+  `/api/v1/admin/enterpriseOnboardingRequest/{requestId}/verifications` resource.
+  Required verification disables approval until the latest result passes; policy
+  load failure keeps approval disabled. The backend independently enforces the gate.
+- The dashboard's Notification delivery panel uses `/api/v1/admin/enterpriseOperations`
+  to inspect queued/failed email and requeue dead letters. SMTP settings stay exclusively
+  in backend environment configuration. Rate limiting is deferred at the owner's request.
+- Apply backend migration `014_enterprise_operations.sql` before deploying these screens.
+  Verification, SMTP delivery, and retention cleanup are off by default; the full
+  configuration guide is `Agent/docs/ENTERPRISE_WORKSPACE_STEP9_IMPLEMENTATION.md`.
+- `PLAYWRIGHT_CHANNEL=chrome npx playwright test --config playwright.operations.config.mjs`
+  validates verification-gated/default approval, failed/history-error states, and
+  email recovery using mocked API data without external Firebase/Supabase writes.
 
 ### Firebase-native feature
 1. UI event in `src/components/` or `src/pages/`

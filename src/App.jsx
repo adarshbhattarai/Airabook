@@ -5,6 +5,8 @@ import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ThemeProvider } from '@/context/ThemeContext';
 import MarketingLayout from '@/layouts/MarketingLayout';
 import AppShell from '@/layouts/AppShell';
+import AdminShell from '@/layouts/AdminShell';
+import WorkspaceChooser from '@/pages/WorkspaceChooser';
 import Home from '@/pages/Home';
 import AiraHome from '@/pages/AiraHome';
 import Login from '@/pages/Login';
@@ -62,6 +64,10 @@ const ThemedAppShell = ({ children }) => (
   </ThemeProvider>
 );
 
+const ThemedAdminShell = ({ children }) => (
+  <ThemeProvider><AdminShell>{children}</AdminShell></ThemeProvider>
+);
+
 function App() {
   return (
     <AuthProvider>
@@ -80,7 +86,8 @@ function App() {
             <Route path="/v2/login" element={<V2AccountSelector />} />
             <Route path="/v2/personal-login" element={<PersonalLogin />} />
             <Route path="/v2/personal-signup" element={<PersonalSignup />} />
-            <Route path="/v2/enterprise-login" element={<Navigate to="/v2/personal-login" replace state={{ from: { pathname: '/v2/workspaces' } }} />} />
+            <Route path="/v2/chooseWorkspace" element={<PrivateRoute loginPath="/v2/personal-login"><WorkspaceChooser /></PrivateRoute>} />
+            <Route path="/v2/enterprise-login" element={<Navigate to="/v2/personal-login" replace />} />
             <Route
               path="/v2/enterprise-signup"
               element={
@@ -283,9 +290,9 @@ function App() {
               path="/admin"
               element={
                 <AdminRoute>
-                  <ThemedAppShell>
+                  <ThemedAdminShell>
                     <AdminDashboard />
-                  </ThemedAppShell>
+                  </ThemedAdminShell>
                 </AdminRoute>
               }
             />
@@ -293,9 +300,9 @@ function App() {
               path="/admin/enterprise-approvals"
               element={
                 <AdminRoute>
-                  <ThemedAppShell>
+                  <ThemedAdminShell>
                     <EnterpriseApprovals />
-                  </ThemedAppShell>
+                  </ThemedAdminShell>
                 </AdminRoute>
               }
             />
