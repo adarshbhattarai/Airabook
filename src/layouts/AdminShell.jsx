@@ -15,19 +15,19 @@ const AdminShell = ({ children }) => {
         </div>
         <nav aria-label="Platform administration" className="flex-1 space-y-2 px-3 py-5">
           {[{ to: '/admin/enterprise-approvals', label: 'Enterprise requests', icon: Building2 }, { to: '/admin', label: 'Users & resources', icon: Users }].map(({ to, label, icon: Icon }) => (
-            <NavLink key={to} to={to} end onClick={() => setOpen(false)} className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium ${isActive ? 'bg-indigo-700 text-white' : 'text-indigo-950 hover:bg-white/70'}`}><Icon className="h-4 w-4" />{label}</NavLink>
+            <NavLink key={to} to={to} end onClick={() => setOpen(false)} className={({ isActive }) => `flex items-center gap-3 min-h-11 rounded-[8px] px-3 py-3 text-base font-medium ${isActive ? 'bg-indigo-700 text-white' : 'text-indigo-950 hover:bg-white/70'}`}><Icon className="h-4 w-4" />{label}</NavLink>
           ))}
         </nav>
         <div className="space-y-2 border-t border-indigo-100 p-4">
           <WorkspaceSwitcher mode="admin" onSelected={() => setOpen(false)}>
-            <button type="button" className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-indigo-800 hover:bg-white"><Building2 className="h-4 w-4" />Switch workspace</button>
+            <button type="button" className="flex w-full items-center gap-3 min-h-11 rounded-[8px] px-3 py-2 text-base text-indigo-800 hover:bg-white"><Building2 className="h-4 w-4" />Switch workspace</button>
           </WorkspaceSwitcher>
         </div>
       </aside>
       <div className="min-w-0 flex-1">
         <header className="flex h-[74px] items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 sm:px-8">
-          <button type="button" aria-label="Open admin navigation" onClick={() => setOpen(true)} className="rounded p-2 lg:hidden"><Menu className="h-5 w-5" /></button>
-          <div><p className="text-sm font-semibold">Platform administration</p><p className="text-xs text-slate-500">System Admin</p></div>
+          <button type="button" aria-label="Open admin navigation" onClick={() => setOpen(true)} className="rounded-[8px] p-2 lg:hidden"><Menu className="h-5 w-5" /></button>
+          <div><p className="text-base font-semibold">Platform administration</p><p className="text-sm text-slate-500">System Admin</p></div>
           <div className="ml-auto"><WorkspaceProfileMenu mode="admin" /></div>
         </header>
         <main>{children}</main>

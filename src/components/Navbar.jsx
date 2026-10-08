@@ -34,7 +34,7 @@ const Navbar = () => {
     // { name: 'Notes', path: '/notes', public: false },
   ];
 
-  const hiddenPaths = ['/', '/login', '/signup'];
+  const hiddenPaths = ['/', '/login', '/signup', '/v2/login', '/v2/personal-login', '/v2/personal-signup'];
   const isHiddenPage = hiddenPaths.includes(location.pathname);
 
   const visibleNavItems = navItems.filter(item => {
@@ -101,11 +101,11 @@ const Navbar = () => {
               </div>
             ) : (
               <>
-                <Button asChild variant="ghost" className="rounded-full text-violet-600 hover:bg-violet-100 hover:text-violet-700">
-                  <Link to="/v2/login"><LogIn className="h-4 w-4 mr-2" />Login</Link>
+                <Button asChild variant="ghost" className="h-10 px-4 py-2 text-sm font-medium rounded-full text-violet-600 hover:bg-violet-100 hover:text-violet-700">
+                  <Link to="/v2/login" state={location.state}><LogIn className="h-4 w-4 mr-2" />Login</Link>
                 </Button>
-                <Button asChild className="bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200">
-                  <Link to="/v2/personal-signup"><UserPlus className="h-4 w-4 mr-2" />Signup</Link>
+                <Button asChild className="h-10 px-4 py-2 text-sm font-medium bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200">
+                  <Link to="/v2/personal-signup" state={location.state}><UserPlus className="h-4 w-4 mr-2" />Signup</Link>
                 </Button>
               </>
             )}
@@ -123,6 +123,9 @@ const Navbar = () => {
               </Button>
             )}
             <button
+              type="button"
+              aria-label={isOpen ? 'Close navigation menu' : 'Open navigation menu'}
+              aria-expanded={isOpen}
               onClick={() => setIsOpen(!isOpen)}
               className="text-gray-700 hover:text-violet-600 transition-colors"
             >
@@ -176,10 +179,10 @@ const Navbar = () => {
                 ) : (
                   <>
                     <Button asChild variant="outline" className="w-full justify-center rounded-lg">
-                      <Link to="/v2/login" onClick={() => setIsOpen(false)}><LogIn className="h-4 w-4 mr-2" />Login</Link>
+                      <Link to="/v2/login" state={location.state} onClick={() => setIsOpen(false)}><LogIn className="h-4 w-4 mr-2" />Login</Link>
                     </Button>
                     <Button asChild className="w-full justify-center bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-lg">
-                      <Link to="/v2/personal-signup" onClick={() => setIsOpen(false)}><UserPlus className="h-4 w-4 mr-2" />Signup</Link>
+                      <Link to="/v2/personal-signup" state={location.state} onClick={() => setIsOpen(false)}><UserPlus className="h-4 w-4 mr-2" />Signup</Link>
                     </Button>
                   </>
                 )}

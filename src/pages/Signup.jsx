@@ -29,7 +29,7 @@ const GoogleIcon = () => (
   </svg>
 );
 
-const Signup = () => {
+const Signup = ({ loginPath = '/login' }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -53,12 +53,13 @@ const Signup = () => {
     } catch (error) {
       console.error("Failed to sign up", error);
       toast({
-        title: "Uh oh! Something went wrong.",
-        description: "There was a problem with your sign-up request.",
+        title: 'Unable to create your account',
+        description: 'Please check your details and try again.',
         variant: "destructive",
       });
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   const handleGoogleSignIn = async () => {
@@ -69,8 +70,8 @@ const Signup = () => {
     } catch (error) {
       console.error("Failed to sign in with Google", error);
       toast({
-        title: "Uh oh! Something went wrong.",
-        description: "There was a problem with your Google sign-in request.",
+        title: 'Unable to sign up with Google',
+        description: 'Please try again later.',
         variant: "destructive",
       });
     }
@@ -87,7 +88,7 @@ const Signup = () => {
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="max-w-md w-full space-y-8 bg-white/70 backdrop-blur-sm p-10 rounded-3xl shadow-2xl border border-violet-100"
+          className="max-w-md w-full space-y-8 bg-white/70 backdrop-blur-sm p-6 sm:p-10 rounded-3xl shadow-2xl border border-violet-100"
         >
           <div>
             <h1 className="text-center text-4xl font-bold bg-gradient-to-r from-purple-500 to-indigo-500 bg-clip-text text-transparent">
@@ -100,11 +101,13 @@ const Signup = () => {
           <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
             <div className="rounded-md shadow-sm -space-y-px">
               <div className="relative">
+                <label htmlFor="name" className="sr-only">Your name</label>
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
                   id="name"
                   name="name"
                   type="text"
+                  autoComplete="name"
                   required
                   className="appearance-none rounded-xl relative block w-full pl-10 pr-3 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-violet-500 focus:border-violet-500 focus:z-10 sm:text-sm"
                   placeholder="Your Name"
@@ -113,6 +116,7 @@ const Signup = () => {
                 />
               </div>
               <div className="relative pt-4">
+                <label htmlFor="email-address" className="sr-only">Email address</label>
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
                   id="email-address"
@@ -127,6 +131,7 @@ const Signup = () => {
                 />
               </div>
               <div className="relative pt-4">
+                <label htmlFor="password" className="sr-only">Password</label>
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
                   id="password"
@@ -143,7 +148,7 @@ const Signup = () => {
             </div>
 
             <div>
-              <Button type="submit" disabled={isLoading} className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-xl text-white bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50">
+              <Button type="submit" disabled={isLoading} className="group relative h-10 w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-xl text-white bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50">
                 <span className="absolute left-0 inset-y-0 flex items-center pl-3">
                   <UserPlus className="h-5 w-5 text-violet-300 group-hover:text-violet-100" aria-hidden="true" />
                 </span>
@@ -162,7 +167,7 @@ const Signup = () => {
           </div>
 
           <div>
-            <Button onClick={handleGoogleSignIn} variant="outline" className="w-full flex justify-center py-3 px-4 rounded-xl shadow-sm">
+            <Button type="button" onClick={handleGoogleSignIn} variant="outline" className="h-10 w-full flex justify-center py-3 px-4 rounded-xl text-sm font-medium shadow-sm">
               <GoogleIcon />
               Sign up with Google
             </Button>
@@ -170,7 +175,7 @@ const Signup = () => {
 
           <p className="mt-2 text-center text-sm text-gray-600">
             Already have an account?{' '}
-            <Link to="/login" className="font-medium text-violet-600 hover:text-violet-500">
+            <Link to={loginPath} state={location.state} className="font-medium text-violet-600 hover:text-violet-500">
               Sign in
             </Link>
           </p>

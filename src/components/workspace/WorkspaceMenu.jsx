@@ -9,13 +9,13 @@ import {
   DropdownMenuSubTrigger, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-const menuClass = 'w-72 max-w-[calc(100vw-2rem)] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto rounded-xl border border-border bg-card p-2 text-foreground shadow-xl';
-const itemClass = 'gap-3 rounded-lg px-3 py-2.5 focus:bg-muted';
+const menuClass = 'w-72 max-w-[calc(100vw-2rem)] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto rounded-[8px] border border-border bg-card p-2 text-foreground shadow-xl';
+const itemClass = 'min-h-11 gap-3 rounded-[8px] px-3 py-2.5 text-base focus:bg-muted';
 
 const DestinationItems = ({ menu, onSelected, disabled = false }) => (
   <>
-    {menu.loading && <div role="status" className="flex items-center gap-2 px-3 py-3 text-xs text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading workspaces…</div>}
-    {menu.error && <div role="alert" className="px-3 py-2 text-xs text-rose-600">{menu.error}</div>}
+    {menu.loading && <div role="status" className="flex items-center gap-2 px-3 py-3 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading workspaces…</div>}
+    {menu.error && <div role="alert" className="px-3 py-2 text-sm text-rose-600">{menu.error}</div>}
     {menu.error && <DropdownMenuItem className={itemClass} disabled={!!menu.busy || disabled} onSelect={(event) => { event.preventDefault(); menu.load(); }}>Try again</DropdownMenuItem>}
     {!menu.loading && menu.destinations.map((destination) => {
       const active = String(menu.selectedId) === String(destination.id);
@@ -28,7 +28,7 @@ const DestinationItems = ({ menu, onSelected, disabled = false }) => (
         {active && <Check aria-hidden="true" className="h-4 w-4 shrink-0" />}
       </DropdownMenuItem>;
     })}
-    {!menu.loading && !menu.error && !menu.destinations.length && <p className="px-3 py-3 text-xs text-muted-foreground">No active workspaces available.</p>}
+    {!menu.loading && !menu.error && !menu.destinations.length && <p className="px-3 py-3 text-sm text-muted-foreground">No active workspaces available.</p>}
   </>
 );
 
@@ -37,9 +37,9 @@ export const WorkspaceSwitcher = ({ mode = 'personal', account, children, onSele
   const [open, setOpen] = useState(false);
   const menu = useWorkspaceMenu({ mode, account });
   return <DropdownMenu open={open} onOpenChange={(next) => { setOpen(next); if (next && !menu.busy) menu.load(); }}>
-    <DropdownMenuTrigger asChild>{children || <button type="button" className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm"><Building2 className="h-4 w-4" />Switch workspace</button>}</DropdownMenuTrigger>
+    <DropdownMenuTrigger asChild>{children || <button type="button" className="flex items-center gap-2 rounded-[8px] px-3 py-2 text-base"><Building2 className="h-4 w-4" />Switch workspace</button>}</DropdownMenuTrigger>
     <DropdownMenuContent className={menuClass} collisionPadding={12}>
-      <DropdownMenuLabel className="text-xs text-muted-foreground">Switch workspace</DropdownMenuLabel>
+      <DropdownMenuLabel className="text-sm text-muted-foreground">Switch workspace</DropdownMenuLabel>
       <DestinationItems menu={menu} onSelected={() => { setOpen(false); onSelected?.(); }} />
     </DropdownMenuContent>
   </DropdownMenu>;
@@ -79,18 +79,18 @@ export const WorkspaceProfileMenu = ({ mode = 'personal', account }) => {
   }}>
     <DropdownMenuTrigger asChild>
       <button type="button" aria-label="Open profile menu" disabled={loggingOut}
-        className="flex shrink-0 items-center gap-2 rounded-full p-1 pr-2 text-foreground transition hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+        className="flex shrink-0 items-center min-h-11 gap-2 rounded-[8px] p-1 pr-2 text-foreground transition hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
         {user?.photoURL ? <img src={user.photoURL} alt="" className="h-8 w-8 rounded-full object-cover" />
-          : <span className="flex h-8 w-8 items-center justify-center rounded-full bg-app-iris text-sm font-semibold text-white">{name.charAt(0).toUpperCase()}</span>}
-        <span className="hidden max-w-28 truncate text-sm font-medium sm:block">{name}</span>
+          : <span className="flex h-8 w-8 items-center justify-center rounded-full bg-app-iris text-base font-semibold text-white">{name.charAt(0).toUpperCase()}</span>}
+        <span className="hidden max-w-28 truncate text-base font-medium sm:block">{name}</span>
       </button>
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end" className={menuClass} collisionPadding={12}>
-      <DropdownMenuLabel className="px-3 py-3"><span className="block text-sm font-semibold">{name}</span><span className="mt-1 block truncate text-xs font-normal text-muted-foreground">{email}</span></DropdownMenuLabel>
+      <DropdownMenuLabel className="px-3 py-3"><span className="block text-base font-semibold">{name}</span><span className="mt-1 block truncate text-sm font-normal text-muted-foreground">{email}</span></DropdownMenuLabel>
       <DropdownMenuSeparator />
       {compact ? <>
         <DropdownMenuItem className={itemClass} aria-expanded={expanded} onSelect={(event) => { event.preventDefault(); setExpanded((value) => !value); }}>
-          <Building2 className="h-4 w-4" /><span><span className="block">Switch workspace</span><span className="block text-xs text-muted-foreground">{menu.currentLabel}</span></span>
+          <Building2 className="h-4 w-4" /><span><span className="block">Switch workspace</span><span className="block text-sm text-muted-foreground">{menu.currentLabel}</span></span>
         </DropdownMenuItem>
         {expanded && <DestinationItems menu={menu} onSelected={close} disabled={loggingOut} />}
       </> : <DropdownMenuSub open={expanded} onOpenChange={(next) => {
@@ -98,12 +98,12 @@ export const WorkspaceProfileMenu = ({ mode = 'personal', account }) => {
         // resizing. Selection, outside click, Escape, or ArrowLeft dismiss it.
         if (next) setExpanded(true);
       }}>
-        <DropdownMenuSubTrigger className={itemClass} disabled={!!menu.busy || loggingOut}><Building2 className="h-4 w-4" /><span className="min-w-0 flex-1"><span className="block">Switch workspace</span><span className="block truncate text-xs text-muted-foreground">{menu.currentLabel}</span></span></DropdownMenuSubTrigger>
-        <DropdownMenuPortal><DropdownMenuSubContent className={menuClass} collisionPadding={12} sideOffset={6} onEscapeKeyDown={close} onKeyDown={(event) => { if (event.key === 'ArrowLeft') setExpanded(false); }}><DropdownMenuLabel className="truncate px-3 text-xs font-normal text-muted-foreground">{email}</DropdownMenuLabel><DestinationItems menu={menu} onSelected={close} disabled={loggingOut} /></DropdownMenuSubContent></DropdownMenuPortal>
+        <DropdownMenuSubTrigger className={itemClass} disabled={!!menu.busy || loggingOut}><Building2 className="h-4 w-4" /><span className="min-w-0 flex-1"><span className="block">Switch workspace</span><span className="block truncate text-sm text-muted-foreground">{menu.currentLabel}</span></span></DropdownMenuSubTrigger>
+        <DropdownMenuPortal><DropdownMenuSubContent className={menuClass} collisionPadding={12} sideOffset={6} onEscapeKeyDown={close} onKeyDown={(event) => { if (event.key === 'ArrowLeft') setExpanded(false); }}><DropdownMenuLabel className="truncate px-3 text-sm font-normal text-muted-foreground">{email}</DropdownMenuLabel><DestinationItems menu={menu} onSelected={close} disabled={loggingOut} /></DropdownMenuSubContent></DropdownMenuPortal>
       </DropdownMenuSub>}
       {mode === 'personal' && <DropdownMenuItem className={itemClass} onSelect={() => navigate('/settings')} disabled={!!menu.busy || loggingOut}><User className="h-4 w-4" />Profile Settings</DropdownMenuItem>}
       <DropdownMenuSeparator />
-      {logoutError && <p role="alert" className="px-3 py-2 text-xs text-rose-600">{logoutError}</p>}
+      {logoutError && <p role="alert" className="px-3 py-2 text-sm text-rose-600">{logoutError}</p>}
       <DropdownMenuItem className={`${itemClass} text-rose-600 focus:text-rose-600`} disabled={!!menu.busy || loggingOut}
         onSelect={(event) => { event.preventDefault(); signOut(); }}><LogOut className="h-4 w-4" />{loggingOut ? 'Signing out…' : 'Sign out'}</DropdownMenuItem>
     </DropdownMenuContent>

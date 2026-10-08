@@ -4,7 +4,7 @@ import { cva } from 'class-variance-authority';
 import React from 'react';
 
 const buttonVariants = cva(
-	'inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+	'inline-flex items-center justify-center rounded-[4px] text-base font-semibold ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
 	{
 		variants: {
 			variant: {
@@ -18,19 +18,19 @@ const buttonVariants = cva(
 				ghost: 'hover:bg-accent hover:text-accent-foreground',
 				link: 'text-primary underline-offset-4 hover:underline',
         appPrimary:
-          'app-primary-btn bg-[var(--app-action)] text-[var(--app-action-text)] hover:bg-[var(--app-action-hover)] border border-[var(--app-action-border)] shadow-appCard rounded-pill',
+          'app-primary-btn bg-[var(--app-action)] text-[var(--app-action-text)] hover:bg-[var(--app-action-hover)] border border-[var(--app-action-border)] shadow-sm',
         appOutline:
           'border border-app-iris text-app-iris bg-transparent hover:bg-app-iris hover:text-white',
         appGhost:
           'text-app-gray-600 hover:bg-app-gray-100',
         appSuccess:
-          'bg-[var(--app-action)] text-white hover:bg-[var(--app-action-hover)] focus-visible:ring-[var(--app-action-ring)] shadow-appCard rounded-pill',
+          'bg-[var(--app-action)] text-white hover:bg-[var(--app-action-hover)] focus-visible:ring-[var(--app-action-ring)] shadow-sm',
 			},
 			size: {
-				default: 'h-10 px-4 py-2',
-				sm: 'h-9 rounded-md px-3',
-				lg: 'h-11 rounded-md px-8',
-				icon: 'h-10 w-10',
+				default: 'h-11 px-5 py-2.5',
+				sm: 'h-10 px-4 text-sm',
+				lg: 'h-12 px-7',
+				icon: 'h-11 w-11',
 			},
 		},
 		defaultVariants: {

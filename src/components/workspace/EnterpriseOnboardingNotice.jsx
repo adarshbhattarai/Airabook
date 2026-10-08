@@ -32,12 +32,12 @@ const EnterpriseOnboardingNotice = () => {
   }, []);
 
   if (loading) {
-    return <div className="absolute left-4 top-4 z-10 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs text-slate-500 shadow-sm"><Loader2 className="mr-2 inline h-3.5 w-3.5 animate-spin" />Checking Enterprise request status</div>;
+    return <div className="absolute left-4 top-4 z-10 rounded-[8px] border border-slate-200 bg-white/95 px-3 py-2 text-xs text-slate-500 shadow-sm"><Loader2 className="mr-2 inline h-3.5 w-3.5 animate-spin" />Checking Enterprise request status</div>;
   }
   if (!request) return null;
 
   return (
-    <div className="absolute left-4 top-4 z-10 max-w-[min(24rem,calc(100vw-8rem))] rounded-xl border border-violet-200 bg-white/95 px-3 py-2.5 shadow-sm backdrop-blur">
+    <div className="absolute left-4 top-4 z-10 max-w-[min(24rem,calc(100vw-8rem))] rounded-[8px] border border-violet-200 bg-white/95 px-3 py-2.5 shadow-sm backdrop-blur">
       <div className="flex items-start gap-2.5">
         <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-violet-700" />
         <div className="min-w-0">

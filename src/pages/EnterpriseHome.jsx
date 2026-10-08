@@ -6,7 +6,6 @@ import {
   Bell,
   BookOpen,
   Building2,
-  ChevronDown,
   Eye,
   HelpCircle,
   Image as ImageIcon,
@@ -132,12 +131,12 @@ const EnterpriseHome = () => {
           <EnterpriseHeader workspace={workspace?.account} onMenu={() => setMobileNavOpen(true)} />
           <main className="mx-auto max-w-[1480px] px-5 py-7 sm:px-8 sm:py-9 xl:px-12">
             <div className="mb-7">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-violet-600">Management Studio · Enterprise</p>
-              <div className="mt-2 flex flex-wrap items-center gap-3"><h1 className="text-2xl font-semibold tracking-[-0.035em] text-slate-950 sm:text-3xl">Organization Overview</h1><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700">All systems operational</span></div>
-              <p className="mt-2 text-sm text-slate-500">{workspace?.account?.name || 'Loading workspace…'} · Manage your team and account access.</p>
+              <p className="text-sm font-semibold uppercase tracking-[0.16em] text-violet-600">Management Studio · Enterprise</p>
+              <div className="mt-2 flex flex-wrap items-center gap-3"><h1 className="text-2xl font-semibold tracking-[-0.035em] text-slate-950 sm:text-3xl">Organization Overview</h1><span className="rounded-[8px] bg-emerald-50 px-2.5 py-1 text-sm font-semibold text-emerald-700">All systems operational</span></div>
+              <p className="mt-2 text-base text-slate-500">{workspace?.account?.name || 'Loading workspace…'} · Manage your team and account access.</p>
             </div>
 
-            {loadError && <div role="alert" className="mb-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{loadError}</div>}
+            {loadError && <div role="alert" className="mb-6 rounded-[8px] border border-rose-200 bg-rose-50 px-4 py-3 text-base text-rose-700">{loadError}</div>}
 
             <section className="grid gap-4 md:grid-cols-3" aria-label="Organization metrics">
               <OverviewCard label="Team members" value={isLoading ? '…' : members.filter((member) => member.status === 'ACTIVE').length} detail="Active memberships" icon={Users} iconClass="bg-violet-100 text-violet-700" />
@@ -168,19 +167,19 @@ const EnterpriseSidebar = ({ account, activeNav, mobileOpen, onNavigate, onClose
     <aside className={`fixed inset-y-0 left-0 z-40 flex w-[238px] shrink-0 flex-col border-r border-violet-100 bg-[#f1f0ff] transition-transform duration-200 lg:static lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
       <div className="flex h-[74px] items-center justify-between border-b border-violet-100 px-5">
         <Link to="/v2/enterprise-home" className="flex items-center gap-2 text-lg font-bold tracking-[-0.03em] text-violet-700">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-700 text-white"><Building2 className="h-4 w-4" /></span>
+          <span className="flex h-7 w-7 items-center justify-center rounded-[8px] bg-violet-700 text-white"><Building2 className="h-4 w-4" /></span>
           Airabook <span className="font-semibold text-slate-800">Enterprise</span>
         </Link>
-        <button type="button" aria-label="Close navigation" onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-white hover:text-slate-700 lg:hidden"><X className="h-5 w-5" /></button>
+        <button type="button" aria-label="Close navigation" onClick={onClose} className="rounded-[8px] p-1 text-slate-400 hover:bg-white hover:text-slate-700 lg:hidden"><X className="h-5 w-5" /></button>
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-5">
         {navigation.map(({ label, detail, icon: Icon }) => {
           const active = activeNav === label;
           return (
-            <button key={label} type="button" onClick={() => onNavigate(label)} className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition ${active ? 'bg-violet-700 text-white shadow-md shadow-violet-700/15' : 'text-slate-600 hover:bg-white/75 hover:text-violet-700'}`}>
+            <button key={label} type="button" onClick={() => onNavigate(label)} className={`flex w-full items-center gap-3 min-h-11 rounded-[8px] px-3 py-2.5 text-left transition ${active ? 'bg-violet-700 text-white shadow-md shadow-violet-700/15' : 'text-slate-600 hover:bg-white/75 hover:text-violet-700'}`}>
               <Icon className="h-4 w-4 shrink-0" />
-              <span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold">{label}</span>{detail && <span className={`block truncate text-[9px] ${active ? 'text-violet-100' : 'text-slate-400'}`}>{detail}</span>}</span>
+              <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{label}</span>{detail && <span className={`block truncate text-sm ${active ? 'text-violet-100' : 'text-slate-400'}`}>{detail}</span>}</span>
             </button>
           );
         })}
@@ -188,10 +187,10 @@ const EnterpriseSidebar = ({ account, activeNav, mobileOpen, onNavigate, onClose
 
       <div className="space-y-1 border-t border-violet-100 px-3 py-5">
         <WorkspaceSwitcher mode="enterprise" account={account} onSelected={onClose}>
-          <button type="button" className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-xs font-semibold text-violet-700 transition hover:bg-white/75"><Building2 className="h-4 w-4" />Switch workspace</button>
+          <button type="button" className="flex w-full items-center gap-3 min-h-11 rounded-[8px] px-3 py-2.5 text-left text-sm font-semibold text-violet-700 transition hover:bg-white/75"><Building2 className="h-4 w-4" />Switch workspace</button>
         </WorkspaceSwitcher>
-        <button type="button" onClick={() => onNavigate('Settings')} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-xs font-semibold text-slate-600 transition hover:bg-white/75 hover:text-violet-700"><Settings className="h-4 w-4" />Settings</button>
-        <button type="button" onClick={() => onNavigate('Support')} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-xs font-semibold text-slate-600 transition hover:bg-white/75 hover:text-violet-700"><HelpCircle className="h-4 w-4" />Support</button>
+        <button type="button" onClick={() => onNavigate('Settings')} className="flex w-full items-center gap-3 min-h-11 rounded-[8px] px-3 py-2.5 text-left text-sm font-semibold text-slate-600 transition hover:bg-white/75 hover:text-violet-700"><Settings className="h-4 w-4" />Settings</button>
+        <button type="button" onClick={() => onNavigate('Support')} className="flex w-full items-center gap-3 min-h-11 rounded-[8px] px-3 py-2.5 text-left text-sm font-semibold text-slate-600 transition hover:bg-white/75 hover:text-violet-700"><HelpCircle className="h-4 w-4" />Support</button>
       </div>
     </aside>
   </>
@@ -199,25 +198,22 @@ const EnterpriseSidebar = ({ account, activeNav, mobileOpen, onNavigate, onClose
 
 const EnterpriseHeader = ({ workspace, onMenu }) => (
   <header className="flex h-[74px] items-center justify-between border-b border-violet-100 bg-white/80 px-5 backdrop-blur sm:px-8 xl:px-12">
-    <button type="button" aria-label="Open navigation" onClick={onMenu} className="mr-3 rounded-lg p-2 text-slate-500 hover:bg-violet-50 lg:hidden"><Menu className="h-5 w-5" /></button>
-    <div className="relative hidden w-full max-w-[300px] sm:block"><Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" /><input aria-label="Search enterprise workspace" placeholder="Search..." className="h-9 w-full rounded-full border-0 bg-[#e9eaff] pl-9 pr-4 text-xs text-slate-700 outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-violet-200" /></div>
+    <button type="button" aria-label="Open navigation" onClick={onMenu} className="mr-3 rounded-[8px] p-2 text-slate-500 hover:bg-violet-50 lg:hidden"><Menu className="h-5 w-5" /></button>
+    <div className="relative hidden w-full max-w-[300px] sm:block"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input aria-label="Search enterprise workspace" placeholder="Search..." className="h-11 w-full rounded-[8px] border-0 bg-[#e9eaff] pl-9 pr-4 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-violet-200" /></div>
     <div className="ml-auto flex items-center gap-2 sm:gap-4">
-      <WorkspaceSwitcher mode="enterprise" account={workspace}>
-        <button type="button" aria-label="Switch workspace" title="Switch workspace" className="hidden max-w-[220px] items-center gap-2 rounded-full bg-violet-700 px-4 py-2 text-[10px] font-bold text-white shadow-sm transition hover:bg-violet-800 sm:flex"><Building2 className="h-3 w-3" /><span className="truncate">{workspace?.name || 'Workspace'}</span><ChevronDown className="h-3 w-3 shrink-0" /></button>
-      </WorkspaceSwitcher>
-      <button type="button" aria-label="Notifications" className="rounded-lg p-2 text-slate-500 transition hover:bg-violet-50 hover:text-violet-700"><Bell className="h-4 w-4" /></button>
-      <button type="button" aria-label="Usage" className="hidden rounded-lg p-2 text-slate-500 transition hover:bg-violet-50 hover:text-violet-700 sm:block"><BarChart3 className="h-4 w-4" /></button>
-      <button type="button" aria-label="Help" className="hidden rounded-lg p-2 text-slate-500 transition hover:bg-violet-50 hover:text-violet-700 sm:block"><HelpCircle className="h-4 w-4" /></button>
+      <button type="button" aria-label="Notifications" className="min-h-11 min-w-11 rounded-[8px] p-2 text-slate-500 transition hover:bg-violet-50 hover:text-violet-700"><Bell className="h-4 w-4" /></button>
+      <button type="button" aria-label="Usage" className="hidden min-h-11 min-w-11 rounded-[8px] p-2 text-slate-500 transition hover:bg-violet-50 hover:text-violet-700 sm:block"><BarChart3 className="h-4 w-4" /></button>
+      <button type="button" aria-label="Help" className="hidden rounded-[8px] p-2 text-slate-500 transition hover:bg-violet-50 hover:text-violet-700 sm:block"><HelpCircle className="h-4 w-4" /></button>
       <WorkspaceProfileMenu mode="enterprise" account={workspace} />
     </div>
   </header>
 );
 
 const OverviewCard = ({ label, value, detail, trend, icon: Icon, iconClass }) => (
-  <article className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_8px_26px_rgba(99,91,255,0.06)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(99,91,255,0.10)]">
-    <div className="flex items-start justify-between gap-3"><p className="text-xs font-medium text-slate-500">{label}</p><span className={`flex h-9 w-9 items-center justify-center rounded-full ${iconClass}`}><Icon className="h-4 w-4" /></span></div>
+  <article className="rounded-[8px] border border-slate-200/80 bg-white p-5 shadow-[0_8px_26px_rgba(99,91,255,0.06)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(99,91,255,0.10)]">
+    <div className="flex items-start justify-between gap-3"><p className="text-sm font-medium text-slate-500">{label}</p><span className={`flex h-9 w-9 items-center justify-center rounded-[8px] ${iconClass}`}><Icon className="h-4 w-4" /></span></div>
     <p className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-slate-900">{value}</p>
-    <p className="mt-2 flex items-center gap-1 text-[10px] text-slate-500">{trend === 'up' && <ArrowUpRight className="h-3 w-3 text-violet-600" />}{trend === 'up' ? '+' : ''}{detail}</p>
+    <p className="mt-2 flex items-center gap-1 text-sm text-slate-500">{trend === 'up' && <ArrowUpRight className="h-3 w-3 text-violet-600" />}{trend === 'up' ? '+' : ''}{detail}</p>
   </article>
 );
 

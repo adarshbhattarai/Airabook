@@ -83,10 +83,20 @@ Frontend Spring integration points currently show up in:
 - Queue, detail, approve, and decline calls use `/api/v1/admin/enterpriseOnboardingRequest` through `src/services/enterpriseOnboardingService.js`.
 - The route and Admin navigation visibility resolve `SYSTEM_ADMIN` from the authenticated Spring `/api/v1/me` response. The backend controller is `agent/src/main/java/com/ethela/agent/controller/EnterpriseOnboardingAdminController.java` in the Spring repo; authorization remains enforced by its `SYSTEM_ADMIN` role requirement.
 
+### System Admin user directory
+- `/admin` lists PostgreSQL application users via `adminUsersService.js` and the existing `GET /api/v1/users` endpoint. Firebase supplies the bearer token; PostgreSQL `SYSTEM_ADMIN` authorizes the request, not a Firebase custom admin claim.
+- The API retains its `{ status: true, data: [...] }` envelope and legacy fields, adding canonical `displayName`, `systemRole`, and `emailVerified` to the directory. The UI shows platform role, account status, and email verification; errors/malformed responses are not presented as empty lists.
+- This is an application-user directory, not a Firebase Auth inventory: existing Firebase identities appear after backend synchronization. It includes Personal users, Enterprise members, and System Admins once each, including inactive records.
+- Firestore billing/storage reporting and `recalculateStorageUsage` are not migrated. The directory no longer displays fabricated Free/zero-storage defaults or invokes the legacy Firebase-admin-only storage action.
+- Workspace browser regressions exercise the real directory and client against mocked backend responses, including refresh, access denial, session expiry, retry, invalid envelopes, empty results, and blocked Enterprise-admin access.
+
 ### Post-login workspace routing
+- `/v2/login` and `/v2/personal-login` render the same general sign-in screen, and `/v2/personal-signup` creates a general Airabook account. Authentication screens have no Enterprise selector or request notice; Enterprise requests remain available after authentication. Incoming return-route state is preserved.
+- Public login/signup routes reuse `Login.jsx` and `Signup.jsx` inside `MarketingLayout`, restoring the original centered, rounded card, gradient background, and public header. The v2 entries are thin wrappers around those same screens; Enterprise onboarding retains its separate auth layout and styling.
+- Workspace and Enterprise onboarding/administration surfaces use consistent 8px corners for cards, buttons, fields, dialogs, and menus. Circular avatars and the restored public login/signup design remain unchanged; shared control defaults are not globally overridden.
 - Firebase login/signup (legacy and v2, email and Google) loads `/api/v1/me`. Only a single active Personal workspace without System Admin access skips selection and enters `/dashboard`. All other users enter the standalone `/v2/chooseWorkspace` page. A saved preference never bypasses this post-login choice.
 - `WorkspaceChooser` lists active Enterprise workspaces and Personal access, plus a distinct Admin dashboard row only for backend `SYSTEM_ADMIN`. It revalidates `/me` on selection and preserves deep links only inside the selected destination category.
-- Personal pages retain `AppShell`; Enterprise pages use their own sidebar/header; platform administration uses the separate `AdminShell`. Personal navigation no longer mixes platform Admin links into its sidebar. Each shell offers an in-place Switch workspace dropdown and a shared profile menu with identity and sign-out. Desktop profiles use a workspace submenu; mobile profiles expand choices in the same popover. The active destination is checked, and selecting it preserves the current page. Other selections route directly into the appropriate shell, not the login chooser.
+- Personal pages retain `AppShell`; Enterprise pages use their own sidebar/header; platform administration uses the separate `AdminShell`. Personal navigation no longer mixes platform Admin links into its sidebar. Each shell offers a shared profile menu with identity, in-place workspace switching, and sign-out. Sidebar switchers remain available; the Enterprise header uses only the profile menu for switching. Desktop profiles use a workspace submenu; mobile profiles expand choices in the same popover. The active destination is checked, and selecting it preserves the current page. Other selections route directly into the appropriate shell, not the login chooser.
 - `WorkspaceMenu.jsx` and `useWorkspaceMenu.js` load current `/me` access when opened and revalidate before selection. Only `SYSTEM_ADMIN` adds the Admin destination. Failed loads/selections stay in the menu with retry. Browser preferences remain non-authoritative.
 - Enterprise URLs include `accountId` (`/v2/enterprise-home?accountId={id}`), which is validated against `/me` on refresh. A missing/unauthorized explicit ID never silently falls back to another team. A valid saved preference still supports older Enterprise URLs without an ID; it is never an authorization credential.
 - `/v2/workspaces` is the Personal-shell hub for active workspaces, invitations, and onboarding requests. It preserves the Personal sidebar, desktop/mobile top navigation, profile menu, and theme, including on refresh and during loading/errors. Only `/v2/chooseWorkspace` is the standalone post-login chooser. Enterprise APIs still authorize the requested account on each call.
@@ -99,9 +109,20 @@ Frontend Spring integration points currently show up in:
 - Owners invite `ADMIN` or `MEMBER`, change non-owner roles, and suspend/restore/remove non-owner members. Admins invite and manage `MEMBER` access only. The protected owner cannot be changed through this screen.
 - Role/status patches and soft removal use `/api/v1/enterprise/accounts/{accountId}/members/{userId}/role`, `/status`, and `DELETE` on the member resource. Search uses the camelCase `/eligibleUsers` endpoint; the backend retains the former hyphenated alias.
 - Removed membership records stay in PostgreSQL as `REMOVED`. Rejoining requires a new invitation and recipient acceptance. Suspended members can be restored by an authorized administrator.
-- Invitation acceptance/decline remains in `/v2/workspaces`. The team screen lists invitation history by status and can revoke pending invitations within the caller's role authority. Email delivery belongs to Step 9.
+- Invitation acceptance/decline remains in `/v2/workspaces`. The team screen lists invitation history by status and can revoke pending invitations within the caller's role authority. Enterprise email delivery is deferred pending the Firebase integration design.
 - Backend migration `013_account_invitations.sql` must be applied after `001`–`012` before using the updated backend. It preserves invitation data and supplies an updatable `enterprise_invitations` compatibility view.
 - `npm run test:enterprise-team` runs isolated browser regression fixtures using real screens and API clients with mocked identity/API responses; it does not use Firebase credentials or write to Supabase. Set `PLAYWRIGHT_CHANNEL=chrome` to use installed Chrome instead of bundled Chromium.
+
+### Enterprise compatibility cleanup (Step 10)
+- The request form calls `submitEnterpriseOnboardingRequest` against the canonical
+  `/api/v1/enterpriseOnboardingRequest` API; it does not create a workspace before approval.
+- Unused account-first creation/login/review endpoint settings and client helpers,
+  the obsolete Enterprise login screen, and its private account switcher are removed.
+  `/v2/enterprise-login` remains a redirect to general Firebase sign-in.
+- Workspace context still comes from `/me`; invitation/team and request-review APIs
+  remain active. Firebase signup-verification and password-reset emails are untouched.
+- Retired backend routes return authenticated `410 Gone` replacement instructions;
+  generic account metadata updates cannot change workspace lifecycle status.
 
 ## Request Path Patterns
 
@@ -111,15 +132,13 @@ Frontend Spring integration points currently show up in:
   `/api/v1/admin/enterpriseOnboardingRequest/{requestId}/verifications` resource.
   Required verification disables approval until the latest result passes; policy
   load failure keeps approval disabled. The backend independently enforces the gate.
-- The dashboard's Notification delivery panel uses `/api/v1/admin/enterpriseOperations`
-  to inspect queued/failed email and requeue dead letters. SMTP settings stay exclusively
-  in backend environment configuration. Rate limiting is deferred at the owner's request.
-- Apply backend migration `014_enterprise_operations.sql` before deploying these screens.
-  Verification, SMTP delivery, and retention cleanup are off by default; the full
-  configuration guide is `Agent/docs/ENTERPRISE_WORKSPACE_STEP9_IMPLEMENTATION.md`.
+- SMTP/outbox email delivery and its Admin delivery panel/API have been removed pending
+  a Firebase-based delivery design. Enterprise verification and audit history remain;
+  optional PII cleanup also remains on the backend. The already-applied migration 014
+  is retained unchanged, with its outbox table dormant. Rate limiting remains deferred.
 - `PLAYWRIGHT_CHANNEL=chrome npx playwright test --config playwright.operations.config.mjs`
   validates verification-gated/default approval, failed/history-error states, and
-  email recovery using mocked API data without external Firebase/Supabase writes.
+  verification flows using mocked API data without external Firebase/Supabase writes.
 
 ### Firebase-native feature
 1. UI event in `src/components/` or `src/pages/`

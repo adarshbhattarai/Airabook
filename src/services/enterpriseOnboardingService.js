@@ -3,19 +3,15 @@ import { SERVICE_ENDPOINTS } from '@/config/serviceEndpoints';
 
 const ENTERPRISE_PATHS = SERVICE_ENDPOINTS.spring.paths;
 
-// The registration response uses the canonical AccountView `status` field,
-// while /me exposes the same value as accountStatus. Normalize both shapes at
+// Workspace reads may expose `status` or `accountStatus`. Normalize both shapes at
 // the frontend boundary so every workspace screen reads one field.
 const normalizeAccount = (account) => account ? {
   ...account,
   accountStatus: account.accountStatus || account.status,
 } : account;
 
-/** Synchronize the Firebase-authenticated user into PostgreSQL. */
-export const syncEnterpriseUser = () => apiService.post(ENTERPRISE_PATHS.enterpriseSyncUser, {});
-
 /** Submit an Enterprise onboarding request for System Administrator approval. */
-export const createEnterpriseAccount = (formData) => {
+export const submitEnterpriseOnboardingRequest = (formData) => {
   const {
     proposed_account_name: proposedAccountName,
     workspace_slug: workspaceSlug,
@@ -38,11 +34,6 @@ export const createEnterpriseAccount = (formData) => {
     businessDescription: businessDescription?.trim() || null,
   });
 };
-
-/** Authenticate the Firebase user against a selected Enterprise workspace. */
-export const loginEnterpriseAccount = ({ workspaceSlug }) => apiService.post(ENTERPRISE_PATHS.enterpriseLogin, {
-  workspaceSlug: workspaceSlug.trim().toLowerCase(),
-});
 
 /** Load the current PostgreSQL user and their active Enterprise memberships. */
 export const getCurrentEnterpriseUser = () => apiService.get(ENTERPRISE_PATHS.enterpriseCurrentUser)
@@ -97,28 +88,8 @@ const invitationActionPath = (invitationId, action) => (
 
 export const acceptEnterpriseInvitation = (invitationId) => apiService.post(invitationActionPath(invitationId, 'accept'), {});
 export const declineEnterpriseInvitation = (invitationId) => apiService.post(invitationActionPath(invitationId, 'decline'), {});
-export const resendEnterpriseInvitation = (invitationId) => apiService.post(invitationActionPath(invitationId, 'resend'), {});
 export const revokeEnterpriseInvitation = (invitationId) => apiService.delete(
   ENTERPRISE_PATHS.enterpriseInvitation.replace('{invitationId}', encodeURIComponent(invitationId))
-);
-
-/** System-admin approval queue and actions. */
-export const getEnterpriseReviewQueue = (status = 'PENDING_REVIEW') => apiService.get(
-  `${ENTERPRISE_PATHS.enterpriseReviewQueue}?status=${encodeURIComponent(status)}`
-);
-
-const reviewActionPath = (accountId, action) => ENTERPRISE_PATHS.enterpriseReviewAction
-  .replace('{accountId}', encodeURIComponent(accountId))
-  .replace('{action}', action);
-
-export const approveEnterpriseAccount = (accountId, notes = null) => apiService.post(
-  reviewActionPath(accountId, 'approve'),
-  { notes: notes || null }
-);
-
-export const declineEnterpriseAccount = (accountId, reason) => apiService.post(
-  reviewActionPath(accountId, 'decline'),
-  { reason: reason.trim() }
 );
 
 /** Load a page of enterprise onboarding requests for System Admin review. */
@@ -151,9 +122,4 @@ const verificationPath = (requestId) => `${ENTERPRISE_PATHS.enterpriseOnboarding
 export const getAdminEnterpriseVerificationHistory = (requestId) => apiService.get(verificationPath(requestId));
 export const recordAdminEnterpriseVerification = (requestId, outcome, reasonCode) => apiService.post(
   verificationPath(requestId), { outcome, reasonCode }
-);
-export const getEnterpriseNotificationSummary = () => apiService.get(`${ENTERPRISE_PATHS.enterpriseOperations}/notifications`);
-export const getEnterpriseDeadLetters = () => apiService.get(`${ENTERPRISE_PATHS.enterpriseOperations}/deadLetters?limit=20`);
-export const retryEnterpriseNotification = (eventId) => apiService.post(
-  `${ENTERPRISE_PATHS.enterpriseOperations}/notifications/${encodeURIComponent(eventId)}/retry`, {}
 );

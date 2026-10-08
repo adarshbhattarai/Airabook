@@ -3,8 +3,8 @@ import { test, expect } from '@playwright/test';
 const personal = { id: 'personal', type: 'PERSONAL', name: 'My Personal Workspace', accountStatus: 'ACTIVE', membershipStatus: 'ACTIVE', role: 'PERSONAL_OWNER' };
 const enterprise = { id: 'team-one', type: 'ENTERPRISE', name: 'Airabook Team', slug: 'team-one', accountStatus: 'ACTIVE', membershipStatus: 'ACTIVE', role: 'OWNER' };
 
-async function fixture(page, { accounts = [personal, enterprise], systemRole = 'USER', initialRoute = '/v2/personal-login', from, signedIn = false, preference } = {}) {
-  const state = { accounts, systemRole, failMe: false, calls: [], crashes: [] };
+async function fixture(page, { accounts = [personal, enterprise], systemRole = 'USER', initialRoute = '/v2/personal-login', from, signedIn = false, preference, realAdminUsers = false, users = [], usersStatus = 200, usersBody } = {}) {
+  const state = { accounts, systemRole, failMe: false, calls: [], crashes: [], users, usersStatus, usersBody, userAuthorization: [] };
   page.on('pageerror', (error) => state.crashes.push(error.message));
   await page.addInitScript(({ initialRoute, from, signedIn, preference }) => {
     window.workspaceFixture = { initialRoute, from, signedIn };
@@ -34,13 +34,21 @@ async function fixture(page, { accounts = [personal, enterprise], systemRole = '
     const name = new URL(route.request().url()).pathname.split('/').pop().replace('.jsx', '');
     return route.fulfill({ contentType: 'text/javascript', body: `import React from '/node_modules/.vite/deps/react.js'; export default () => React.createElement('h1', null, '${name} page');` });
   });
-  await page.route('**/src/pages/admin/AdminDashboard.jsx*', (route) => route.fulfill({ contentType: 'text/javascript', body: `import React from '/node_modules/.vite/deps/react.js'; export default () => React.createElement('h1', null, 'Users and resources');` }));
+  if (!realAdminUsers) await page.route('**/src/pages/admin/AdminDashboard.jsx*', (route) => route.fulfill({ contentType: 'text/javascript', body: `import React from '/node_modules/.vite/deps/react.js'; export default () => React.createElement('h1', null, 'Users and resources');` }));
   await page.route('**/api/v1/**', (route) => {
     const path = new URL(route.request().url()).pathname;
     state.calls.push(path);
     const reply = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+    if (path === '/api/v1/users') {
+      state.userAuthorization.push(route.request().headers().authorization);
+      return reply(state.usersBody ?? { status: true, data: state.users }, state.usersStatus);
+    }
     if (path === '/api/v1/me') return state.failMe ? reply({ message: 'Workspace service unavailable' }, 503)
       : reply({ user: { id: 'owner', systemRole: state.systemRole }, accounts: state.accounts });
+    if (path === '/api/v1/enterpriseOnboardingRequest' && route.request().method() === 'POST') {
+      state.submittedRequest = route.request().postDataJSON();
+      return reply({ ...state.submittedRequest, id: 'submitted-request', status: 'SUBMITTED' }, 201);
+    }
     if (path.endsWith('/members')) return reply([{ userId: 'owner', displayName: 'Saroj', email: 'saroj@example.test', role: 'OWNER', status: 'ACTIVE' }]);
     if (path.endsWith('/invitations')) return reply([]);
     if (path.includes('enterpriseOnboardingRequest')) return reply({ items: [], page: { number: 0, size: 20, totalItems: 0, totalPages: 0 } });
@@ -51,13 +59,172 @@ async function fixture(page, { accounts = [personal, enterprise], systemRole = '
 }
 
 async function login(page, method = 'email') {
-  if (method === 'google') await page.getByRole('button', { name: 'Continue with Google' }).click();
+  if (method === 'google') await page.getByRole('button', { name: 'Sign in with Google' }).click();
   else {
     await page.getByLabel('Email address').fill('saroj@example.test');
     await page.getByLabel('Password', { exact: true }).fill('test-only-password');
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   }
 }
+
+test('application user directory uses backend role and bearer token without Firebase admin claims', async ({ page }) => {
+  const state = await fixture(page, { signedIn: true, systemRole: 'SYSTEM_ADMIN', initialRoute: '/admin', realAdminUsers: true,
+    users: [
+      { id: 'postgres-admin', firebaseUid: 'admin-firebase', displayName: 'Synced Admin', email: 'admin@example.test', systemRole: 'SYSTEM_ADMIN', status: 'ACTIVE', emailVerified: true },
+      { id: 'postgres-user', firstName: 'Legacy', lastName: 'User', email: 'legacy@example.test', systemRole: 'USER', status: 'INACTIVE', emailVerified: false },
+    ],
+  });
+  await expect(page.getByRole('heading', { name: 'Application users' })).toBeVisible();
+  await expect(page.getByRole('row', { name: /Synced Admin/ })).toContainText('System Admin');
+  await expect(page.getByRole('row', { name: /Synced Admin/ })).toContainText('Verified');
+  await expect(page.getByRole('row', { name: /Legacy User/ })).toContainText('INACTIVE');
+  await expect(page.getByRole('row', { name: /Legacy User/ })).toContainText('Not verified');
+  await expect(page.getByRole('columnheader', { name: 'Plan', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Sync Storage' })).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Platform administration' })).toBeVisible();
+  expect(state.userAuthorization).toEqual(['Bearer fixture-token']);
+  state.users = [{ id: 'postgres-new', email: 'new@example.test', systemRole: 'USER', status: 'ACTIVE', emailVerified: false }];
+  await page.getByRole('button', { name: 'Refresh List' }).click();
+  await expect(page.getByRole('row', { name: /new@example.test/ })).toBeVisible();
+  await expect(page.getByText('Synced Admin', { exact: true })).toHaveCount(0);
+  expect(state.crashes).toEqual([]);
+  await page.screenshot({ path: '/tmp/airabook-postgres-users.png' });
+});
+
+for (const [status, message] of [[403, 'Your account does not have permission'], [401, 'Your session has expired'], [503, 'Unable to load users']]) {
+  test(`application user directory handles HTTP ${status} and retry without false empty state`, async ({ page }) => {
+    const state = await fixture(page, { signedIn: true, systemRole: 'SYSTEM_ADMIN', initialRoute: '/admin', realAdminUsers: true, usersStatus: status });
+    await expect(page.locator('table').getByRole('alert')).toContainText(message);
+    await expect(page.getByText('No users found.', { exact: true })).toHaveCount(0);
+    state.usersStatus = 200;
+    state.users = [{ id: 'recovered', displayName: 'Recovered User', systemRole: 'USER', status: 'ACTIVE', emailVerified: true }];
+    await page.getByRole('button', { name: 'Retry', exact: true }).click();
+    await expect(page.getByText('Recovered User', { exact: true })).toBeVisible();
+    expect(state.crashes).toEqual([]);
+  });
+}
+
+for (const usersBody of [{ status: false, message: 'Unavailable' }, { status: true, data: null }]) {
+  test(`application user directory rejects invalid wrapper ${JSON.stringify(usersBody)}`, async ({ page }) => {
+    await fixture(page, { signedIn: true, systemRole: 'SYSTEM_ADMIN', initialRoute: '/admin', realAdminUsers: true, usersBody });
+    await expect(page.locator('table').getByRole('alert')).toContainText('Unable to load users');
+    await expect(page.getByText('No users found.', { exact: true })).toHaveCount(0);
+  });
+}
+
+test('application user directory distinguishes genuine empty database', async ({ page }) => {
+  await fixture(page, { signedIn: true, systemRole: 'SYSTEM_ADMIN', initialRoute: '/admin', realAdminUsers: true });
+  await expect(page.getByText('No users found.', { exact: true })).toBeVisible();
+  await expect(page.locator('table').getByRole('alert')).toHaveCount(0);
+});
+
+test('application user directory is not requested by an Enterprise ADMIN', async ({ page }) => {
+  const state = await fixture(page, { signedIn: true, accounts: [personal, { ...enterprise, role: 'ADMIN' }], initialRoute: '/admin', realAdminUsers: true });
+  await expect(page.getByRole('heading', { name: 'Choose a workspace' })).toBeVisible();
+  expect(state.calls).not.toContain('/api/v1/users');
+});
+
+test('general login entry has no Enterprise selector and preserves the return route', async ({ page }) => {
+  const state = await fixture(page, { initialRoute: '/v2/login', accounts: [personal], from: { pathname: '/books', search: '?sort=recent' } });
+  await expect(page.getByRole('heading', { name: 'Welcome Back', exact: true })).toBeVisible();
+  await expect(page.getByRole('navigation').getByRole('link', { name: 'Signup', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sign in with Google' })).toBeVisible();
+  await expect(page.getByText('Plans & Credits', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
+  await expect(page.getByText(/Enterprise/)).toHaveCount(0);
+  await expect(page.getByText('Account selection', { exact: true })).toHaveCount(0);
+  await page.screenshot({ path: '/tmp/airabook-restored-login.png' });
+  await login(page);
+  await expect(page).toHaveURL(/\/books\?sort=recent$/);
+  expect(state.crashes).toEqual([]);
+});
+
+test('signup uses the common account flow and preserves the return route when switching to login', async ({ page }) => {
+  await fixture(page, { initialRoute: '/v2/personal-signup', accounts: [personal], from: { pathname: '/books', hash: '#saved' } });
+  await expect(page.getByRole('heading', { name: 'Join the Family' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Create Account', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sign up with Google' })).toBeVisible();
+  await expect(page.getByLabel('Your name', { exact: true })).toBeVisible();
+  await page.screenshot({ path: '/tmp/airabook-restored-signup.png' });
+  await expect(page.getByText(/Enterprise/)).toHaveCount(0);
+  await page.getByRole('link', { name: 'Sign in', exact: true }).click();
+  await login(page);
+  await expect(page).toHaveURL(/\/books#saved$/);
+});
+
+for (const initialRoute of ['/signup', '/v2/personal-signup']) {
+  test(`${initialRoute} restored signup submits through the common workspace flow`, async ({ page }) => {
+    const state = await fixture(page, { initialRoute });
+    await page.getByLabel('Your name', { exact: true }).fill('Saroj');
+    await page.getByLabel('Email address').fill('saroj@example.test');
+    await page.getByLabel('Password', { exact: true }).fill('test-only-password');
+    await page.getByRole('button', { name: 'Create Account', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Choose a workspace' })).toBeVisible();
+    expect(state.crashes).toEqual([]);
+  });
+}
+
+test('restored public header preserves the return route across signup and login', async ({ page }) => {
+  await fixture(page, { accounts: [personal], from: { pathname: '/books', search: '?sort=recent' } });
+  await page.getByRole('navigation').getByRole('link', { name: 'Signup', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Join the Family' })).toBeVisible();
+  await page.getByRole('navigation').getByRole('link', { name: 'Login', exact: true }).click();
+  await login(page);
+  await expect(page).toHaveURL(/\/books\?sort=recent$/);
+});
+
+test('restored auth cards fit mobile and the public menu links remain usable', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const state = await fixture(page, { accounts: [personal], from: { pathname: '/books', hash: '#saved' } });
+  await expect(page.getByRole('heading', { name: 'Welcome Back' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: '/tmp/airabook-restored-login-mobile.png', fullPage: true });
+  await page.getByRole('button', { name: 'Open navigation menu' }).click();
+  await page.getByRole('navigation').getByRole('link', { name: 'Signup', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Join the Family' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: '/tmp/airabook-restored-signup-mobile.png', fullPage: true });
+  await page.getByRole('link', { name: 'Sign in', exact: true }).click();
+  await login(page);
+  await expect(page).toHaveURL(/\/books#saved$/);
+  expect(state.crashes).toEqual([]);
+});
+
+test('Enterprise request submission uses only canonical request APIs and does not create a workspace', async ({ page }) => {
+  const state = await fixture(page, { signedIn: true, accounts: [personal], initialRoute: '/v2/enterprise-signup' });
+  await expect(page.getByLabel('Enterprise name', { exact: true })).toHaveCSS('border-radius', '8px');
+  await expect(page.getByRole('button', { name: 'Submit for System Administrator approval' })).toHaveCSS('border-radius', '8px');
+  await page.getByLabel('Enterprise name', { exact: true }).fill('Example Business');
+  await page.getByLabel('Requested workspace URL', { exact: true }).fill('example-business');
+  await page.getByLabel('Enterprise website', { exact: true }).fill('https://example.test');
+  await page.getByLabel('Country', { exact: true }).selectOption('Nepal');
+  await page.getByLabel('Contact person', { exact: true }).fill('Test Contact');
+  await page.getByLabel('Phone number', { exact: true }).fill('+9779800000000');
+  await page.getByLabel('Contact email', { exact: true }).fill('contact@example.test');
+  await page.getByLabel('How will your organization use Airabook?', { exact: true })
+    .fill('We plan to collaborate on educational storybooks.');
+  await page.getByRole('checkbox').check();
+  await page.getByRole('button', { name: 'Submit for System Administrator approval' }).click();
+  await expect(page.getByRole('heading', { name: 'Your Enterprise request was submitted' })).toBeVisible();
+  expect(state.submittedRequest).toMatchObject({ proposedAccountName: 'Example Business', requestedSlug: 'example-business' });
+  expect(state.submittedRequest).not.toHaveProperty('status');
+  expect(state.calls).toContain('/api/v1/enterpriseOnboardingRequest');
+  expect(state.calls).toContain('/api/v1/enterpriseOnboardingRequest/mine');
+  expect(state.calls).not.toContain('/api/v1/enterprise/accounts');
+  expect(state.calls).not.toContain('/api/v1/enterprise/requests/mine');
+  expect(state.accounts).toEqual([personal]);
+  expect(state.crashes).toEqual([]);
+});
+
+test('obsolete Enterprise login URL opens general login and uses the workspace chooser', async ({ page }) => {
+  const state = await fixture(page, { initialRoute: '/v2/enterprise-login' });
+  await expect(page.getByRole('heading', { name: 'Welcome Back' })).toBeVisible();
+  await expect(page.getByLabel('Workspace URL', { exact: true })).toHaveCount(0);
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Choose a workspace' })).toBeVisible();
+  expect(state.calls).not.toContain('/api/v1/enterprise/auth/login');
+  expect(state.crashes).toEqual([]);
+});
 
 test('Personal-only login skips chooser and enters Personal shell', async ({ page }) => {
   const state = await fixture(page, { accounts: [personal] });
@@ -110,6 +277,7 @@ test('Enterprise choice opens its own shell and survives refresh', async ({ page
   const second = { ...enterprise, id: 'team-two', name: 'Second Team', slug: 'team-two' };
   const state = await fixture(page, { accounts: [personal, enterprise, second] });
   await login(page);
+  await expect(page.getByRole('button', { name: 'Second Team', exact: true })).toHaveCSS('border-radius', '8px');
   await page.getByRole('button', { name: 'Second Team', exact: true }).click();
   await expect(page).toHaveURL(/\/v2\/enterprise-home\?accountId=team-two$/);
   await expect(page.getByRole('heading', { name: 'Organization Overview' })).toBeVisible();
@@ -238,6 +406,8 @@ test('Invitations page preserves the desktop sidebar and top navigation through 
   await expect(page.getByRole('button', { name: 'Open profile menu' })).toBeVisible();
   await expect(page.getByTestId('workspace-chooser')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Invitations for you' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Request workspace', exact: true })).toHaveCSS('border-radius', '8px');
+  await expect(page.locator('article').first()).toHaveCSS('border-radius', '8px');
   await page.screenshot({ path: '/tmp/airabook-invitations-with-layout.png' });
   await page.reload();
   await expect(page.locator('aside')).toBeVisible();
@@ -320,11 +490,12 @@ test('profile menu switches directly across Personal, Enterprise, and System Adm
   expect(state.crashes).toEqual([]);
 });
 
-test('Enterprise workspace pill switches organizations and persists the exact account', async ({ page }) => {
+test('Enterprise profile switches organizations and persists the exact account', async ({ page }) => {
   const second = { ...enterprise, id: 'team-two', name: 'Second Team', slug: 'team-two' };
   const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home?accountId=team-one', accounts: [personal, enterprise, second] });
   await expect(page.getByText('Airabook Team · Manage your team and account access.')).toBeVisible();
-  await page.locator('header').getByRole('button', { name: 'Switch workspace', exact: true }).click();
+  await expect(page.locator('header').getByRole('button', { name: 'Switch workspace', exact: true })).toHaveCount(0);
+  await openProfileWorkspaces(page);
   await page.getByRole('menuitemradio', { name: 'Second Team' }).click();
   await expect(page.getByText('Second Team · Manage your team and account access.')).toBeVisible();
   await expect(page).toHaveURL(/accountId=team-two$/);
@@ -451,6 +622,7 @@ for (const [mode, initialRoute] of [['Personal', '/dashboard'], ['Enterprise', '
     const state = await fixture(page, { signedIn: true, systemRole: 'SYSTEM_ADMIN', initialRoute });
     await openProfileWorkspaces(page);
     await expect(page.getByRole('menu')).toHaveCount(1);
+    await expect(page.getByRole('menu')).toHaveCSS('border-radius', '8px');
     const menuBox = await page.getByRole('menu').boundingBox();
     expect(menuBox.x).toBeGreaterThanOrEqual(0);
     expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(390);

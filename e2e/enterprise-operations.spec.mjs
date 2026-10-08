@@ -1,14 +1,12 @@
 import { test, expect } from '@playwright/test';
 
 const requestId = '00000000-0000-0000-0000-000000000001';
-const eventId = '00000000-0000-0000-0000-000000000002';
-async function fixture(page, { required = true, historyError = false } = {}) {
+async function fixture(page, { required = true, historyError = false, request = {} } = {}) {
   const state = {
     request: { id: requestId, proposedAccountName: 'Example Business', requestedSlug: 'example-business', status: 'SUBMITTED',
       requesterDisplayName: 'Requester', requesterEmail: 'requester@example.test', contactPersonName: 'Contact',
-      contactEmail: 'contact@example.test', country: 'Nepal', website: 'https://example.test', submittedAt: '2026-10-03T12:00:00' },
+      contactEmail: 'contact@example.test', country: 'Nepal', website: 'https://example.test', submittedAt: '2026-10-03T12:00:00', ...request },
     history: [], calls: [], historyError,
-    failures: [{ id: eventId, eventType: 'INVITATION_CREATED', attempts: 5, status: 'DEAD_LETTER' }],
   };
   await page.route('**/src/lib/firebase.js*', (route) => route.fulfill({ contentType: 'text/javascript',
     body: `export const auth = {currentUser: {getIdToken: async () => 'fixture-token'}};` }));
@@ -32,15 +30,41 @@ async function fixture(page, { required = true, historyError = false } = {}) {
       return reply({ items, page: { number: 0, size: 20, totalItems: items.length, totalPages: items.length ? 1 : 0 } });
     }
     if (path === `/api/v1/admin/enterpriseOnboardingRequest/${requestId}`) return reply(state.request);
-    if (path.endsWith('/notifications')) return reply({ emailEnabled: true, pending: state.failures.length ? 0 : 1,
-      retry: 0, deadLetter: state.failures.length });
-    if (path.endsWith('/deadLetters')) return reply(state.failures);
-    if (path.endsWith(`/notifications/${eventId}/retry`)) { state.failures = []; return reply({ id: eventId, status: 'PENDING' }); }
     return reply({ message: 'Unhandled fixture endpoint' }, 500);
   });
   await page.goto('/e2e/fixtures/enterpriseOperations.html');
+  if (request.status && request.status !== 'SUBMITTED') {
+    await page.getByRole('combobox', { name: 'Status', exact: true }).selectOption('');
+  }
   await expect(page.getByRole('row', { name: /Example Business/ })).toBeVisible();
   return state;
+}
+
+for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+  test(`request details wrap long unbroken text without horizontal scrolling at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    const description = `${'a'.repeat(1800)}\nA second paragraph stays on its own line.`;
+    const notes = 'Approved: ' + 'b'.repeat(1800);
+    await fixture(page, { required: false, request: {
+      status: 'APPROVED', businessDescription: description, decisionReason: notes,
+      contactPersonName: 'Contact'.repeat(20), requestedSlug: 'workspace'.repeat(11),
+    } });
+    await page.getByRole('button', { name: 'View', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toHaveCSS('border-radius', '8px');
+    const overview = dialog.getByText(description, { exact: true });
+    await expect(overview).toBeVisible();
+    await expect(dialog.getByText(notes, { exact: true })).toBeVisible();
+    await expect.poll(() => dialog.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
+    const layout = await overview.evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      lineHeight: parseFloat(getComputedStyle(element).lineHeight),
+      text: element.textContent,
+    }));
+    expect(layout.height).toBeGreaterThan(layout.lineHeight * 2);
+    expect(layout.text).toBe(description);
+    await dialog.screenshot({ path: `/tmp/airabook-request-details-wrapped-${viewport.width}.png` });
+  });
 }
 
 test('required verification gates approval and a passed review unlocks it', async ({ page }) => {
@@ -48,6 +72,8 @@ test('required verification gates approval and a passed review unlocks it', asyn
   await page.getByRole('button', { name: 'Review', exact: true }).click();
   await expect(page.getByText('A passed verification is required before approval.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Approve Enterprise' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Approve Enterprise' })).toHaveCSS('border-radius', '8px');
+  await expect(page.getByLabel('Verification outcome')).toHaveCSS('border-radius', '8px');
   await page.getByRole('button', { name: 'Record verification' }).click();
   await expect(page.getByRole('button', { name: 'Approve Enterprise' })).toBeEnabled();
   expect(state.calls.find((call) => call.path.endsWith('/verifications') && call.method === 'POST').body)
@@ -84,16 +110,6 @@ test('failed verification-history load cannot silently bypass required policy', 
   await page.getByRole('button', { name: 'Reload details' }).click();
   await expect(page.getByLabel('Verification outcome')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Approve Enterprise' })).toBeDisabled();
-});
-
-test('admin can inspect failed notifications and requeue an email', async ({ page }) => {
-  const state = await fixture(page);
-  await page.getByRole('button', { name: /Notification delivery/ }).click();
-  await expect(page.getByText(/1 need attention/)).toBeVisible();
-  await page.getByRole('button', { name: 'Retry email' }).click();
-  await expect(page.getByRole('button', { name: 'Retry email' })).toHaveCount(0);
-  await expect(page.getByText(/1 queued/)).toBeVisible();
-  expect(state.calls.some((call) => call.path.endsWith(`/${eventId}/retry`) && call.method === 'POST')).toBe(true);
 });
 
 test('history refresh failure after saving cannot leave a stale approval gate', async ({ page }) => {

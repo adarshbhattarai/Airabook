@@ -33,7 +33,6 @@ import {
   getAdminEnterpriseVerificationHistory,
   recordAdminEnterpriseVerification,
 } from '@/services/enterpriseOnboardingService';
-import EnterpriseNotificationStatus from '@/components/workspace/EnterpriseNotificationStatus';
 
 const PAGE_SIZE = 20;
 const STATUS_FILTERS = [
@@ -228,18 +227,18 @@ const EnterpriseApprovals = () => {
     <div className="mx-auto w-full max-w-[1440px] px-4 py-7 sm:px-6 lg:px-10 lg:py-10">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <div className="mb-3 flex items-center gap-2 text-xs font-medium text-slate-500">
+          <div className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-500">
             <ShieldCheck className="h-4 w-4 text-indigo-600" />
             <span>System administration</span>
             <span aria-hidden="true">/</span>
             <span className="text-slate-700">Enterprise onboarding</span>
           </div>
           <h1 className="text-2xl font-semibold tracking-[-0.035em] text-slate-950 sm:text-3xl">Enterprise requests</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+          <p className="mt-2 max-w-2xl text-base leading-6 text-slate-600">
             Review organization details and decide which Enterprise workspaces can join Airabook.
           </p>
         </div>
-        <Button onClick={loadDashboard} variant="outline" disabled={loading} className="self-start border-slate-300 bg-white sm:self-auto">
+        <Button onClick={loadDashboard} variant="outline" disabled={loading} className="rounded-[8px] self-start border-slate-300 bg-white sm:self-auto">
           {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
           Refresh queue
         </Button>
@@ -250,22 +249,23 @@ const EnterpriseApprovals = () => {
         <SummaryCard label="Under review" value={counts.underReview} icon={ShieldCheck} tone="blue" active={status === 'UNDER_REVIEW'} onClick={() => changeStatus('UNDER_REVIEW')} />
         <SummaryCard label="Verified" value={counts.verified} icon={Check} tone="violet" active={status === 'VERIFIED'} onClick={() => changeStatus('VERIFIED')} />
       </section>
+      <p className="mt-3 text-sm leading-6 text-slate-600">Verified requests have passed business review and still need an approval decision.</p>
 
-      <section className="mt-7 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.035)]">
+      <section className="mt-7 overflow-hidden rounded-[8px] border border-slate-200 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.035)]">
         <div className="flex flex-col gap-4 border-b border-slate-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
           <div>
-            <h2 className="text-sm font-semibold text-slate-900">Review queue</h2>
-            <p className="mt-1 text-xs text-slate-500">
+            <h2 className="text-base font-semibold text-slate-900">Review queue</h2>
+            <p className="mt-1 text-sm text-slate-500">
               {loading ? 'Updating requests…' : `${Number(pageInfo.totalItems || 0).toLocaleString()} ${selectedStatusLabel.toLowerCase()}`}
               {reviewableCount > 0 && <span className="ml-2 text-slate-400">· {reviewableCount} ready for a decision</span>}
             </p>
           </div>
-          <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-600">
             <span>Status</span>
             <select
               value={status}
               onChange={(event) => changeStatus(event.target.value)}
-              className="h-9 min-w-40 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+              className="h-11 min-w-40 rounded-[8px] border border-slate-200 bg-white px-3 text-base text-slate-800 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
             >
               {STATUS_FILTERS.map((filter) => <option key={filter.value || 'all'} value={filter.value}>{filter.label}</option>)}
             </select>
@@ -273,7 +273,7 @@ const EnterpriseApprovals = () => {
         </div>
 
         {error && (
-          <div role="alert" className="m-4 flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          <div role="alert" className="m-4 flex items-start gap-3 rounded-[8px] border border-rose-200 bg-rose-50 px-4 py-3 text-base text-rose-800">
             <span className="min-w-0 flex-1">{error}</span>
             <button type="button" onClick={loadDashboard} className="shrink-0 font-semibold underline underline-offset-2">Retry</button>
           </div>
@@ -282,7 +282,7 @@ const EnterpriseApprovals = () => {
         <div className="overflow-x-auto">
           <table className="w-full min-w-[760px] border-collapse text-left">
             <thead>
-              <tr className="bg-slate-50/80 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">
+              <tr className="bg-slate-50/80 text-sm font-semibold uppercase tracking-[0.1em] text-slate-500">
                 <th className="px-5 py-3">Organization</th>
                 <th className="px-5 py-3">Requester</th>
                 <th className="px-5 py-3">Submitted</th>
@@ -292,12 +292,17 @@ const EnterpriseApprovals = () => {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr><td colSpan={5} className="px-5 py-16 text-center text-sm text-slate-500"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Loading request queue</td></tr>
+                <tr><td colSpan={5} className="px-5 py-6 text-base text-slate-500">
+                  <p role="status" className="mb-4"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Loading request queue</p>
+                  <div aria-hidden="true" className="space-y-4 motion-safe:animate-pulse">{[0, 1, 2].map((row) => <div key={row} className="h-14 rounded-[8px] bg-slate-100" />)}</div>
+                </td></tr>
+              ) : error ? (
+                <tr><td colSpan={5} className="px-5 py-12 text-center text-base text-slate-600">The request queue could not be loaded. Use Retry above to try again.</td></tr>
               ) : requests.length === 0 ? (
                 <tr><td colSpan={5} className="px-5 py-16 text-center">
-                  <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-500"><Building2 className="h-5 w-5" /></span>
-                  <p className="mt-3 text-sm font-semibold text-slate-800">No {selectedStatusLabel.toLowerCase()} requests</p>
-                  <p className="mt-1 text-xs text-slate-500">Try another status or refresh the queue.</p>
+                  <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-[8px] bg-slate-100 text-slate-500"><Building2 className="h-5 w-5" /></span>
+                  <p className="mt-3 text-base font-semibold text-slate-800">No {selectedStatusLabel.toLowerCase()} requests</p>
+                  <p className="mt-1 text-sm text-slate-500">Try another status or refresh the queue.</p>
                 </td></tr>
               ) : requests.map((request) => (
                 <RequestRow key={request.id} request={request} onOpen={() => openRequest(request)} />
@@ -307,14 +312,14 @@ const EnterpriseApprovals = () => {
         </div>
 
         <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-          <p className="text-xs text-slate-500">
-            {pageInfo.totalItems ? `Page ${page + 1} of ${pageInfo.totalPages} · ${pageInfo.totalItems} requests` : 'No results'}
+          <p className="text-sm text-slate-500">
+            {loading ? 'Loading requests…' : error ? 'Queue unavailable' : pageInfo.totalItems ? `Page ${page + 1} of ${pageInfo.totalPages} · ${pageInfo.totalItems} requests` : 'No results'}
           </p>
           <div className="flex items-center justify-end gap-2">
-            <Button variant="outline" size="sm" disabled={loading || page <= 0} onClick={() => setPage((current) => Math.max(0, current - 1))}>
+            <Button className="rounded-[8px]" variant="outline" size="sm" disabled={loading || page <= 0} onClick={() => setPage((current) => Math.max(0, current - 1))}>
               <ChevronLeft className="mr-1 h-4 w-4" />Previous
             </Button>
-            <Button variant="outline" size="sm" disabled={loading || page + 1 >= (pageInfo.totalPages || 0)} onClick={() => setPage((current) => current + 1)}>
+            <Button className="rounded-[8px]" variant="outline" size="sm" disabled={loading || page + 1 >= (pageInfo.totalPages || 0)} onClick={() => setPage((current) => current + 1)}>
               Next<ChevronRight className="ml-1 h-4 w-4" />
             </Button>
           </div>
@@ -346,7 +351,6 @@ const EnterpriseApprovals = () => {
         onApprove={approve}
         onDecline={decline}
       />
-      <EnterpriseNotificationStatus />
     </div>
   );
 };
@@ -362,10 +366,10 @@ const SummaryCard = ({ label, value, icon: Icon, tone, active, onClick }) => {
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`flex min-h-[92px] items-center gap-4 rounded-2xl border bg-white px-4 py-4 text-left transition hover:border-slate-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${active ? 'border-indigo-300 ring-2 ring-indigo-100' : 'border-slate-200'}`}
+      className={`flex min-h-[92px] items-center gap-4 rounded-[8px] border bg-white px-4 py-4 text-left transition hover:border-slate-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${active ? 'border-indigo-300 ring-2 ring-indigo-100' : 'border-slate-200'}`}
     >
-      <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ring-1 ${tones[tone]}`}><Icon className="h-5 w-5" /></span>
-      <span className="min-w-0"><span className="block text-xs font-medium text-slate-500">{label}</span><span className="mt-1 block text-2xl font-semibold tracking-tight text-slate-950">{value.toLocaleString()}</span></span>
+      <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px] ring-1 ${tones[tone]}`}><Icon className="h-5 w-5" /></span>
+      <span className="min-w-0"><span className="block text-sm font-medium text-slate-500">{label}</span><span className="mt-1 block text-2xl font-semibold tracking-tight text-slate-950">{value.toLocaleString()}</span></span>
     </button>
   );
 };
@@ -374,22 +378,22 @@ const RequestRow = ({ request, onOpen }) => (
   <tr className="group transition hover:bg-slate-50/70">
     <td className="px-5 py-4">
       <div className="flex items-start gap-3">
-        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600"><Building2 className="h-4 w-4" /></span>
+        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] border border-slate-200 bg-white text-slate-600"><Building2 className="h-4 w-4" /></span>
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-slate-900">{request.proposedAccountName}</p>
-          <p className="mt-1 truncate text-xs text-slate-500">{request.requestedSlug}.airabook.com</p>
-          <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-400"><MapPin className="h-3 w-3" />{request.country}</p>
+          <p className="truncate text-base font-semibold text-slate-900">{request.proposedAccountName}</p>
+          <p className="mt-1 truncate text-sm text-slate-500">{request.requestedSlug}.airabook.com</p>
+          <p className="mt-1 flex items-center gap-1 text-sm text-slate-400"><MapPin className="h-3 w-3" />{request.country}</p>
         </div>
       </div>
     </td>
     <td className="px-5 py-4">
-      <p className="text-sm font-medium text-slate-800">{request.requesterDisplayName || request.contactPersonName || 'Unknown requester'}</p>
-      <p className="mt-1 max-w-[220px] truncate text-xs text-slate-500">{request.requesterEmail || request.contactEmail}</p>
+      <p className="text-base font-medium text-slate-800">{request.requesterDisplayName || request.contactPersonName || 'Unknown requester'}</p>
+      <p className="mt-1 max-w-[220px] truncate text-sm text-slate-500">{request.requesterEmail || request.contactEmail}</p>
     </td>
-    <td className="px-5 py-4 text-xs text-slate-600">{formatDate(request.submittedAt)}</td>
+    <td className="px-5 py-4 text-sm text-slate-600">{formatDate(request.submittedAt)}</td>
     <td className="px-5 py-4"><StatusBadge status={request.status} /></td>
     <td className="px-5 py-4 text-right">
-      <Button variant="outline" size="sm" onClick={onOpen} className="border-slate-300 bg-white">
+      <Button variant="outline" size="sm" onClick={onOpen} className="rounded-[8px] border-slate-300 bg-white">
         {REVIEWABLE_STATUSES.has(request.status) ? 'Review' : 'View'}<ExternalLink className="ml-2 h-3.5 w-3.5" />
       </Button>
     </td>
@@ -397,7 +401,7 @@ const RequestRow = ({ request, onOpen }) => (
 );
 
 const StatusBadge = ({ status }) => (
-  <span className={`inline-flex whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-semibold ${STATUS_STYLES[status] || STATUS_STYLES.CANCELLED}`}>
+  <span className={`inline-flex whitespace-nowrap rounded-[8px] border px-2.5 py-1 text-sm font-semibold ${STATUS_STYLES[status] || STATUS_STYLES.CANCELLED}`}>
     {formatStatus(status)}
   </span>
 );
@@ -428,17 +432,17 @@ const RequestDetailDialog = ({
   const approvalBlocked = !verification || (verification.requiredForApproval && verification.items?.[0]?.outcome !== 'PASSED');
   return (
     <Dialog open={Boolean(request)} onOpenChange={onOpenChange}>
-      <DialogContent className="!max-w-3xl max-h-[92vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-0 text-slate-900 shadow-2xl" overlayClassName="bg-slate-950/45 backdrop-blur-[2px]">
+      <DialogContent className="!max-w-3xl min-w-0 max-h-[92vh] overflow-y-auto rounded-[8px] border border-slate-200 bg-white p-0 text-slate-900 shadow-2xl [overflow-wrap:anywhere]" overlayClassName="bg-slate-950/45 backdrop-blur-[2px]">
         {request && (
           <>
             <div className="border-b border-slate-200 px-5 py-5 sm:px-7">
               <DialogHeader>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700"><Building2 className="h-5 w-5" /></span>
+                  <span className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-indigo-50 text-indigo-700"><Building2 className="h-5 w-5" /></span>
                   <StatusBadge status={request.status} />
                 </div>
                 <DialogTitle className="mt-4 text-xl tracking-tight text-slate-950 sm:text-2xl">{request.proposedAccountName}</DialogTitle>
-                <DialogDescription className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-500">
+                <DialogDescription className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-base text-slate-500">
                   <span>{request.requestedSlug}.airabook.com</span>
                   {request.website && <><span aria-hidden="true">·</span><a className="inline-flex items-center gap-1 text-indigo-700 hover:underline" href={request.website} target="_blank" rel="noreferrer">Organization website<ExternalLink className="h-3 w-3" /></a></>}
                 </DialogDescription>
@@ -446,7 +450,7 @@ const RequestDetailDialog = ({
             </div>
 
             {loading ? (
-              <div className="flex items-center justify-center px-6 py-16 text-sm text-slate-500"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading request details</div>
+              <div className="flex items-center justify-center px-6 py-16 text-base text-slate-500"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading request details</div>
             ) : (
               <div className="space-y-6 px-5 py-5 sm:px-7 sm:py-6">
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -458,45 +462,45 @@ const RequestDetailDialog = ({
 
                 {request.businessDescription && (
                   <section>
-                    <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Organization overview</h3>
-                    <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{request.businessDescription}</p>
+                    <h3 className="text-sm font-semibold uppercase tracking-[0.1em] text-slate-500">Organization overview</h3>
+                    <p className="mt-2 whitespace-pre-wrap text-base leading-6 text-slate-700 [overflow-wrap:anywhere]">{request.businessDescription}</p>
                   </section>
                 )}
 
                 {request.decisionReason && (
-                  <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Decision notes</h3>
-                    <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{request.decisionReason}</p>
+                  <section className="rounded-[8px] border border-slate-200 bg-slate-50 p-4">
+                    <h3 className="text-sm font-semibold uppercase tracking-[0.1em] text-slate-500">Decision notes</h3>
+                    <p className="mt-2 whitespace-pre-wrap text-base leading-6 text-slate-700 [overflow-wrap:anywhere]">{request.decisionReason}</p>
                   </section>
                 )}
 
-                {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}
+                {error && <div role="alert" className="rounded-[8px] border border-rose-200 bg-rose-50 px-4 py-3 text-base text-rose-800">{error}
                   {!verification && <button type="button" onClick={onReload} className="ml-2 underline">Reload details</button>}
                 </div>}
 
                 {verification && (
-                  <section className="rounded-xl border border-slate-200 p-4" aria-label="Business verification">
-                    <h3 className="text-sm font-semibold">Business verification</h3>
-                    <p className="mt-1 text-xs text-slate-500">{verification.requiredForApproval
+                  <section className="rounded-[8px] border border-slate-200 p-4" aria-label="Business verification">
+                    <h3 className="text-base font-semibold">Business verification</h3>
+                    <p className="mt-1 text-sm text-slate-500">{verification.requiredForApproval
                       ? 'A passed verification is required before approval.' : 'Verification is optional under the current review policy.'}</p>
                     {verification.items?.slice(0, 3).map((item) => (
-                      <p key={item.id} className="mt-2 text-xs text-slate-600">{formatStatus(item.outcome)} · {formatStatus(item.reasonCode)} · {formatDate(`${item.createdAt}Z`)}</p>
+                      <p key={item.id} className="mt-2 text-sm text-slate-600">{formatStatus(item.outcome)} · {formatStatus(item.reasonCode)} · {formatDate(`${item.createdAt}Z`)}</p>
                     ))}
                     {reviewable && <div className="mt-3 flex flex-wrap items-end gap-3">
-                      <label className="text-xs text-slate-600">Outcome
-                        <select aria-label="Verification outcome" value={verificationOutcome} onChange={(event) => onVerificationOutcomeChange(event.target.value)} disabled={Boolean(action)} className="mt-1 block rounded border border-slate-200 px-2 py-2 text-sm">
+                      <label className="text-sm text-slate-600">Outcome
+                        <select aria-label="Verification outcome" value={verificationOutcome} onChange={(event) => onVerificationOutcomeChange(event.target.value)} disabled={Boolean(action)} className="mt-1 block rounded-[8px] border border-slate-200 px-2 py-2 text-base">
                           <option value="PASSED">Passed</option><option value="FAILED">Failed</option>
                         </select>
                       </label>
-                      <label className="text-xs text-slate-600">Reason
-                        <select aria-label="Verification reason" value={verificationReason} onChange={(event) => onVerificationReasonChange(event.target.value)} disabled={Boolean(action)} className="mt-1 block rounded border border-slate-200 px-2 py-2 text-sm">
+                      <label className="text-sm text-slate-600">Reason
+                        <select aria-label="Verification reason" value={verificationReason} onChange={(event) => onVerificationReasonChange(event.target.value)} disabled={Boolean(action)} className="mt-1 block rounded-[8px] border border-slate-200 px-2 py-2 text-base">
                           {(verificationOutcome === 'PASSED'
                             ? ['MANUAL_REVIEW_COMPLETED', 'BUSINESS_DETAILS_CONFIRMED', 'DOMAIN_CONFIRMED']
                             : ['INSUFFICIENT_INFORMATION', 'BUSINESS_DETAILS_INVALID', 'DOMAIN_NOT_CONFIRMED'])
                             .map((reason) => <option key={reason} value={reason}>{formatStatus(reason)}</option>)}
                         </select>
                       </label>
-                      <Button variant="outline" onClick={onVerify} disabled={Boolean(action)}>
+                      <Button className="rounded-[8px]" variant="outline" onClick={onVerify} disabled={Boolean(action)}>
                         {action === 'verify' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Record verification
                       </Button>
                     </div>}
@@ -507,7 +511,7 @@ const RequestDetailDialog = ({
                   <section className="border-t border-slate-200 pt-5">
                     {!declineMode ? (
                       <>
-                        <label htmlFor="approval-notes" className="text-xs font-semibold text-slate-700">Approval note <span className="font-normal text-slate-400">(optional)</span></label>
+                        <label htmlFor="approval-notes" className="text-sm font-semibold text-slate-700">Approval note <span className="font-normal text-slate-400">(optional)</span></label>
                         <Textarea
                           id="approval-notes"
                           value={approvalNotes}
@@ -515,11 +519,11 @@ const RequestDetailDialog = ({
                           maxLength={2000}
                           rows={3}
                           placeholder="Internal verification notes"
-                          className="mt-2 resize-y border-slate-200 text-sm focus-visible:ring-indigo-500"
+                          className="mt-2 resize-y rounded-[8px] border-slate-200 text-base focus-visible:ring-indigo-500"
                         />
                         <div className="mt-4 flex flex-col-reverse justify-end gap-2 sm:flex-row">
-                          <Button variant="outline" onClick={() => onDeclineModeChange(true)} disabled={Boolean(action)} className="border-rose-200 text-rose-700 hover:bg-rose-50">Decline request</Button>
-                          <Button onClick={onApprove} disabled={Boolean(action) || approvalBlocked} className="bg-emerald-700 text-white hover:bg-emerald-800">
+                          <Button variant="outline" onClick={() => onDeclineModeChange(true)} disabled={Boolean(action)} className="rounded-[8px] border-rose-200 text-rose-700 hover:bg-rose-50">Decline request</Button>
+                          <Button onClick={onApprove} disabled={Boolean(action) || approvalBlocked} className="rounded-[8px] bg-emerald-700 text-white hover:bg-emerald-800">
                             {action === 'approve' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
                             Approve Enterprise
                           </Button>
@@ -528,8 +532,8 @@ const RequestDetailDialog = ({
                     ) : (
                       <>
                         <div className="flex items-start justify-between gap-3">
-                          <div><label htmlFor="decline-reason" className="text-xs font-semibold text-slate-700">Reason for declining</label><p className="mt-1 text-xs text-slate-500">This reason will be visible to the requester.</p></div>
-                          <button type="button" aria-label="Cancel decline" onClick={() => onDeclineModeChange(false)} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-4 w-4" /></button>
+                          <div><label htmlFor="decline-reason" className="text-sm font-semibold text-slate-700">Reason for declining</label><p className="mt-1 text-sm text-slate-500">This reason will be visible to the requester.</p></div>
+                          <button type="button" aria-label="Cancel decline" onClick={() => onDeclineModeChange(false)} className="rounded-[8px] p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-4 w-4" /></button>
                         </div>
                         <Textarea
                           id="decline-reason"
@@ -539,11 +543,11 @@ const RequestDetailDialog = ({
                           maxLength={2000}
                           rows={3}
                           placeholder="Explain what could not be verified or what needs to change"
-                          className="mt-3 resize-y border-slate-200 text-sm focus-visible:ring-rose-500"
+                          className="mt-3 resize-y rounded-[8px] border-slate-200 text-base focus-visible:ring-rose-500"
                         />
                         <div className="mt-4 flex flex-col-reverse justify-end gap-2 sm:flex-row">
-                          <Button variant="outline" onClick={() => onDeclineModeChange(false)} disabled={Boolean(action)}>Back</Button>
-                          <Button onClick={onDecline} disabled={Boolean(action) || declineReason.trim().length < 3} className="bg-rose-700 text-white hover:bg-rose-800">
+                          <Button className="rounded-[8px]" variant="outline" onClick={() => onDeclineModeChange(false)} disabled={Boolean(action)}>Back</Button>
+                          <Button onClick={onDecline} disabled={Boolean(action) || declineReason.trim().length < 3} className="rounded-[8px] bg-rose-700 text-white hover:bg-rose-800">
                             {action === 'decline' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <X className="mr-2 h-4 w-4" />}
                             Confirm decline
                           </Button>
@@ -553,7 +557,7 @@ const RequestDetailDialog = ({
                   </section>
                 )}
 
-                {!reviewable && <p className="border-t border-slate-200 pt-4 text-xs text-slate-500">This request already has a final decision and cannot be changed.</p>}
+                {!reviewable && <p className="border-t border-slate-200 pt-4 text-sm text-slate-500">This request already has a final decision and cannot be changed.</p>}
               </div>
             )}
           </>
@@ -564,12 +568,12 @@ const RequestDetailDialog = ({
 };
 
 const DetailItem = ({ icon: Icon, label, value, secondary }) => (
-  <div className="flex min-w-0 gap-3 rounded-xl border border-slate-200 p-3.5">
-    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600"><Icon className="h-4 w-4" /></span>
+  <div className="flex min-w-0 gap-3 rounded-[8px] border border-slate-200 p-3.5">
+    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-slate-100 text-slate-600"><Icon className="h-4 w-4" /></span>
     <div className="min-w-0">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">{label}</p>
-      <p className="mt-1 break-words text-sm font-medium text-slate-900">{value || '—'}</p>
-      {secondary && <p className="mt-1 break-all text-xs leading-5 text-slate-500">{secondary}</p>}
+      <p className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">{label}</p>
+      <p className="mt-1 text-base font-medium text-slate-900 [overflow-wrap:anywhere]">{value || '—'}</p>
+      {secondary && <p className="mt-1 break-all text-sm leading-5 text-slate-500">{secondary}</p>}
     </div>
   </div>
 );
