@@ -3,12 +3,14 @@
 Generated: 2026-10-07 15:17:03Z
 
 ## Frontend Repo Snapshot
+
 - Workspace: /home/saroj/Documents/final/Airabook
 - Branch: feature/enterprise-signin-login-FE
 - HEAD: b198a25
 - Backend repo: /home/saroj/Documents/final/Agent
 
 ## Read First
+
 - /home/saroj/Documents/final/Airabook/AGENTS.md
 - /home/saroj/Documents/final/Airabook/ARCHITECTURE.md
 - /home/saroj/Documents/final/Airabook/README.md
@@ -16,7 +18,6 @@ Generated: 2026-10-07 15:17:03Z
 - /home/saroj/Documents/final/Agent/AGENTS.md
 
 ## Frontend Working Tree
-
 
 ```text
  M ARCHITECTURE.md
@@ -59,9 +60,9 @@ Generated: 2026-10-07 15:17:03Z
 ```
 
 ## Backend Snapshot
+
 - Branch: saroj/enterprise-registration/workspace-workflow
 - HEAD: 76dfc32
-
 
 ```text
  M ARCHITECTURE.md
@@ -127,6 +128,7 @@ Generated: 2026-10-07 15:17:03Z
 ```
 
 ## Recent Commits
+
 - 2026-10-03 b198a25 email-notification and e2e test cases created
 - 2026-10-02 87e9594 checkpoint for v1
 - 2026-09-15 8803245 md file update
@@ -137,6 +139,7 @@ Generated: 2026-10-07 15:17:03Z
 - 2026-08-01 0880443 Fix deployment
 
 ## High-Signal Paths
+
 - /home/saroj/Documents/final/Airabook/src/App.jsx
 - /home/saroj/Documents/final/Airabook/src/config/serviceEndpoints.js
 - /home/saroj/Documents/final/Airabook/src/services/ApiService.js

@@ -88,6 +88,30 @@ local function code can mutate persistent dev data.
 | App Check protected dev calls | A valid dev App Check configuration/debug token as appropriate |
 | Browser end-to-end tests | All services used by the scenario + Playwright credentials/test user |
 
+## Pull Request Gate
+
+The checked-in workflow `.github/workflows/pr-checks.yml` runs for every pull
+request. Its local equivalent is:
+
+```bash
+npm run build
+npm run test:coverage
+npm run test:weekly:qa
+```
+
+The first command catches production-build errors. The coverage command enforces
+80% line, 60% branch, and 80% function thresholds for the current Node unit-test
+surface (`src/lib/pageMedia.js` and `functions/utils/pageMedia.js`). The E2E
+command covers the authenticated browser flow and Firebase emulator CRUD path;
+it is deliberately separate from source coverage because browser journeys do
+not produce meaningful source line coverage without application
+instrumentation.
+
+The GitHub job installs Functions dependencies and Playwright Chromium, starts a
+dedicated isolated emulator profile, seeds only the emulator account/book, and
+uploads Playwright diagnostics for 14 days when a run fails. No Firebase secrets
+or deployed environments are needed for this PR gate.
+
 ## Pre-deploy Checklist
 
 1. Run `npm run profile:check:dev` and `npm run build:dev`.

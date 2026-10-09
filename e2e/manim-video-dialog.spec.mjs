@@ -96,7 +96,7 @@ test.describe('Manim video dialog', () => {
     await clickGenerateBtn(page, generateBtn);
     await expect(page.getByTestId('manim-video-dialog')).toBeVisible({ timeout: 5000 });
     await page.getByTestId('manim-quality-medium').click();
-    await expect(page.getByTestId('manim-quality-medium')).toHaveClass(/border-indigo-500/);
-    await expect(page.getByTestId('manim-quality-low')).not.toHaveClass(/border-indigo-500/);
+    await expect(page.getByTestId('manim-quality-medium')).toHaveClass(/manim-quality-option-selected/);
+    await expect(page.getByTestId('manim-quality-low')).not.toHaveClass(/manim-quality-option-selected/);
   });
 });

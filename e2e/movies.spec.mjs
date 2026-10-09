@@ -57,6 +57,11 @@ test.describe('Movies workspace smoke', () => {
     await expect(page.getByTestId('movies-editor-tabs')).toBeVisible();
     await expect(page.getByTestId('movies-tab-movie')).toBeVisible();
     await expect(page.getByTestId('movies-tab-prompt')).toBeVisible();
+    await page.getByTestId('movies-tab-prompt').click();
+    await expect(page.getByTestId('movies-right-inspector')).toBeVisible();
+    await expect(page.getByTestId('movies-inspector-prompt')).toBeVisible();
+    await expect(page.getByTestId('movies-inspector-render')).toBeVisible();
+    await expect(page.getByRole('button', { name: /prompt help/i })).toBeVisible();
     await expect(page.getByTestId('movies-page-strip')).toBeVisible();
     await expect(page.getByTestId('movies-pages-left')).toBeVisible();
     await expect(page.getByTestId('movies-pages-right')).toBeVisible();
