@@ -14,9 +14,14 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { mockPersonalWorkspaceAccess } from './helpers/personal-workspace.mjs';
 
 const email = process.env.PLAYWRIGHT_EMAIL || '';
 const password = process.env.PLAYWRIGHT_PASSWORD || '';
+
+test.beforeEach(async ({ page }) => {
+  await mockPersonalWorkspaceAccess(page);
+});
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -133,8 +138,8 @@ test.describe('Signup', () => {
     await page.locator('input[type="password"], input[name="password"]').fill(testPassword);
     await page.locator('button[type="submit"]').click();
 
-    // After signup the app navigates away from /signup
-    await page.waitForURL(url => !url.pathname.includes('/signup'), { timeout: 15000 });
-    expect(page.url()).not.toContain('/signup');
+    // A newly provisioned Personal-only user skips workspace selection.
+    await page.waitForURL('**/dashboard', { timeout: 15000 });
+    await expect(page).toHaveURL(/\/dashboard$/);
   });
 });

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { mockPersonalWorkspaceAccess } from './helpers/personal-workspace.mjs';
 
 test('chapter navigation keeps the selected chapter and its pages in sync', async ({ browser }) => {
   test.skip(
@@ -17,6 +18,7 @@ test('chapter navigation keeps the selected chapter and its pages in sync', asyn
   ]);
 
   const signupPage = await browser.newPage();
+  await mockPersonalWorkspaceAccess(signupPage);
   await signupPage.goto('/signup');
   await signupPage.locator('input[name="name"]').fill('Chapter Navigation Tester');
   await signupPage.locator('input[name="email"]').fill(email);
@@ -27,6 +29,7 @@ test('chapter navigation keeps the selected chapter and its pages in sync', asyn
 
   const page = await browser.newPage();
   try {
+    await mockPersonalWorkspaceAccess(page);
     await page.goto('/login');
     await page.locator('input[name="email"]').fill(email);
     await page.locator('input[name="password"]').fill(password);

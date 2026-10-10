@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { mockPersonalWorkspaceAccess } from './helpers/personal-workspace.mjs';
 
 const email = process.env.PLAYWRIGHT_EMAIL || '';
 const password = process.env.PLAYWRIGHT_PASSWORD || '';
@@ -6,6 +7,7 @@ const password = process.env.PLAYWRIGHT_PASSWORD || '';
 const SEED_BOOK_ID = process.env.PLAYWRIGHT_BOOK_ID || 'book-debug-001';
 
 const login = async (page) => {
+  await mockPersonalWorkspaceAccess(page);
   await page.goto('/login', { waitUntil: 'domcontentloaded' });
   await page.locator('input[type="email"], input[name="email"]').waitFor({ state: 'visible' });
   await page.locator('input[type="email"], input[name="email"]').fill(email);
