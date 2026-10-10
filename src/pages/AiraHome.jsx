@@ -7,8 +7,8 @@ import { useAuth } from '@/context/AuthContext';
 
 const AiraHome = () => {
     const { user } = useAuth();
-    const mediaLink = user ? "/media" : "/login";
-    const notesLink = user ? "/notes" : "/login";
+    const mediaLink = user ? "/media" : "/v2/login";
+    const notesLink = user ? "/notes" : "/v2/login";
 
     return (
         <div className="min-h-screen">
@@ -137,7 +137,7 @@ const AiraHome = () => {
                                 ],
                                 accent: 'from-gray-100 to-gray-50',
                                 buttonText: 'Start Writing',
-                                link: '/login',
+                                link: '/v2/login',
                                 active: true
                             },
                             {

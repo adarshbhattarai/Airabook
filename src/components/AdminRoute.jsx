@@ -1,37 +1,16 @@
-import React, { useEffect, useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import React from 'react';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Loader2 } from 'lucide-react';
+import { useSystemAdminAccess } from '@/hooks/useSystemAdminAccess';
+import { WORKSPACE_CHOOSER_PATH } from '@/services/workspaceSelection';
 
 const AdminRoute = ({ children }) => {
     const { user, loading } = useAuth();
-    const [isAdmin, setIsAdmin] = useState(false);
-    const [checking, setChecking] = useState(true);
+    const { isSystemAdmin, checkingSystemAdmin } = useSystemAdminAccess();
+    const location = useLocation();
 
-    useEffect(() => {
-        const checkAdmin = async () => {
-            if (user) {
-                try {
-                    const tokenResult = await user.getIdTokenResult(true); // Force refresh to get latest claims
-                    setIsAdmin(!!tokenResult.claims.admin);
-                } catch (error) {
-                    console.error("Error checking admin status:", error);
-                    setIsAdmin(false);
-                }
-            }
-            setChecking(false);
-        };
-
-        if (!loading) {
-            if (user) {
-                checkAdmin();
-            } else {
-                setChecking(false);
-            }
-        }
-    }, [user, loading]);
-
-    if (loading || checking) {
+    if (loading || checkingSystemAdmin) {
         return (
             <div className="flex items-center justify-center min-h-screen">
                 <Loader2 className="h-8 w-8 animate-spin text-app-iris" />
@@ -40,11 +19,11 @@ const AdminRoute = ({ children }) => {
     }
 
     if (!user) {
-        return <Navigate to="/login" replace />;
+        return <Navigate to="/v2/personal-login" replace state={{ from: location }} />;
     }
 
-    if (!isAdmin) {
-        return <Navigate to="/dashboard" replace />;
+    if (!isSystemAdmin) {
+        return <Navigate to={WORKSPACE_CHOOSER_PATH} replace />;
     }
 
     return children;

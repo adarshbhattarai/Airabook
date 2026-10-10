@@ -1,59 +1,59 @@
 # Frontend Context Report
 
-Generated: 2026-10-01 18:51:16Z
+Generated: 2026-10-10 16:45:13Z
 
 ## Frontend Repo Snapshot
-- Workspace: /Users/adarshbhattarai/code/Airabook/Airabook
-- Branch: dev-AB-navigation-fix
-- HEAD: 2ff22aa
-- Backend repo: /Users/adarshbhattarai/code/Airabook/Agent
+- Workspace: /home/saroj/Documents/final/Airabook
+- Branch: feature/enterprise-signin-login-FE
+- HEAD: dfc5545
+- Backend repo: /home/saroj/Documents/final/Agent
 
 ## Read First
-- /Users/adarshbhattarai/code/Airabook/Airabook/AGENTS.md
-- /Users/adarshbhattarai/code/Airabook/Airabook/ARCHITECTURE.md
-- /Users/adarshbhattarai/code/Airabook/Airabook/README.md
-- /Users/adarshbhattarai/code/Airabook/Airabook/SELF_UPDATE_WORKFLOW.md
-- /Users/adarshbhattarai/code/Airabook/Agent/AGENTS.md
+- /home/saroj/Documents/final/Airabook/AGENTS.md
+- /home/saroj/Documents/final/Airabook/ARCHITECTURE.md
+- /home/saroj/Documents/final/Airabook/README.md
+- /home/saroj/Documents/final/Airabook/SELF_UPDATE_WORKFLOW.md
+- /home/saroj/Documents/final/Agent/AGENTS.md
 
 ## Frontend Working Tree
 
 
 ```text
- M .codex/skills/airabook-run-profiles/SKILL.md
- M AGENTS.md
+ M DEVELOPMENT_PROFILES.md
+ M e2e/auth.spec.mjs
+ M e2e/book-flow.spec.mjs
+ M e2e/chapter-navigation.spec.mjs
+ M e2e/critical-path.spec.mjs
+ M e2e/manim-video-dialog.spec.mjs
  M generated/frontend-context-report.md
  M scripts/run-airabook-qa.mjs
- M src/pages/BookDetail.jsx
-?? .codex/skills/airabook-playwright-regression/SKILL.md
-?? e2e/chapter-navigation.spec.mjs
+?? e2e/helpers/personal-workspace.mjs
 ```
 
 ## Backend Snapshot
-- Branch: main
-- HEAD: 4c47630
+- Branch: saroj/enterprise-registration/workspace-workflow
+- HEAD: 8216692
 
 
 ```text
- M .dockerignore
- M .gitignore
- M Dockerfile
+Working tree clean.
 ```
 
 ## Recent Commits
-- 2026-09-09 2ff22aa Merge pull request #104 from adarshbhattarai/dev-video-flow
-- 2026-09-06 3a4662c Update Movies workspace and add local QA checks
-- 2026-08-02 c8ac893 Merge pull request #103 from adarshbhattarai/dev-video-flow
-- 2026-08-02 6e27384 Fix deployment
-- 2026-08-01 2370cbf Merge pull request #102 from adarshbhattarai/dev-video-flow
-- 2026-08-01 0880443 Fix deployment
-- 2026-08-01 e09dfd6 Merge pull request #101 from adarshbhattarai/dev-video-flow
-- 2026-08-01 e0881c9 Updates
+- 2026-10-09 dfc5545 Update npm lockfile
+- 2026-10-09 2cb14d1 resolve the merge conflict
+- 2026-10-08 ead6616 some ui refinment
+- 2026-10-03 b198a25 email-notification and e2e test cases created
+- 2026-10-02 87e9594 checkpoint for v1
+- 2026-10-01 7ede900 Merge pull request #108 from adarshbhattarai/codex/release-ci-coverage
+- 2026-10-01 eaad842 Fix PR coverage check Node version
+- 2026-10-01 70fe298 Merge pull request #106 from adarshbhattarai/dev-AB-navigation-fix
 
 ## High-Signal Paths
-- /Users/adarshbhattarai/code/Airabook/Airabook/src/App.jsx
-- /Users/adarshbhattarai/code/Airabook/Airabook/src/config/serviceEndpoints.js
-- /Users/adarshbhattarai/code/Airabook/Airabook/src/services/ApiService.js
-- /Users/adarshbhattarai/code/Airabook/Airabook/functions/index.js
-- /Users/adarshbhattarai/code/Airabook/Airabook/functions/airabookaiStream.js
-- /Users/adarshbhattarai/code/Airabook/Agent/agent/src/main/java/com/ethela/agent/service/UnifiedChatStreamService.java
-- /Users/adarshbhattarai/code/Airabook/Agent/agent/src/main/java/com/ethela/agent/service/planner/PlannerAgentGraphService.java
+- /home/saroj/Documents/final/Airabook/src/App.jsx
+- /home/saroj/Documents/final/Airabook/src/config/serviceEndpoints.js
+- /home/saroj/Documents/final/Airabook/src/services/ApiService.js
+- /home/saroj/Documents/final/Airabook/functions/index.js
+- /home/saroj/Documents/final/Airabook/functions/airabookaiStream.js
+- /home/saroj/Documents/final/Agent/agent/src/main/java/com/ethela/agent/service/UnifiedChatStreamService.java
+- /home/saroj/Documents/final/Agent/agent/src/main/java/com/ethela/agent/service/planner/PlannerAgentGraphService.java

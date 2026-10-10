@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Helmet } from 'react-helmet';
@@ -6,6 +6,7 @@ import { LogIn, Mail, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/context/AuthContext';
+import { getPostLoginDestination } from '@/services/postLoginRouting';
 
 const GoogleIcon = () => (
   <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
@@ -28,7 +29,7 @@ const GoogleIcon = () => (
   </svg>
 );
 
-const Login = () => {
+const Login = ({ signupPath = '/signup' }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -37,56 +38,45 @@ const Login = () => {
   const { toast } = useToast();
   const { user, login, signInWithGoogle, resendVerificationEmail } = useAuth();
 
-  // Redirect to dashboard by default, but respect the 'from' location if it exists
-  const from = location.state?.from?.pathname || "/dashboard";
-
-  useEffect(() => {
-    if (user && !user.emailVerified) {
-      toast({
-        title: "📧 Please verify your email",
-        description: "You must verify your email to access all features.",
-        variant: "warning",
-        action: <Button onClick={handleResendVerification}>Resend</Button>,
-      });
-    }
-  }, [user]);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
     try {
-      await login(email, password);
+      const credential = await login(email, password);
       toast({
         title: "🎉 Welcome back!",
         description: "You've successfully logged in.",
       });
-      navigate(from, { replace: true });
+      const destination = await getPostLoginDestination(credential.user.uid, location.state?.from);
+      navigate(destination, { replace: true, state: destination.state });
     } catch (error) {
       console.error("Failed to log in", error);
       toast({
-        title: "Uh oh! Something went wrong.",
-        description: "There was a problem with your login request.",
+        title: 'Unable to sign in',
+        description: 'Please check your email and password and try again.',
         variant: "destructive",
       });
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   const handleGoogleSignIn = async () => {
     try {
-      await signInWithGoogle();
-      navigate(from, { replace: true });
+      const credential = await signInWithGoogle();
+      const destination = await getPostLoginDestination(credential.user.uid, location.state?.from);
+      navigate(destination, { replace: true, state: destination.state });
     } catch (error) {
       console.error("Failed to sign in with Google", error);
       toast({
-        title: "Uh oh! Something went wrong.",
-        description: "There was a problem with your Google sign-in request.",
+        title: 'Unable to sign in with Google',
+        description: 'Please try again later.',
         variant: "destructive",
       });
     }
   };
 
-  const handleResendVerification = async () => {
+  const handleResendVerification = useCallback(async () => {
     try {
       await resendVerificationEmail();
       toast({
@@ -95,12 +85,23 @@ const Login = () => {
       });
     } catch (error) {
       toast({
-        title: 'Uh oh! Something went wrong.',
-        description: 'Could not send verification email. Please try again later.',
+        title: 'Unable to resend email',
+        description: 'Please try again later.',
         variant: 'destructive'
       });
     }
-  };
+  }, [resendVerificationEmail, toast]);
+
+  useEffect(() => {
+    if (user && !user.emailVerified) {
+      toast({
+        title: '📧 Please verify your email',
+        description: 'You must verify your email to access all features.',
+        variant: 'warning',
+        action: <Button onClick={handleResendVerification}>Resend</Button>,
+      });
+    }
+  }, [user, toast, handleResendVerification]);
 
   return (
     <>
@@ -113,7 +114,7 @@ const Login = () => {
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="max-w-md w-full space-y-8 bg-white/70 backdrop-blur-sm p-10 rounded-3xl shadow-2xl border border-violet-100"
+          className="max-w-md w-full space-y-8 bg-white/70 backdrop-blur-sm p-6 sm:p-10 rounded-3xl shadow-2xl border border-violet-100"
         >
           <div>
             <h1 className="text-center text-4xl font-bold bg-gradient-to-r from-purple-500 to-indigo-500 bg-clip-text text-transparent">
@@ -126,6 +127,7 @@ const Login = () => {
           <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
             <div className="rounded-md shadow-sm -space-y-px">
               <div className="relative">
+                <label htmlFor="email-address" className="sr-only">Email address</label>
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
                   id="email-address"
@@ -140,6 +142,7 @@ const Login = () => {
                 />
               </div>
               <div className="relative pt-4">
+                <label htmlFor="password" className="sr-only">Password</label>
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
                   id="password"
@@ -164,7 +167,7 @@ const Login = () => {
             </div>
 
             <div>
-              <Button type="submit" disabled={isLoading} className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-xl text-white bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50">
+              <Button type="submit" disabled={isLoading} className="group relative h-10 w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-xl text-white bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50">
                 <span className="absolute left-0 inset-y-0 flex items-center pl-3">
                   <LogIn className="h-5 w-5 text-violet-300 group-hover:text-violet-100" aria-hidden="true" />
                 </span>
@@ -183,7 +186,7 @@ const Login = () => {
           </div>
 
           <div>
-            <Button onClick={handleGoogleSignIn} variant="outline" className="w-full flex justify-center py-3 px-4 rounded-xl shadow-sm">
+            <Button type="button" onClick={handleGoogleSignIn} variant="outline" className="h-10 w-full flex justify-center py-3 px-4 rounded-xl text-sm font-medium shadow-sm">
               <GoogleIcon />
               Sign in with Google
             </Button>
@@ -191,7 +194,7 @@ const Login = () => {
 
           <p className="mt-2 text-center text-sm text-gray-600">
             Don't have an account?{' '}
-            <Link to="/signup" className="font-medium text-violet-600 hover:text-violet-500">
+            <Link to={signupPath} state={location.state} className="font-medium text-violet-600 hover:text-violet-500">
               Sign up
             </Link>
           </p>

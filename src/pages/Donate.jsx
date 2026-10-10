@@ -277,7 +277,7 @@ const BillingPage = () => {
 
                   <div className="mt-6 flex flex-wrap gap-3">
                     {plan.tier === 'free' ? (
-                      <Button type="button" variant="outline" onClick={() => navigate('/login')}>
+                      <Button type="button" variant="outline" onClick={() => navigate('/v2/login')}>
                         Start free
                       </Button>
                     ) : (

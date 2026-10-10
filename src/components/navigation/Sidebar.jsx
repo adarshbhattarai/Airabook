@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/lib/firebase';
+import { WorkspaceSwitcher } from '@/components/workspace/WorkspaceMenu';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
@@ -11,10 +12,10 @@ import {
   Clapperboard,
   Image as ImageIcon,
   Heart,
-  ShieldCheck,
   PanelLeftClose,
   PanelLeftOpen,
   BarChart3,
+  Building2,
   Loader2,
 } from 'lucide-react';
 
@@ -33,42 +34,26 @@ const baseSections = [
       { name: 'Upgrade', icon: Heart, to: '/billing' },
     ],
   },
+  {
+    label: 'Workspace access',
+    items: [
+      { name: 'Invitations & requests', icon: Building2, to: '/v2/workspaces' },
+    ],
+  },
 ];
 
 const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile }) => {
   const { user, appUser, billing } = useAuth();
   const { pathname } = useLocation();
-  const [isAdmin, setIsAdmin] = useState(false);
   const [usageDialogOpen, setUsageDialogOpen] = useState(false);
   const [usageLoading, setUsageLoading] = useState(false);
   const [usageSummary, setUsageSummary] = useState(null);
   const [usageError, setUsageError] = useState('');
 
-  useEffect(() => {
-    const checkAdmin = async () => {
-      if (user) {
-        try {
-          const tokenResult = await user.getIdTokenResult();
-          setIsAdmin(!!tokenResult.claims.admin);
-        } catch (error) {
-          console.error("Error checking sidebar admin:", error);
-        }
-      }
-    };
-    checkAdmin();
-  }, [user]);
-
   const hasBooks = useMemo(
     () => Array.isArray(appUser?.accessibleBookIds) && appUser.accessibleBookIds.length > 0,
     [appUser?.accessibleBookIds]
   );
-
-  const adminSection = isAdmin ? {
-    label: 'Admin',
-    items: [
-      { name: 'Admin Dashboard', icon: ShieldCheck, to: '/admin' },
-    ],
-  } : null;
 
   const displaySections = useMemo(() => {
     const sections = baseSections.map((section) => ({
@@ -80,8 +65,8 @@ const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile }) => 
       sections[0].items.splice(2, 0, { name: 'Movies', icon: Clapperboard, to: '/movies', testId: 'movies-sidebar-link' });
     }
 
-    return adminSection ? [...sections, adminSection] : sections;
-  }, [adminSection, hasBooks]);
+    return sections;
+  }, [hasBooks]);
 
   const openUsageDialog = async () => {
     setUsageDialogOpen(true);
@@ -124,7 +109,7 @@ const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile }) => 
         {!collapsed && (
           <div className="flex flex-col overflow-hidden">
             <span className="text-sm font-semibold text-app-gray-900 truncate">Airabook</span>
-            <span className="text-xs text-app-gray-600 truncate">Creative studio</span>
+            <span className="text-xs text-app-gray-600 truncate">Personal workspace</span>
           </div>
         )}
       </div>
@@ -172,6 +157,12 @@ const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile }) => 
 
       {/* Footer / User / Toggle */}
       <div className="p-3 border-t border-app-gray-300 space-y-2">
+        <WorkspaceSwitcher onSelected={onNavigate}>
+          <button type="button" aria-label="Switch workspace" title={collapsed ? 'Switch workspace' : ''}
+            className={`flex w-full items-center gap-3 px-3 py-2 text-sm text-app-gray-600 hover:bg-app-gray-50 rounded-xl transition-colors ${collapsed ? 'justify-center' : ''}`}>
+            <Building2 className="h-4 w-4 min-w-[16px]" />{!collapsed && <span>Switch workspace</span>}
+          </button>
+        </WorkspaceSwitcher>
         <button
           type="button"
           onClick={openUsageDialog}
