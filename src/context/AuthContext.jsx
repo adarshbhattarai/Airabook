@@ -18,6 +18,7 @@ import {
 import { auth, firestore, functions } from '@/lib/firebase';
 import { useToast } from '@/components/ui/use-toast';
 import { PROFILE_LIMITS } from '@/constants/profileLimits';
+import { getCurrentEnterpriseUser } from '@/services/enterpriseOnboardingService';
 
 const defaultEntitlements = {
   canReadBooks: true,
@@ -91,6 +92,12 @@ export const AuthProvider = ({ children }) => {
         const ensureCurrentUserCredits = httpsCallable(functions, 'ensureCurrentUserCredits');
         ensureCurrentUserCredits().catch((error) => {
           console.warn('ensureCurrentUserCredits failed:', error?.message || error);
+        });
+
+        // Any authenticated backend request now provisions the PostgreSQL user
+        // and Personal workspace. Warm /me without blocking the personal product.
+        getCurrentEnterpriseUser().catch((error) => {
+          console.warn('Application user bootstrap failed:', error?.message || error);
         });
 
         const userRef = doc(firestore, 'users', user.uid);
@@ -180,6 +187,7 @@ export const AuthProvider = ({ children }) => {
       console.log("✅ User document creation requested.");
 
       // The onAuthStateChanged listener will handle the rest
+      return userCredential;
 
     } catch (error) {
       console.error("❌ Error during signup:", error);
@@ -209,6 +217,7 @@ export const AuthProvider = ({ children }) => {
       const createUserDoc = httpsCallable(functions, 'createUserDoc');
       await createUserDoc();
       console.log("✅ User document creation requested.");
+      return result;
     } catch (error) {
       console.error("Error during Google sign-in:", error);
       toast({

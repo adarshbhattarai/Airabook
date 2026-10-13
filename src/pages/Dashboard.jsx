@@ -22,6 +22,7 @@ import {
 import DashboardModeSwitch from '@/components/dashboard/DashboardModeSwitch';
 import DashboardTalkView from '@/components/dashboard/DashboardTalkView';
 import Talk3DErrorBoundary from '@/components/dashboard/talk3d/Talk3DErrorBoundary';
+import EnterpriseOnboardingNotice from '@/components/workspace/EnterpriseOnboardingNotice';
 import useWebGLSupport from '@/components/dashboard/talk3d/useWebGLSupport';
 import { getVoiceAssistantUpgradeMessage, hasVoiceAssistantAccess } from '@/lib/billing';
 import {
@@ -695,6 +696,7 @@ const Dashboard = () => {
 
   return (
     <div className={`relative flex flex-col h-[calc(100vh-4rem)] overflow-hidden ${dashboardMode === 'talk' ? 'dashboard-talk-page' : 'bg-white'}`}>
+      <EnterpriseOnboardingNotice />
       <div ref={historyPanelRef} className="absolute right-4 top-4 z-20 sm:right-8">
         <div className="dashboard-top-controls">
           <Button

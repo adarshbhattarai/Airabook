@@ -84,6 +84,7 @@ const stopLocalProfile = () => {
 
 const main = async () => {
   run(process.execPath, ['scripts/check-profile.mjs', 'local']);
+  run(process.execPath, ['--test', 'scripts/workspaceSelection.test.mjs']);
 
   const missingPorts = [];
   for (const port of requiredPorts) {
@@ -153,6 +154,8 @@ const main = async () => {
       'e2e/book-flow.spec.mjs',
       'e2e/chapter-navigation.spec.mjs',
       'e2e/manim-video-dialog.spec.mjs',
+      'e2e/workspace-selection.spec.mjs',
+      'e2e/enterprise-team.spec.mjs',
     ];
   const playwrightArgs = ['playwright', 'test', ...testFiles, '--workers=1', '--reporter=line'];
   run(npxCommand, playwrightArgs, {

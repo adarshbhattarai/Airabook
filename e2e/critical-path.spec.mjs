@@ -9,6 +9,7 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { mockPersonalWorkspaceAccess } from './helpers/personal-workspace.mjs';
 
 const email = process.env.PLAYWRIGHT_EMAIL || '';
 const password = process.env.PLAYWRIGHT_PASSWORD || '';
@@ -18,6 +19,7 @@ test.describe('Airabook critical path', () => {
   test.beforeEach(async ({ page }) => {
     test.skip(!email || !password, 'Set PLAYWRIGHT_EMAIL and PLAYWRIGHT_PASSWORD to run critical-path tests.');
 
+    await mockPersonalWorkspaceAccess(page);
     await page.goto('/login', { waitUntil: 'domcontentloaded' });
     await page.locator('input[type="email"], input[name="email"]').fill(email);
     await page.locator('input[type="password"], input[name="password"]').fill(password);

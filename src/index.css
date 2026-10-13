@@ -176,6 +176,35 @@ body {
   background: linear-gradient(135deg, #16a34a, #0f9f6e);
 }
 
+/* Keep the compact v2 auth flow's scroll affordance subtle and visually detached. */
+.auth-scroll-area {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(139, 92, 246, 0.22) transparent;
+  scrollbar-gutter: stable;
+  padding-right: 0.5rem;
+}
+
+.auth-scroll-area::-webkit-scrollbar {
+  width: 5px;
+}
+
+.auth-scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+  margin-block: 12px;
+}
+
+.auth-scroll-area::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.22);
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+
+.auth-scroll-area::-webkit-scrollbar-thumb:hover {
+  background: rgba(124, 58, 237, 0.38);
+  background-clip: padding-box;
+}
+
 /* Smooth animations */
 * {
   transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;

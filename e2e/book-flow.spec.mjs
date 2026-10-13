@@ -17,8 +17,8 @@
  *  - Emulator seeded: npm run seed:data   (creates book-debug-001 / chapter-001 / page-001)
  *  - PLAYWRIGHT_EMAIL and PLAYWRIGHT_PASSWORD env vars set
  *
- * Spring backend is mocked via page.route() — Manim and Agent do NOT need to
- * be running for these tests (only the clip submission dialog tests).
+ * Spring workspace access and clip submission are mocked via page.route().
+ * Manim and Agent do not need to be running; Firebase uses the local emulators.
  *
  * Run:
  *   PLAYWRIGHT_EMAIL=claude@airabook.dev PLAYWRIGHT_PASSWORD=Claude@Dev2024! \
@@ -26,6 +26,7 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { mockPersonalWorkspaceAccess } from './helpers/personal-workspace.mjs';
 
 const email    = process.env.PLAYWRIGHT_EMAIL    || '';
 const password = process.env.PLAYWRIGHT_PASSWORD || '';
@@ -36,6 +37,7 @@ const SEED_CHAPTER_ID = process.env.PLAYWRIGHT_CHAPTER_ID || 'chapter-001';
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 const login = async (page) => {
+  await mockPersonalWorkspaceAccess(page);
   await page.goto('/login', { waitUntil: 'domcontentloaded' });
   await page.locator('input[type="email"], input[name="email"]').waitFor({ state: 'visible' });
   await page.locator('input[type="email"], input[name="email"]').fill(email);
@@ -81,9 +83,8 @@ test.describe('Book flow', () => {
 
   test('seeded book card is visible in books list', async ({ page }) => {
     await page.goto('/books', { waitUntil: 'domcontentloaded' });
-    const seedBookLink = page.locator(`a[href="/book/${SEED_BOOK_ID}"]`).first();
-    test.skip(!(await seedBookLink.count()), `Seed book ${SEED_BOOK_ID} not found — run npm run seed:data first.`);
-    await expect(seedBookLink).toBeVisible();
+    const seedBookLink = page.locator(`a[href="/book/${SEED_BOOK_ID}/view"]`).first();
+    await expect(seedBookLink).toBeVisible({ timeout: 10_000 });
   });
 
   // ── 2. Book detail — chapter sidebar ────────────────────────────────────────

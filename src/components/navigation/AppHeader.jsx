@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Bell, LogOut, User, BookOpen, Layers, FileText, Check, X } from 'lucide-react';
+import { Search, Bell, BookOpen, Layers, FileText, Check, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { AppInput } from '@/components/ui/input';
@@ -11,13 +11,13 @@ import { firestore } from '@/lib/firebase';
 import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { collabApi, getCallableErrorMessage } from '@/services/collabApi';
 import { useToast } from '@/components/ui/use-toast';
+import { WorkspaceProfileMenu } from '@/components/workspace/WorkspaceMenu';
 
 const AppHeader = () => {
-  const { user, appUser, logout } = useAuth();
+  const { appUser } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { theme } = useTheme();
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchLoading, setIsSearchLoading] = useState(false);
@@ -26,16 +26,11 @@ const AppHeader = () => {
   const [notificationItems, setNotificationItems] = useState([]);
   const [notificationLoading, setNotificationLoading] = useState(false);
   const [actingInviteId, setActingInviteId] = useState(null);
-  const profileMenuRef = useRef(null);
   const searchBoxRef = useRef(null);
   const chapterCacheRef = useRef(new Map());
   const searchTimeoutRef = useRef(null);
   const searchRunRef = useRef(0);
 
-  const userName = appUser?.displayName || user?.displayName || 'User';
-  const userEmail = appUser?.email || user?.email || '';
-  const avatarUrl = user?.photoURL;
-  const initial = userName.charAt(0).toUpperCase();
   const isNeonTheme = theme !== 'light';
   const pendingInvitesCount = Math.max(0, Number(appUser?.notificationCounters?.pendingInvites || 0));
   const badgeLabel = pendingInvitesCount > 99 ? '99+' : String(pendingInvitesCount);
@@ -54,17 +49,6 @@ const AppHeader = () => {
     return `${days}d ago`;
   };
 
-  // Close profile menu when clicking outside
-  useEffect(() => {
-    if (!showProfileMenu) return;
-    const handleClickOutside = (e) => {
-      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target)) {
-        setShowProfileMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showProfileMenu]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -178,11 +162,6 @@ const AppHeader = () => {
     setIsSearchLoading(false);
   };
 
-  const handleLogout = async () => {
-    await logout();
-    navigate('/');
-    setShowProfileMenu(false);
-  };
 
   const loadNotificationsPreview = useCallback(async () => {
     setNotificationLoading(true);
@@ -475,57 +454,7 @@ const AppHeader = () => {
           )}
         </div>
 
-        {/* Profile dropdown */}
-        <div className="relative" ref={profileMenuRef}>
-          <button
-            onClick={() => setShowProfileMenu(!showProfileMenu)}
-            className="flex items-center gap-2 rounded-pill hover:bg-app-gray-100 transition-colors p-1 pr-3"
-          >
-            {avatarUrl ? (
-              <img
-                src={avatarUrl}
-                alt={userName}
-                className="h-8 w-8 rounded-full object-cover"
-              />
-            ) : (
-              <div className="app-avatar-fallback h-8 w-8 rounded-full bg-app-iris text-white flex items-center justify-center text-sm font-semibold">
-                {initial}
-              </div>
-            )}
-            <span className="text-sm font-medium text-app-gray-900 hidden lg:block">
-              {userName}
-            </span>
-          </button>
-
-          {/* Dropdown menu */}
-          {showProfileMenu && (
-            <div className="absolute right-0 mt-2 w-56 bg-card rounded-xl shadow-appCard border border-border py-2 z-50">
-              <div className="px-4 py-3 border-b border-border/70">
-                <p className="text-sm font-semibold text-foreground">{userName}</p>
-                <p className="text-xs text-app-gray-600 truncate">{userEmail}</p>
-              </div>
-              <div className="py-1">
-                <button
-                  onClick={() => {
-                    navigate('/settings');
-                    setShowProfileMenu(false);
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-app-gray-900 hover:bg-app-gray-100 transition-colors"
-                >
-                  <User className="h-4 w-4" />
-                  Profile Settings
-                </button>
-                <button
-                  onClick={handleLogout}
-                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Log out
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+        <WorkspaceProfileMenu />
       </div>
     </header>
   );
