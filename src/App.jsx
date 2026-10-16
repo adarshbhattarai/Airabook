@@ -86,7 +86,7 @@ function App() {
             <Route path="/v2/login" element={<V2AccountSelector />} />
             <Route path="/v2/personal-login" element={<PersonalLogin />} />
             <Route path="/v2/personal-signup" element={<PersonalSignup />} />
-            <Route path="/v2/chooseWorkspace" element={<PrivateRoute loginPath="/v2/personal-login"><WorkspaceChooser /></PrivateRoute>} />
+            <Route path="/v2/chooseWorkspace" element={<PrivateRoute loginPath="/v2/personal-login"><ThemeProvider><WorkspaceChooser /></ThemeProvider></PrivateRoute>} />
             <Route path="/v2/enterprise-login" element={<Navigate to="/v2/personal-login" replace />} />
             <Route
               path="/v2/enterprise-signup"
@@ -112,7 +112,7 @@ function App() {
               path="/v2/enterprise-home"
               element={
                 <PrivateRoute loginPath="/v2/personal-login">
-                  <EnterpriseHome />
+                  <ThemeProvider><EnterpriseHome /></ThemeProvider>
                 </PrivateRoute>
               }
             />

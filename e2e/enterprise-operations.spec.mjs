@@ -51,7 +51,7 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
     } });
     await page.getByRole('button', { name: 'View', exact: true }).click();
     const dialog = page.getByRole('dialog');
-    await expect(dialog).toHaveCSS('border-radius', '8px');
+    await expect(dialog).toHaveCSS('border-radius', '24px');
     const overview = dialog.getByText(description, { exact: true });
     await expect(overview).toBeVisible();
     await expect(dialog.getByText(notes, { exact: true })).toBeVisible();
@@ -72,8 +72,8 @@ test('required verification gates approval and a passed review unlocks it', asyn
   await page.getByRole('button', { name: 'Review', exact: true }).click();
   await expect(page.getByText('A passed verification is required before approval.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Approve Enterprise' })).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Approve Enterprise' })).toHaveCSS('border-radius', '8px');
-  await expect(page.getByLabel('Verification outcome')).toHaveCSS('border-radius', '8px');
+  await expect(page.getByRole('button', { name: 'Approve Enterprise' })).toHaveCSS('border-radius', '4px');
+  await expect(page.getByLabel('Verification outcome')).toHaveCSS('border-radius', '6px');
   await page.getByRole('button', { name: 'Record verification' }).click();
   await expect(page.getByRole('button', { name: 'Approve Enterprise' })).toBeEnabled();
   expect(state.calls.find((call) => call.path.endsWith('/verifications') && call.method === 'POST').body)

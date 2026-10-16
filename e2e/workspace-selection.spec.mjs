@@ -3,13 +3,14 @@ import { test, expect } from '@playwright/test';
 const personal = { id: 'personal', type: 'PERSONAL', name: 'My Personal Workspace', accountStatus: 'ACTIVE', membershipStatus: 'ACTIVE', role: 'PERSONAL_OWNER' };
 const enterprise = { id: 'team-one', type: 'ENTERPRISE', name: 'Airabook Team', slug: 'team-one', accountStatus: 'ACTIVE', membershipStatus: 'ACTIVE', role: 'OWNER' };
 
-async function fixture(page, { accounts = [personal, enterprise], systemRole = 'USER', initialRoute = '/v2/personal-login', from, signedIn = false, preference, realAdminUsers = false, users = [], usersStatus = 200, usersBody } = {}) {
+async function fixture(page, { accounts = [personal, enterprise], systemRole = 'USER', initialRoute = '/v2/personal-login', from, signedIn = false, preference, theme, realAdminUsers = false, users = [], usersStatus = 200, usersBody } = {}) {
   const state = { accounts, systemRole, failMe: false, calls: [], crashes: [], users, usersStatus, usersBody, userAuthorization: [] };
   page.on('pageerror', (error) => state.crashes.push(error.message));
-  await page.addInitScript(({ initialRoute, from, signedIn, preference }) => {
+  await page.addInitScript(({ initialRoute, from, signedIn, preference, theme }) => {
     window.workspaceFixture = { initialRoute, from, signedIn };
     if (preference) localStorage.setItem('airabook:selected-workspace:fixture-user', preference);
-  }, { initialRoute, from, signedIn, preference });
+    if (theme) localStorage.setItem('airabook-theme', theme);
+  }, { initialRoute, from, signedIn, preference, theme });
   await page.route('**/src/context/AuthContext.jsx*', (route) => route.fulfill({ contentType: 'text/javascript', body: `
     import React from '/node_modules/.vite/deps/react.js';
     const { createContext, useContext, useState } = React;
@@ -192,8 +193,8 @@ test('restored auth cards fit mobile and the public menu links remain usable', a
 
 test('Enterprise request submission uses only canonical request APIs and does not create a workspace', async ({ page }) => {
   const state = await fixture(page, { signedIn: true, accounts: [personal], initialRoute: '/v2/enterprise-signup' });
-  await expect(page.getByLabel('Enterprise name', { exact: true })).toHaveCSS('border-radius', '8px');
-  await expect(page.getByRole('button', { name: 'Submit for System Administrator approval' })).toHaveCSS('border-radius', '8px');
+  await expect(page.getByLabel('Enterprise name', { exact: true })).toHaveCSS('border-radius', '6px');
+  await expect(page.getByRole('button', { name: 'Submit for System Administrator approval' })).toHaveCSS('border-radius', '4px');
   await page.getByLabel('Enterprise name', { exact: true }).fill('Example Business');
   await page.getByLabel('Requested workspace URL', { exact: true }).fill('example-business');
   await page.getByLabel('Enterprise website', { exact: true }).fill('https://example.test');
@@ -248,6 +249,18 @@ test('saved preference and return route cannot bypass login chooser', async ({ p
   expect(state.crashes).toEqual([]);
 });
 
+test('workspace chooser stays white while preserving a saved dark application theme', async ({ page }) => {
+  const state = await fixture(page, { signedIn: true, theme: 'dark', initialRoute: '/v2/chooseWorkspace' });
+  await expect(page.getByRole('button', { name: 'Airabook Team', exact: true })).toBeVisible();
+  await expect(page.getByTestId('workspace-chooser')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  expect(await page.evaluate(() => localStorage.getItem('airabook-theme'))).toBe('dark');
+  await page.getByRole('button', { name: 'Airabook Team', exact: true }).click();
+  await expect(page).toHaveURL(/\/v2\/enterprise-home\?accountId=team-one$/);
+  await expect(page.locator('html')).toHaveClass(/theme-dark/);
+  expect(await page.evaluate(() => localStorage.getItem('airabook-theme'))).toBe('dark');
+  expect(state.crashes).toEqual([]);
+});
+
 test('System Admin gets three destinations and a separate Admin sidebar', async ({ page }) => {
   const state = await fixture(page, { systemRole: 'SYSTEM_ADMIN' });
   await login(page, 'google');
@@ -273,11 +286,51 @@ test('Personal-only System Admin still chooses Personal or Admin', async ({ page
   await expect(page.getByLabel('Available destinations').getByRole('button')).toHaveCount(2);
 });
 
+test('Admin sidebar collapse persists through refresh and workspace switching', async ({ page }) => {
+  const state = await fixture(page, { signedIn: true, systemRole: 'SYSTEM_ADMIN', initialRoute: '/admin' });
+  const navigation = page.getByRole('navigation', { name: 'Platform administration' });
+  await expect(navigation.getByRole('link', { name: 'Users & resources', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('link', { name: 'Airabook Admin home' }).getByAltText('Airabook logo')).toBeVisible();
+  await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Expand sidebar', exact: true })).toBeVisible();
+  await navigation.getByRole('link', { name: 'Enterprise requests', exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/enterprise-approvals$/);
+  await expect(navigation.getByRole('link', { name: 'Enterprise requests', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(navigation.getByRole('link', { name: 'Users & resources', exact: true })).not.toHaveAttribute('aria-current', 'page');
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Expand sidebar', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Switch workspace', exact: true }).click();
+  await page.getByRole('menuitemradio', { name: 'Personal account', exact: true }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page.getByRole('button', { name: 'Expand sidebar', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Enterprise requests', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Expand sidebar', exact: true }).click();
+  await expect(page.getByText('Personal workspace', { exact: true })).toBeVisible();
+  expect(state.crashes).toEqual([]);
+});
+
+test('Admin mobile drawer closes after navigation and can be reopened and dismissed', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const state = await fixture(page, { signedIn: true, systemRole: 'SYSTEM_ADMIN', initialRoute: '/admin' });
+  const navigation = page.getByRole('navigation', { name: 'Platform administration' });
+  await expect(navigation).toHaveCount(0);
+  await page.getByRole('button', { name: 'Open admin navigation' }).click();
+  await expect(navigation).toBeVisible();
+  await navigation.getByRole('link', { name: 'Enterprise requests', exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/enterprise-approvals$/);
+  await expect(navigation).toHaveCount(0);
+  await page.getByRole('button', { name: 'Open admin navigation' }).click();
+  await expect(navigation).toBeVisible();
+  await page.getByRole('button', { name: 'Close admin navigation' }).click({ position: { x: 380, y: 400 } });
+  await expect(navigation).toHaveCount(0);
+  expect(state.crashes).toEqual([]);
+});
+
 test('Enterprise choice opens its own shell and survives refresh', async ({ page }) => {
   const second = { ...enterprise, id: 'team-two', name: 'Second Team', slug: 'team-two' };
   const state = await fixture(page, { accounts: [personal, enterprise, second] });
   await login(page);
-  await expect(page.getByRole('button', { name: 'Second Team', exact: true })).toHaveCSS('border-radius', '8px');
+  await expect(page.getByRole('button', { name: 'Second Team', exact: true })).toHaveCSS('border-radius', '4px');
   await page.getByRole('button', { name: 'Second Team', exact: true }).click();
   await expect(page).toHaveURL(/\/v2\/enterprise-home\?accountId=team-two$/);
   await expect(page.getByRole('heading', { name: 'Organization Overview' })).toBeVisible();
@@ -406,8 +459,8 @@ test('Invitations page preserves the desktop sidebar and top navigation through 
   await expect(page.getByRole('button', { name: 'Open profile menu' })).toBeVisible();
   await expect(page.getByTestId('workspace-chooser')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Invitations for you' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Request workspace', exact: true })).toHaveCSS('border-radius', '8px');
-  await expect(page.locator('article').first()).toHaveCSS('border-radius', '8px');
+  await expect(page.getByRole('link', { name: 'Request workspace', exact: true })).toHaveCSS('border-radius', '4px');
+  await expect(page.locator('article').first()).toHaveCSS('border-radius', '24px');
   await page.screenshot({ path: '/tmp/airabook-invitations-with-layout.png' });
   await page.reload();
   await expect(page.locator('aside')).toBeVisible();
@@ -622,7 +675,7 @@ for (const [mode, initialRoute] of [['Personal', '/dashboard'], ['Enterprise', '
     const state = await fixture(page, { signedIn: true, systemRole: 'SYSTEM_ADMIN', initialRoute });
     await openProfileWorkspaces(page);
     await expect(page.getByRole('menu')).toHaveCount(1);
-    await expect(page.getByRole('menu')).toHaveCSS('border-radius', '8px');
+    await expect(page.getByRole('menu')).toHaveCSS('border-radius', '6px');
     const menuBox = await page.getByRole('menu').boundingBox();
     expect(menuBox.x).toBeGreaterThanOrEqual(0);
     expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(390);

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { Building2, Check, Loader2, LogOut, ShieldCheck, User } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -9,13 +10,13 @@ import {
   DropdownMenuSubTrigger, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-const menuClass = 'w-72 max-w-[calc(100vw-2rem)] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto rounded-[8px] border border-border bg-card p-2 text-foreground shadow-xl';
-const itemClass = 'min-h-11 gap-3 rounded-[8px] px-3 py-2.5 text-base focus:bg-muted';
+const menuClass = 'w-72 max-w-[calc(100vw-2rem)] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto border border-border bg-card p-2 text-foreground shadow-xl';
+const itemClass = 'min-h-11 gap-3 px-3 py-2.5 text-base focus:bg-muted';
 
 const DestinationItems = ({ menu, onSelected, disabled = false }) => (
   <>
     {menu.loading && <div role="status" className="flex items-center gap-2 px-3 py-3 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading workspaces…</div>}
-    {menu.error && <div role="alert" className="px-3 py-2 text-sm text-rose-600">{menu.error}</div>}
+    {menu.error && <div role="alert" className="px-3 py-2 text-sm !text-destructive">{menu.error}</div>}
     {menu.error && <DropdownMenuItem className={itemClass} disabled={!!menu.busy || disabled} onSelect={(event) => { event.preventDefault(); menu.load(); }}>Try again</DropdownMenuItem>}
     {!menu.loading && menu.destinations.map((destination) => {
       const active = String(menu.selectedId) === String(destination.id);
@@ -23,7 +24,7 @@ const DestinationItems = ({ menu, onSelected, disabled = false }) => (
       return <DropdownMenuItem key={destination.id} role="menuitemradio" aria-checked={active}
         className={`${itemClass} ${active ? 'bg-muted font-medium' : ''}`} disabled={!!menu.busy || disabled}
         onSelect={(event) => { event.preventDefault(); menu.select(destination.id, onSelected); }}>
-        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${destination.type === 'ENTERPRISE' ? 'bg-sky-100 text-sky-700' : destination.type === 'ADMIN' ? 'bg-indigo-100 text-indigo-700' : 'bg-violet-100 text-violet-700'}`}><Icon aria-hidden="true" className="h-4 w-4" /></span>
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"><Icon aria-hidden="true" className="h-4 w-4" /></span>
         <span className="min-w-0 flex-1 break-words">{destination.label}</span>
         {active && <Check aria-hidden="true" className="h-4 w-4 shrink-0" />}
       </DropdownMenuItem>;
@@ -37,7 +38,7 @@ export const WorkspaceSwitcher = ({ mode = 'personal', account, children, onSele
   const [open, setOpen] = useState(false);
   const menu = useWorkspaceMenu({ mode, account });
   return <DropdownMenu open={open} onOpenChange={(next) => { setOpen(next); if (next && !menu.busy) menu.load(); }}>
-    <DropdownMenuTrigger asChild>{children || <button type="button" className="flex items-center gap-2 rounded-[8px] px-3 py-2 text-base"><Building2 className="h-4 w-4" />Switch workspace</button>}</DropdownMenuTrigger>
+    <DropdownMenuTrigger asChild>{children || <Button type="button" variant="ghost" className="gap-2"><Building2 className="h-4 w-4" />Switch workspace</Button>}</DropdownMenuTrigger>
     <DropdownMenuContent className={menuClass} collisionPadding={12}>
       <DropdownMenuLabel className="text-sm text-muted-foreground">Switch workspace</DropdownMenuLabel>
       <DestinationItems menu={menu} onSelected={() => { setOpen(false); onSelected?.(); }} />
@@ -79,7 +80,7 @@ export const WorkspaceProfileMenu = ({ mode = 'personal', account }) => {
   }}>
     <DropdownMenuTrigger asChild>
       <button type="button" aria-label="Open profile menu" disabled={loggingOut}
-        className="flex shrink-0 items-center min-h-11 gap-2 rounded-[8px] p-1 pr-2 text-foreground transition hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+        className="flex shrink-0 items-center min-h-11 gap-2 rounded-[4px] p-1 pr-2 text-foreground transition hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
         {user?.photoURL ? <img src={user.photoURL} alt="" className="h-8 w-8 rounded-full object-cover" />
           : <span className="flex h-8 w-8 items-center justify-center rounded-full bg-app-iris text-base font-semibold text-white">{name.charAt(0).toUpperCase()}</span>}
         <span className="hidden max-w-28 truncate text-base font-medium sm:block">{name}</span>
@@ -103,8 +104,8 @@ export const WorkspaceProfileMenu = ({ mode = 'personal', account }) => {
       </DropdownMenuSub>}
       {mode === 'personal' && <DropdownMenuItem className={itemClass} onSelect={() => navigate('/settings')} disabled={!!menu.busy || loggingOut}><User className="h-4 w-4" />Profile Settings</DropdownMenuItem>}
       <DropdownMenuSeparator />
-      {logoutError && <p role="alert" className="px-3 py-2 text-sm text-rose-600">{logoutError}</p>}
-      <DropdownMenuItem className={`${itemClass} text-rose-600 focus:text-rose-600`} disabled={!!menu.busy || loggingOut}
+      {logoutError && <p role="alert" className="px-3 py-2 text-sm !text-destructive">{logoutError}</p>}
+      <DropdownMenuItem className={`${itemClass} !text-destructive focus:!text-destructive`} disabled={!!menu.busy || loggingOut}
         onSelect={(event) => { event.preventDefault(); signOut(); }}><LogOut className="h-4 w-4" />{loggingOut ? 'Signing out…' : 'Sign out'}</DropdownMenuItem>
     </DropdownMenuContent>
   </DropdownMenu>;
