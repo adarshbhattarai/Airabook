@@ -72,7 +72,7 @@ export default function EnterpriseApiKeyDialog({ account }) {
       <DialogTrigger asChild>
         <Button type="button" variant="outline" className="shrink-0 gap-2"><KeyRound aria-hidden="true" className="h-4 w-4" />Get API key</Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg rounded-2xl border border-border bg-card p-5 text-foreground shadow-2xl sm:p-6">
+      <DialogContent className="max-w-md rounded-2xl border border-border bg-card p-5 text-foreground shadow-2xl sm:p-6">
         <DialogHeader className="flex-row items-start gap-4 space-y-0 text-left">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
             <KeyRound aria-hidden="true" className="h-5 w-5" />

@@ -397,9 +397,10 @@ test('Enterprise owner can view and copy the API key in a compact dialog', async
   await trigger.click();
   const dialog = page.getByRole('dialog', { name: 'Workspace API key' });
   await expect(dialog.getByLabel('API key', { exact: true })).toHaveValue('fixture-key-team-one');
-  await expect(dialog.getByText('Website: https://example.test')).toBeVisible();
+  await expect(dialog.getByText('Website', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('https://example.test', { exact: true })).toBeVisible();
   await dialog.getByRole('button', { name: 'Copy key', exact: true }).click();
-  await expect(dialog.getByRole('status')).toHaveText('API key copied.');
+  await expect(dialog.getByRole('status')).toHaveText('API key copied to clipboard.');
   expect(await page.evaluate(() => window.copiedApiKey)).toBe('fixture-key-team-one');
   expect(state.apiKeyRequests).toEqual([{ accountId: 'team-one', method: 'GET', authorization: 'Bearer fixture-token' }]);
   const desktopBounds = await dialog.boundingBox();
