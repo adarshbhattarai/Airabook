@@ -1,11 +1,11 @@
 # Frontend Context Report
 
-Generated: 2026-10-16 16:43:46Z
+Generated: 2026-10-27 12:28:43Z
 
 ## Frontend Repo Snapshot
 - Workspace: /home/sarojx/Documents/airabookai/airabook
-- Branch: feature/enterprise-ui-refinment
-- HEAD: c0969c0
+- Branch: feature/api-key-ui
+- HEAD: d32b34e
 - Backend repo: /home/sarojx/Documents/airabookai/Agent
 
 ## Read First
@@ -19,27 +19,40 @@ Generated: 2026-10-16 16:43:46Z
 
 
 ```text
- M src/components/ui/native-select.jsx
+ M WORKSPACE_SELECTION.md
+ M e2e/workspace-selection.spec.mjs
+ M generated/frontend-context-report.md
+ M src/config/serviceEndpoints.js
+ M src/pages/EnterpriseHome.jsx
+?? src/components/workspace/EnterpriseApiKeyDialog.jsx
+?? src/services/apiKeyService.js
 ```
 
 ## Backend Snapshot
 - Branch: main
-- HEAD: e7d548c
+- HEAD: 7e8ffb7
 
 
 ```text
-Working tree clean.
+ M agent/src/main/java/com/ethela/agent/dto/enterprise/EnterpriseDtos.java
+ M agent/src/main/java/com/ethela/agent/mapper/EnterpriseQueryRows.java
+ M agent/src/main/java/com/ethela/agent/service/EnterpriseApiService.java
+ M agent/src/main/java/com/ethela/agent/service/impl/ApiKeyServiceImpl.java
+ M agent/src/main/resources/mapper/EnterpriseQueryMapper.xml
+ M agent/src/test/java/com/ethela/agent/controller/EnterpriseApiControllerTest.java
+ M agent/src/test/java/com/ethela/agent/service/EnterpriseInvitationServiceTest.java
+ M docs/ENTERPRISE_WORKSPACE_ARCHITECTURE.md
 ```
 
 ## Recent Commits
+- 2026-10-16 d32b34e Merge pull request #110 from adarshbhattarai/feature/enterprise-ui-refinment
+- 2026-10-17 06e7865 Restore lockfile unrelated to UI changes
+- 2026-10-17 068c198 workspace selector ui
 - 2026-10-16 c0969c0 ui refinment
+- 2026-10-12 fa90d8d Merge pull request #105 from adarshbhattarai/feature/enterprise-signin-login-FE
 - 2026-10-10 a5cea19 resove e2d test issue
 - 2026-10-09 dfc5545 Update npm lockfile
 - 2026-10-09 2cb14d1 resolve the merge conflict
-- 2026-10-08 ead6616 some ui refinment
-- 2026-10-03 b198a25 email-notification and e2e test cases created
-- 2026-10-02 87e9594 checkpoint for v1
-- 2026-10-01 7ede900 Merge pull request #108 from adarshbhattarai/codex/release-ci-coverage
 
 ## High-Signal Paths
 - /home/sarojx/Documents/airabookai/airabook/src/App.jsx

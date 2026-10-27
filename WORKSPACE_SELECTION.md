@@ -51,6 +51,27 @@ explicit ID returns to the chooser instead of falling back to another Enterprise
 Old URLs without an ID retain compatibility with a valid saved preference or sole
 accessible Enterprise workspace.
 
+The Enterprise overview displays the selected account's `website` from `/api/v1/me`
+beneath the organization name. Valid HTTP/HTTPS websites open in a new tab; missing
+or invalid values omit the website row. The link updates when the workspace changes
+and wraps on narrow screens. This uses the Enterprise profile fields returned by
+the backend without an additional account-details request.
+
+Workspace owners and users with platform `SYSTEM_ADMIN` access see **Get API key**
+on the Enterprise overview. It opens a compact dialog that reads the existing key
+through authenticated `GET /api/v1/apiKey?accountId={accountId}`. The response keeps
+its `{ status: true, data: ... }` wrapper; `apiKeyService.js` validates and unwraps
+it, including that the returned account ID matches the selected workspace. The
+endpoint can be overridden with `VITE_SPRING_ENTERPRISE_API_KEY_ENDPOINT`.
+
+The key is fetched on each open, displayed in a selectable read-only field, and
+copied only when the user clicks **Copy key**. Loading, missing-key, permission,
+retry, and clipboard-denial states remain in the dialog. Closing it or changing
+workspaces clears the displayed key and ignores late responses. Keys are not
+stored in browser preferences. This UI only retrieves the existing key; automatic
+generation on approval remains owned by the backend. Workspace admins and members
+do not get the button unless they also have platform System Admin access.
+
 ## Shared appearance
 
 Workspace pages follow the existing application components: `Button` supplies its
