@@ -1,11 +1,11 @@
 # Frontend Context Report
 
-Generated: 2026-10-16 16:43:46Z
+Generated: 2026-10-27 15:15:57Z
 
 ## Frontend Repo Snapshot
 - Workspace: /home/sarojx/Documents/airabookai/airabook
-- Branch: feature/enterprise-ui-refinment
-- HEAD: c0969c0
+- Branch: feature/api-key-ui
+- HEAD: a4a054e
 - Backend repo: /home/sarojx/Documents/airabookai/Agent
 
 ## Read First
@@ -19,12 +19,13 @@ Generated: 2026-10-16 16:43:46Z
 
 
 ```text
- M src/components/ui/native-select.jsx
+ M e2e/workspace-selection.spec.mjs
+ M src/components/workspace/EnterpriseApiKeyDialog.jsx
 ```
 
 ## Backend Snapshot
-- Branch: main
-- HEAD: e7d548c
+- Branch: saroj/enterprise-info-refine
+- HEAD: 708ddd3
 
 
 ```text
@@ -32,14 +33,14 @@ Working tree clean.
 ```
 
 ## Recent Commits
+- 2026-10-27 a4a054e api-key-ui
+- 2026-10-16 d32b34e Merge pull request #110 from adarshbhattarai/feature/enterprise-ui-refinment
+- 2026-10-17 06e7865 Restore lockfile unrelated to UI changes
+- 2026-10-17 068c198 workspace selector ui
 - 2026-10-16 c0969c0 ui refinment
+- 2026-10-12 fa90d8d Merge pull request #105 from adarshbhattarai/feature/enterprise-signin-login-FE
 - 2026-10-10 a5cea19 resove e2d test issue
 - 2026-10-09 dfc5545 Update npm lockfile
-- 2026-10-09 2cb14d1 resolve the merge conflict
-- 2026-10-08 ead6616 some ui refinment
-- 2026-10-03 b198a25 email-notification and e2e test cases created
-- 2026-10-02 87e9594 checkpoint for v1
-- 2026-10-01 7ede900 Merge pull request #108 from adarshbhattarai/codex/release-ci-coverage
 
 ## High-Signal Paths
 - /home/sarojx/Documents/airabookai/airabook/src/App.jsx

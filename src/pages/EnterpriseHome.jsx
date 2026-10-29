@@ -11,6 +11,7 @@ import {
   BookOpen,
   Building2,
   Eye,
+  Globe2,
   HelpCircle,
   Image as ImageIcon,
   LayoutDashboard,
@@ -24,6 +25,7 @@ import {
   X,
 } from 'lucide-react';
 import EnterpriseTeamManagement from '@/components/workspace/EnterpriseTeamManagement';
+import EnterpriseApiKeyDialog from '@/components/workspace/EnterpriseApiKeyDialog';
 import { WorkspaceProfileMenu, WorkspaceSwitcher } from '@/components/workspace/WorkspaceMenu';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -48,6 +50,16 @@ const formatRole = (role) => {
   return role.charAt(0) + role.slice(1).toLowerCase();
 };
 
+const getWebsiteUrl = (website) => {
+  if (typeof website !== 'string' || !website.trim()) return null;
+  try {
+    const url = new URL(website.trim());
+    return ['https:', 'http:'].includes(url.protocol) ? url.href : null;
+  } catch {
+    return null;
+  }
+};
+
 const EnterpriseHome = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -62,6 +74,7 @@ const EnterpriseHome = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const requestedAccountId = new URLSearchParams(location.search).get('accountId') || location.state?.account?.id;
+  const websiteUrl = getWebsiteUrl(workspace?.account?.website);
 
   useEffect(() => {
     let isCurrent = true;
@@ -134,10 +147,21 @@ const EnterpriseHome = () => {
         <div className="min-w-0 flex-1">
           <EnterpriseHeader workspace={workspace?.account} onMenu={() => setMobileNavOpen(true)} />
           <main className="mx-auto max-w-[1480px] px-5 py-7 sm:px-8 sm:py-9 xl:px-12">
-            <div className="mb-7">
+            <div className="mb-7 flex flex-col items-start gap-4 sm:flex-row sm:justify-between">
+              <div className="w-full min-w-0 flex-1">
               <p className="text-sm font-semibold uppercase tracking-[0.16em] text-primary">Management Studio · Enterprise</p>
               <div className="mt-2 flex flex-wrap items-center gap-3"><h1 className="text-2xl font-semibold tracking-[-0.035em] text-foreground sm:text-3xl">Organization Overview</h1><WorkspaceBadge status="ACTIVE">All systems operational</WorkspaceBadge></div>
               <p className="mt-2 text-base text-muted-foreground">{workspace?.account?.name || 'Loading workspace…'} · Manage your team and account access.</p>
+              {websiteUrl && <div className="mt-2 flex items-start gap-2 text-sm">
+                <Globe2 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="text-muted-foreground">Website:</span>
+                <a href={websiteUrl} target="_blank" rel="noopener noreferrer" className="min-w-0 break-all text-primary underline-offset-4 hover:underline focus-visible:underline">
+                  {workspace.account.website.trim()}<ArrowUpRight aria-hidden="true" className="ml-1 inline h-3.5 w-3.5" />
+                </a>
+              </div>}
+              </div>
+              {workspace && (workspace.account.role === 'OWNER' || workspace.user.systemRole === 'SYSTEM_ADMIN')
+                && <EnterpriseApiKeyDialog key={`${workspace.account.id}:${workspace.account.role}:${workspace.user.systemRole}`} account={workspace.account} />}
             </div>
 
             {loadError && <WorkspaceNotice role="alert" tone="danger" className="mb-6">{loadError}</WorkspaceNotice>}

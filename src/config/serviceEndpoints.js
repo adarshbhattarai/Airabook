@@ -51,6 +51,8 @@ export const SERVICE_ENDPOINTS = {
         import.meta.env.VITE_SPRING_VIDEO_PAGE_CLIPS_BY_BOOK_ENDPOINT || 'api/v1/videos/books/{bookId}',
       enterpriseCurrentUser:
         import.meta.env.VITE_SPRING_ENTERPRISE_CURRENT_USER_ENDPOINT || 'api/v1/me',
+      enterpriseApiKey:
+        import.meta.env.VITE_SPRING_ENTERPRISE_API_KEY_ENDPOINT || 'api/v1/apiKey',
       enterpriseAccountMembers:
         import.meta.env.VITE_SPRING_ENTERPRISE_ACCOUNT_MEMBERS_ENDPOINT || 'api/v1/enterprise/accounts/{accountId}/members',
       enterpriseEligibleUsers:
