@@ -2,12 +2,16 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Menu, Bell, Check, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { useWorkspace } from '@/context/WorkspaceContext';
 import { Button } from '@/components/ui/button';
 import { collabApi, getCallableErrorMessage } from '@/services/collabApi';
 import { useToast } from '@/components/ui/use-toast';
+import EnterpriseOnboardingNotice from '@/components/workspace/EnterpriseOnboardingNotice';
+import useEnterpriseOnboardingNotification from '@/hooks/useEnterpriseOnboardingNotification';
 import { WorkspaceProfileMenu } from '@/components/workspace/WorkspaceMenu';
 
 const MobileTopBar = ({ onMenuClick }) => {
+  const workspace = useWorkspace();
   const navigate = useNavigate();
   const { appUser } = useAuth();
   const { toast } = useToast();
@@ -18,7 +22,9 @@ const MobileTopBar = ({ onMenuClick }) => {
   const notificationsRef = useRef(null);
 
   const pendingInvitesCount = Math.max(0, Number(appUser?.notificationCounters?.pendingInvites || 0));
-  const badgeLabel = pendingInvitesCount > 99 ? '99+' : String(pendingInvitesCount);
+  const { request: enterpriseRequest, dismiss: dismissEnterpriseRequest } = useEnterpriseOnboardingNotification();
+  const notificationCount = pendingInvitesCount + (enterpriseRequest ? 1 : 0);
+  const badgeLabel = notificationCount > 99 ? '99+' : String(notificationCount);
 
   useEffect(() => {
     if (!showNotifications) return;
@@ -75,7 +81,7 @@ const MobileTopBar = ({ onMenuClick }) => {
     <header className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border bg-card/90 backdrop-blur-sm text-foreground relative z-30">
       <button
         type="button"
-        aria-label="Open personal navigation"
+        aria-label={workspace?.mode === 'enterprise' ? 'Open enterprise navigation' : 'Open personal navigation'}
         onClick={onMenuClick}
         className="inline-flex items-center justify-center rounded-xl border border-border bg-background text-foreground h-9 w-9 shadow-appSoft"
       >
@@ -89,25 +95,28 @@ const MobileTopBar = ({ onMenuClick }) => {
             size="icon"
             variant="outline"
             className="h-9 w-9 relative"
+            aria-label="Notifications"
+            aria-expanded={showNotifications}
             onClick={() => setShowNotifications((prev) => !prev)}
           >
             <Bell className="h-4 w-4" />
-            {pendingInvitesCount > 0 && (
+            {notificationCount > 0 && (
               <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full bg-primary text-primary-foreground text-[10px] leading-[18px] px-1 text-center font-semibold">
                 {badgeLabel}
               </span>
             )}
           </Button>
           {showNotifications && (
-            <div className="absolute right-0 top-full mt-2 w-80 bg-card border border-border rounded-xl shadow-appCard z-50">
+            <div className="absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-2rem)] bg-card border border-border rounded-xl shadow-appCard z-50">
               <div className="px-3 py-2 border-b border-border/70 flex items-center justify-between">
                 <p className="text-sm font-semibold text-foreground">Notifications</p>
                 <span className="text-xs text-muted-foreground">{pendingInvitesCount} pending</span>
               </div>
               <div className="max-h-80 overflow-y-auto">
+                <EnterpriseOnboardingNotice onDismiss={dismissEnterpriseRequest} request={enterpriseRequest} onNavigate={() => setShowNotifications(false)} />
                 {notificationLoading ? (
                   <p className="px-3 py-4 text-sm text-muted-foreground">Loading...</p>
-                ) : notificationItems.length === 0 ? (
+                ) : notificationItems.length === 0 && !enterpriseRequest ? (
                   <p className="px-3 py-4 text-sm text-muted-foreground">No notifications</p>
                 ) : (
                   <div className="divide-y divide-border/60">

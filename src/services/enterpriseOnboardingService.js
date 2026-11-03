@@ -36,12 +36,12 @@ export const submitEnterpriseOnboardingRequest = (formData) => {
 };
 
 /** Load the current PostgreSQL user and their active Enterprise memberships. */
-export const getCurrentEnterpriseUser = () => apiService.get(ENTERPRISE_PATHS.enterpriseCurrentUser)
+export const getCurrentEnterpriseUser = (options = {}) => apiService.get(ENTERPRISE_PATHS.enterpriseCurrentUser, options)
   .then((result) => ({ ...result, accounts: (result.accounts || []).map(normalizeAccount) }));
 
 /** Load members for an Enterprise account. */
-export const getEnterpriseMembers = (accountId) => apiService.get(
-  ENTERPRISE_PATHS.enterpriseAccountMembers.replace('{accountId}', encodeURIComponent(accountId))
+export const getEnterpriseMembers = (accountId, options = {}) => apiService.get(
+  ENTERPRISE_PATHS.enterpriseAccountMembers.replace('{accountId}', encodeURIComponent(accountId)), options
 );
 
 const memberPath = (accountId, userId) => ENTERPRISE_PATHS.enterpriseAccountMember
@@ -59,8 +59,8 @@ export const updateEnterpriseMemberStatus = (accountId, userId, status) => apiSe
 export const removeEnterpriseMember = (accountId, userId) => apiService.delete(memberPath(accountId, userId));
 
 /** Return the signed-in user's onboarding requests, newest first. */
-export const getMyEnterpriseRequests = () => apiService.get(
-  `${ENTERPRISE_PATHS.enterpriseOnboardingMyRequests}?page=0&size=20`
+export const getMyEnterpriseRequests = (options = {}) => apiService.get(
+  `${ENTERPRISE_PATHS.enterpriseOnboardingMyRequests}?page=0&size=20`, options
 ).then((result) => result?.items || []);
 
 /** Find registered Airabook users who can receive a workspace invitation. */
@@ -75,12 +75,12 @@ export const createEnterpriseInvitation = (accountId, { userId, role }) => apiSe
 );
 
 /** List invitations sent by a workspace owner or admin. */
-export const getEnterpriseAccountInvitations = (accountId, status = 'PENDING') => apiService.get(
-  `${ENTERPRISE_PATHS.enterpriseAccountInvitations.replace('{accountId}', encodeURIComponent(accountId))}?status=${encodeURIComponent(status)}`
+export const getEnterpriseAccountInvitations = (accountId, status = 'PENDING', options = {}) => apiService.get(
+  `${ENTERPRISE_PATHS.enterpriseAccountInvitations.replace('{accountId}', encodeURIComponent(accountId))}?status=${encodeURIComponent(status)}`, options
 );
 
 /** List invitations awaiting the signed-in user's decision. */
-export const getReceivedEnterpriseInvitations = () => apiService.get(ENTERPRISE_PATHS.enterpriseReceivedInvitations);
+export const getReceivedEnterpriseInvitations = (options = {}) => apiService.get(ENTERPRISE_PATHS.enterpriseReceivedInvitations, options);
 
 const invitationActionPath = (invitationId, action) => (
   `${ENTERPRISE_PATHS.enterpriseInvitation.replace('{invitationId}', encodeURIComponent(invitationId))}/${action}`

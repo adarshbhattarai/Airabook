@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { workspaceAccessKey } from '@/services/enterpriseQueries';
 import { Button } from '@/components/ui/button';
 import { WorkspaceNotice } from '@/components/workspace/WorkspaceUI';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
@@ -14,6 +16,7 @@ import '@/pages/WorkspaceChooser.css';
 
 const WorkspaceChooser = () => {
   const { user, logout } = useAuth();
+  const client = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from;
@@ -47,6 +50,7 @@ const WorkspaceChooser = () => {
     try {
       // Revalidate when choosing: membership or the system role may have changed.
       const me = await getCurrentEnterpriseUser();
+      client.setQueryData(workspaceAccessKey(user?.uid), me);
       setProfile(me);
       if (!account) {
         if (!hasSystemAdminDestination(me)) throw new Error('Your System Admin access is no longer available.');

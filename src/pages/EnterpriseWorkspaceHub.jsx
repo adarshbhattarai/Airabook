@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card } from '@/components/ui/card';
 import { WorkspaceBadge, WorkspaceNotice } from '@/components/workspace/WorkspaceUI';
 import { Link, useNavigate } from 'react-router-dom';
@@ -9,10 +10,11 @@ import { useAuth } from '@/context/AuthContext';
 import {
   acceptEnterpriseInvitation,
   declineEnterpriseInvitation,
-  getCurrentEnterpriseUser,
-  getMyEnterpriseRequests,
-  getReceivedEnterpriseInvitations,
 } from '@/services/enterpriseOnboardingService';
+import {
+  workspaceAccessOptions, workspaceAccessKey, myEnterpriseRequestsOptions,
+  receivedInvitationsOptions, receivedInvitationsKey,
+} from '@/services/enterpriseQueries';
 import { getActiveWorkspaces, getWorkspacePath, savePreferredWorkspaceId } from '@/services/workspaceSelection';
 
 const statusLabel = (status) => ({
@@ -33,54 +35,40 @@ const EnterpriseWorkspaceHub = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
-  const [currentUser, setCurrentUser] = useState(null);
-  const [requests, setRequests] = useState([]);
-  const [invitations, setInvitations] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [actionId, setActionId] = useState(null);
-  const [error, setError] = useState('');
+  const client = useQueryClient();
+  const enabled = !!user?.uid;
+  const accessQuery = useQuery({ ...workspaceAccessOptions(user?.uid), enabled });
+  const requestsQuery = useQuery({ ...myEnterpriseRequestsOptions(user?.uid), enabled });
+  const invitationsQuery = useQuery({ ...receivedInvitationsOptions(user?.uid), enabled });
+  const currentUser = accessQuery.data;
+  const requests = requestsQuery.data || [];
+  const invitations = invitationsQuery.data || [];
 
-  const loadHub = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const [me, myRequests, received] = await Promise.all([
-        getCurrentEnterpriseUser(),
-        getMyEnterpriseRequests(),
-        getReceivedEnterpriseInvitations(),
-      ]);
-      setCurrentUser(me);
-      setRequests(myRequests || []);
-      setInvitations(received || []);
-    } catch (loadError) {
-      console.error('Unable to load Enterprise workspace hub', loadError);
-      setError(loadError.message || 'Unable to load your workspace information.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadHub();
-  }, [loadHub]);
-
-  const respondToInvitation = async (invitation, action) => {
-    setActionId(invitation.invitationId);
-    try {
-      if (action === 'accept') await acceptEnterpriseInvitation(invitation.invitationId);
-      else await declineEnterpriseInvitation(invitation.invitationId);
+  const refreshInvitationAccess = async () => {
+    const keys = [workspaceAccessKey(user?.uid), receivedInvitationsKey(user?.uid), ['enterprise-administration', user?.uid]];
+    // Cancel pre-mutation reads so an older response cannot replace refreshed data.
+    await Promise.all(keys.map((queryKey) => client.cancelQueries({ queryKey })));
+    await Promise.all(keys.map((queryKey) => client.invalidateQueries({ queryKey })));
+  };
+  const response = useMutation({
+    mutationFn: ({ invitation, action }) => action === 'accept'
+      ? acceptEnterpriseInvitation(invitation.invitationId)
+      : declineEnterpriseInvitation(invitation.invitationId),
+    onSuccess: async (_, { action }) => {
       toast({
         title: action === 'accept' ? 'Invitation accepted' : 'Invitation declined',
         description: action === 'accept' ? 'The workspace is now available to you.' : 'The invitation was declined.',
         variant: action === 'accept' ? 'appSuccess' : undefined,
       });
-      await loadHub();
-    } catch (actionError) {
-      toast({ title: 'Unable to update invitation', description: actionError.message, variant: 'destructive' });
-      if ([403, 404, 409].includes(actionError.status)) await loadHub();
-    } finally {
-      setActionId(null);
-    }
+      await refreshInvitationAccess();
+    },
+    onError: async (error) => {
+      toast({ title: 'Unable to update invitation', description: error.message, variant: 'destructive' });
+      if ([403, 404, 409].includes(error.status)) await refreshInvitationAccess();
+    },
+  });
+  const respondToInvitation = (invitation, action) => {
+    if (!response.isPending) response.mutate({ invitation, action });
   };
 
   const activeAccounts = getActiveWorkspaces(currentUser);
@@ -105,12 +93,10 @@ const EnterpriseWorkspaceHub = () => {
           </Button>
         </div>
 
-        {error && <WorkspaceNotice role="alert" tone="danger" className="mt-6">{error}</WorkspaceNotice>}
-        {loading && <div className="flex items-center justify-center py-20 text-muted-foreground"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Loading workspace access…</div>}
-
-        {!loading && <div className="mt-8 space-y-6">
+        <div className="mt-8 space-y-6">
           <section>
             <SectionHeading icon={Building2} title="Active workspaces" detail="Your Personal workspace and approved Enterprise workspaces" />
+            <QueryContent query={accessQuery}>
             {activeAccounts.length === 0 ? (
               <EmptyState text="No approved Enterprise workspaces yet." />
             ) : (
@@ -118,43 +104,62 @@ const EnterpriseWorkspaceHub = () => {
                 {activeAccounts.map((account) => <WorkspaceCard key={account.id} account={account} onOpen={() => openWorkspace(account)} />)}
               </div>
             )}
+            </QueryContent>
           </section>
 
           <section>
             <SectionHeading icon={Clock3} title="Your registration requests" detail="System Admin approval status" />
+            <QueryContent query={requestsQuery}>
             {requests.length === 0 ? <EmptyState text="You have not submitted an Enterprise registration request." /> : (
               <div className="grid gap-4 md:grid-cols-2">
                 {requests.map((request) => <RequestCard key={request.id} request={request} />)}
               </div>
             )}
+            </QueryContent>
           </section>
 
           <section>
             <SectionHeading icon={Inbox} title="Invitations for you" detail="Accept to join a workspace" />
+            <QueryContent query={invitationsQuery}>
             {invitations.length === 0 ? <EmptyState text="No pending workspace invitations." /> : (
               <div className="grid gap-4 md:grid-cols-2">
                 {invitations.map((invitation) => (
                   <InvitationCard
                     key={invitation.invitationId}
                     invitation={invitation}
-                    actionId={actionId}
+                    isResponding={response.isPending}
                     onRespond={respondToInvitation}
                   />
                 ))}
               </div>
             )}
+            </QueryContent>
           </section>
 
-          {currentUser?.user?.systemRole === 'SYSTEM_ADMIN' && (
+          {!accessQuery.error && currentUser?.user?.systemRole === 'SYSTEM_ADMIN' && (
             <section aria-label="System administration" className="rounded-xl border border-border bg-primary/10 p-5 sm:flex sm:items-center sm:justify-between">
               <div><p className="text-base font-semibold text-primary">System administration</p><p className="mt-1 text-sm text-primary">Review Enterprise onboarding requests separately from workspace membership.</p></div>
               <Button onClick={() => navigate('/admin/enterprise-approvals')} variant="appPrimary" className="mt-4 sm:mt-0"><ShieldCheck className="mr-2 h-4 w-4" />Open admin dashboard</Button>
             </section>
           )}
-        </div>}
+        </div>
       </div>
     </div>
   );
+};
+
+// A failed read must not appear as an empty list. Background network errors
+// retain cached content; authorization failures hide it until access is restored.
+const QueryContent = ({ query, children }) => {
+  const denied = [401, 403, 404].includes(query.error?.status);
+  return <>
+    {query.error && <WorkspaceNotice role="alert" tone="danger" className="mb-3">
+      {query.error.message || 'Unable to load workspace information.'}
+      <Button variant="outline" className="ml-3" disabled={query.isFetching} onClick={() => query.refetch()}>Retry</Button>
+    </WorkspaceNotice>}
+    {query.isPending && <div className="flex items-center justify-center py-8 text-muted-foreground"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Loading workspace access…</div>}
+    {!denied && query.data !== undefined && children}
+  </>;
 };
 
 const SectionHeading = ({ icon: Icon, title, detail }) => (
@@ -174,8 +179,8 @@ const RequestCard = ({ request }) => {
   return <Card as="article" className="p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-semibold text-foreground">{request.proposedAccountName}</p><p className="mt-1 text-sm text-muted-foreground">{request.requestedSlug}.airabook.com</p></div><WorkspaceBadge status={request.status}>{statusLabel(request.status)}</WorkspaceBadge></div>{request.decisionReason && <p className="mt-4 text-sm leading-5 text-muted-foreground">{request.decisionReason}</p>}</Card>;
 };
 
-const InvitationCard = ({ invitation, actionId, onRespond }) => (
-  <Card as="article" className="p-5"><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"><User className="h-5 w-5" /></span><div className="min-w-0"><p className="font-semibold text-foreground">{invitation.accountName}</p><p className="mt-1 text-sm text-muted-foreground">Invited by {invitation.invitedByDisplayName || 'a workspace administrator'} · {invitation.role}</p></div></div><div className="mt-5 flex gap-2"><Button disabled={actionId === invitation.invitationId} onClick={() => onRespond(invitation, 'accept')} variant="appPrimary"><Check className="mr-2 h-4 w-4" />Accept</Button><Button disabled={actionId === invitation.invitationId} onClick={() => onRespond(invitation, 'decline')} variant="outline"><X className="mr-2 h-4 w-4" />Decline</Button></div></Card>
+const InvitationCard = ({ invitation, isResponding, onRespond }) => (
+  <Card as="article" className="p-5"><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"><User className="h-5 w-5" /></span><div className="min-w-0"><p className="font-semibold text-foreground">{invitation.accountName}</p><p className="mt-1 text-sm text-muted-foreground">Invited by {invitation.invitedByDisplayName || 'a workspace administrator'} · {invitation.role}</p></div></div><div className="mt-5 flex gap-2"><Button disabled={isResponding} onClick={() => onRespond(invitation, 'accept')} variant="appPrimary"><Check className="mr-2 h-4 w-4" />Accept</Button><Button disabled={isResponding} onClick={() => onRespond(invitation, 'decline')} variant="outline"><X className="mr-2 h-4 w-4" />Decline</Button></div></Card>
 );
 
 export default EnterpriseWorkspaceHub;

@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Send, Sparkles, BookText, X, History, Plus, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useWorkspace } from '@/context/WorkspaceContext';
 import { streamAirabookAI } from '@/lib/aiStream';
 import MessageContent from '@/components/chat/MessageContent';
 import {
@@ -22,7 +23,6 @@ import {
 import DashboardModeSwitch from '@/components/dashboard/DashboardModeSwitch';
 import DashboardTalkView from '@/components/dashboard/DashboardTalkView';
 import Talk3DErrorBoundary from '@/components/dashboard/talk3d/Talk3DErrorBoundary';
-import EnterpriseOnboardingNotice from '@/components/workspace/EnterpriseOnboardingNotice';
 import useWebGLSupport from '@/components/dashboard/talk3d/useWebGLSupport';
 import { getVoiceAssistantUpgradeMessage, hasVoiceAssistantAccess } from '@/lib/billing';
 import {
@@ -84,6 +84,7 @@ const appendResultText = (baseText, extraText) => {
 const appendStreamingText = (currentText, nextText) => `${currentText || ''}${nextText || ''}`;
 
 const Dashboard = () => {
+  const workspace = useWorkspace();
   const location = useLocation();
   const { appUser } = useAuth();
   const [prompt, setPrompt] = useState('');
@@ -696,7 +697,6 @@ const Dashboard = () => {
 
   return (
     <div className={`relative flex flex-col h-[calc(100vh-4rem)] overflow-hidden ${dashboardMode === 'talk' ? 'dashboard-talk-page' : 'bg-white'}`}>
-      <EnterpriseOnboardingNotice />
       <div ref={historyPanelRef} className="absolute right-4 top-4 z-20 sm:right-8">
         <div className="dashboard-top-controls">
           <Button
