@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'r
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ThemeProvider } from '@/context/ThemeContext';
+import AppQueryProvider from '@/context/AppQueryProvider';
 import MarketingLayout from '@/layouts/MarketingLayout';
 import AppShell from '@/layouts/AppShell';
 import AdminShell from '@/layouts/AdminShell';
@@ -72,6 +73,7 @@ function App() {
   return (
     <AuthProvider>
       <Router>
+      <AppQueryProvider>
         <main>
           <Routes>
             {/* Public / marketing routes */}
@@ -112,7 +114,15 @@ function App() {
               path="/v2/enterprise-home"
               element={
                 <PrivateRoute loginPath="/v2/personal-login">
-                  <ThemeProvider><EnterpriseHome /></ThemeProvider>
+                  <ThemedAppShell><Dashboard /></ThemedAppShell>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/v2/enterprise-home/administration"
+              element={
+                <PrivateRoute loginPath="/v2/personal-login">
+                  <ThemedAppShell><EnterpriseHome /></ThemedAppShell>
                 </PrivateRoute>
               }
             />
@@ -311,6 +321,7 @@ function App() {
           </Routes>
         </main>
         <Toaster />
+      </AppQueryProvider>
       </Router>
     </AuthProvider>
   );

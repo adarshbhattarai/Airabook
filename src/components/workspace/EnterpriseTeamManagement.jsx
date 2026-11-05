@@ -116,8 +116,8 @@ const InviteDialog = ({ account, api, onCreated, onConflict, disabled }) => {
 };
 
 const EnterpriseTeamManagement = ({
-  account, actorUserId, members = [], invitations = [], isLoading = false,
-  invitationStatus = 'PENDING', onInvitationStatusChange, onRefresh, api = teamApi,
+  account, actorUserId, members = [], invitations = [], isLoading = false, isRefreshing = false,
+  invitationStatus = 'PENDING', isInvitationsLoading = false, onInvitationStatusChange, onRefresh, api = teamApi,
 }) => {
   const { toast } = useToast();
   const [memberFilter, setMemberFilter] = useState('CURRENT');
@@ -134,7 +134,7 @@ const EnterpriseTeamManagement = ({
     setError(''); setPendingAction({ kind, target }); setRequestedRole(target.role || 'MEMBER');
   };
   const confirmAction = async () => {
-    if (!pendingAction || busy || isLoading || !account) return;
+    if (!pendingAction || busy || isLoading || isRefreshing || !account) return;
     const { kind, target } = pendingAction;
     setBusy(true); setError('');
     try {
@@ -165,11 +165,12 @@ const EnterpriseTeamManagement = ({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-5">
         <div><h2 className="text-lg font-semibold text-foreground">Team management</h2><p className="mt-1 text-sm text-muted-foreground">Manage workspace roles, access, and invitations.</p></div>
         <div className="flex gap-2">
-          <Button variant="outline" size="icon" disabled={isLoading || busy} onClick={onRefresh} aria-label="Refresh team"><RefreshCw className="h-4 w-4" /></Button>
-          {canInvite && <InviteDialog key={account.id} account={account} api={api} disabled={isLoading || busy}
+          <Button variant="outline" size="icon" disabled={isLoading || isRefreshing || busy} onClick={onRefresh} aria-label="Refresh team"><RefreshCw className="h-4 w-4" /></Button>
+          {canInvite && <InviteDialog key={account.id} account={account} api={api} disabled={isLoading || isRefreshing || busy}
             onConflict={onRefresh} onCreated={() => { setError(''); toast({ title: 'Invitation created', description: 'The recipient can respond from their workspace hub.', variant: 'appSuccess' }); onRefresh(); }} />}
         </div>
       </div>
+      {isRefreshing && <p role="status" className="px-5 pt-4 text-sm text-muted-foreground">Updating team…</p>}
       {error && <WorkspaceNotice role="alert" tone="danger" className="m-5">{error}</WorkspaceNotice>}
       <div className="flex flex-wrap items-center gap-3 px-5 py-4">
         <label htmlFor="enterprise-member-filter" className="text-base text-muted-foreground">Members</label>
@@ -184,10 +185,10 @@ const EnterpriseTeamManagement = ({
             <td className="px-5 py-4"><span className="block font-medium text-foreground">{nameOf(member)}{member.userId === actorUserId ? ' (you)' : ''}</span><span className="text-sm text-muted-foreground">{member.email}</span></td>
             <td className="px-3 py-4 text-foreground">{label(member.role)}</td><td className="px-3 py-4 text-foreground"><WorkspaceBadge status={member.status} /></td>
             <td className="px-5 py-4"><div className="flex flex-wrap gap-2">
-              {canChangeEnterpriseMemberRole(account?.role, member) && <Button size="sm" variant="outline" disabled={busy} onClick={() => openAction('role', member)}>Change role</Button>}
+              {canChangeEnterpriseMemberRole(account?.role, member) && <Button size="sm" variant="outline" disabled={busy || isRefreshing} onClick={() => openAction('role', member)}>Change role</Button>}
               {canManageEnterpriseMember(account?.role, member) && <>
-                <Button size="sm" variant="outline" disabled={busy} onClick={() => openAction(member.status === 'ACTIVE' ? 'suspend' : 'restore', member)}>{member.status === 'ACTIVE' ? 'Suspend' : 'Restore'}</Button>
-                <Button size="sm" variant="outline" disabled={busy} onClick={() => openAction('remove', member)}>Remove</Button>
+                <Button size="sm" variant="outline" disabled={busy || isRefreshing} onClick={() => openAction(member.status === 'ACTIVE' ? 'suspend' : 'restore', member)}>{member.status === 'ACTIVE' ? 'Suspend' : 'Restore'}</Button>
+                <Button size="sm" variant="outline" disabled={busy || isRefreshing} onClick={() => openAction('remove', member)}>Remove</Button>
               </>}
               {member.role === 'OWNER' && <span className="text-sm text-muted-foreground">Protected owner</span>}
               {member.status === 'REMOVED' && <span className="text-sm text-muted-foreground">Requires a new invitation</span>}
@@ -197,21 +198,22 @@ const EnterpriseTeamManagement = ({
       {canInvite && <div className="border-t border-border p-5">
         <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-semibold text-foreground">Invitations</h3><div className="flex flex-wrap items-center gap-2">
           <label htmlFor="enterprise-invitation-filter" className="text-base text-muted-foreground">Invitation status</label>
-          <NativeSelect id="enterprise-invitation-filter" value={invitationStatus} disabled={isLoading || busy} onChange={(event) => onInvitationStatusChange(event.target.value)} className="w-auto max-w-full">
+          <NativeSelect id="enterprise-invitation-filter" value={invitationStatus} disabled={isLoading || isRefreshing || busy} onChange={(event) => onInvitationStatusChange(event.target.value)} className="w-auto max-w-full">
             {['PENDING', 'ACCEPTED', 'DECLINED', 'REVOKED'].map((status) => <option key={status} value={status}>{label(status)}</option>)}
           </NativeSelect>
         </div></div>
-        {!isLoading && invitations.length === 0 && <p className="mt-4 text-base text-muted-foreground">No {invitationStatus.toLowerCase()} invitations.</p>}
-        {!isLoading && <ul className="mt-4 space-y-2">{invitations.map((invitation) => <li key={invitation.invitationId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-3">
+        {isInvitationsLoading && <p role="status" className="mt-4 text-sm text-muted-foreground">Loading invitations…</p>}
+        {!isLoading && !isInvitationsLoading && invitations.length === 0 && <p className="mt-4 text-base text-muted-foreground">No {invitationStatus.toLowerCase()} invitations.</p>}
+        {!isLoading && !isInvitationsLoading && <ul className="mt-4 space-y-2">{invitations.map((invitation) => <li key={invitation.invitationId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-3">
           <div><p className="text-base font-medium text-foreground">{invitation.invitedUserDisplayName || invitation.invitedUserEmail}</p><p className="text-sm text-muted-foreground">{invitation.invitedUserEmail} · {label(invitation.role)} · {label(invitation.status)}</p></div>
-          {canRevokeEnterpriseInvitation(account.role, invitation) && <Button size="sm" variant="outline" disabled={busy} onClick={() => openAction('revoke', invitation)}>Revoke</Button>}
+          {canRevokeEnterpriseInvitation(account.role, invitation) && <Button size="sm" variant="outline" disabled={busy || isRefreshing} onClick={() => openAction('revoke', invitation)}>Revoke</Button>}
         </li>)}</ul>}
       </div>}
       <Dialog open={Boolean(pendingAction)} onOpenChange={(open) => { if (!open && !busy) setPendingAction(null); }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-card p-6 text-foreground shadow-appCard">
           <DialogHeader><DialogTitle>{actionTitle}</DialogTitle><DialogDescription>{actionDescription}</DialogDescription></DialogHeader>
-          {pendingAction?.kind === 'role' && <div className="mt-5 space-y-2"><label htmlFor="enterprise-member-role" className="text-base font-medium">New role</label><NativeSelect id="enterprise-member-role" value={requestedRole} disabled={busy} onChange={(event) => setRequestedRole(event.target.value)}><option value="MEMBER">Member</option><option value="ADMIN">Admin</option></NativeSelect></div>}
-          <DialogFooter className="mt-6 gap-2"><Button variant="outline" disabled={busy} onClick={() => setPendingAction(null)}>Cancel</Button><Button disabled={busy || isLoading || !account || pendingAction?.kind === 'role' && requestedRole === pendingAction.target.role} onClick={confirmAction} variant="appPrimary">{busy ? 'Saving…' : 'Confirm'}</Button></DialogFooter>
+          {pendingAction?.kind === 'role' && <div className="mt-5 space-y-2"><label htmlFor="enterprise-member-role" className="text-base font-medium">New role</label><NativeSelect id="enterprise-member-role" value={requestedRole} disabled={busy || isRefreshing} onChange={(event) => setRequestedRole(event.target.value)}><option value="MEMBER">Member</option><option value="ADMIN">Admin</option></NativeSelect></div>}
+          <DialogFooter className="mt-6 gap-2"><Button variant="outline" disabled={busy || isRefreshing} onClick={() => setPendingAction(null)}>Cancel</Button><Button disabled={busy || isLoading || isRefreshing || !account || pendingAction?.kind === 'role' && requestedRole === pendingAction.target.role} onClick={confirmAction} variant="appPrimary">{busy ? 'Saving…' : 'Confirm'}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </Card>

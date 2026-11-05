@@ -3,24 +3,24 @@ import { test, expect } from '@playwright/test';
 const personal = { id: 'personal', type: 'PERSONAL', name: 'My Personal Workspace', accountStatus: 'ACTIVE', membershipStatus: 'ACTIVE', role: 'PERSONAL_OWNER' };
 const enterprise = { id: 'team-one', type: 'ENTERPRISE', name: 'Airabook Team', slug: 'team-one', accountStatus: 'ACTIVE', membershipStatus: 'ACTIVE', role: 'OWNER' };
 
-async function fixture(page, { accounts = [personal, enterprise], systemRole = 'USER', initialRoute = '/v2/personal-login', from, signedIn = false, preference, theme, realAdminUsers = false, users = [], usersStatus = 200, usersBody } = {}) {
-  const state = { accounts, systemRole, failMe: false, calls: [], crashes: [], users, usersStatus, usersBody, userAuthorization: [],
-    apiKeyStatus: 200, apiKeyBody: undefined, apiKeyRequests: [] };
+async function fixture(page, { accounts = [personal, enterprise], systemRole = 'USER', initialRoute = '/v2/personal-login', from, signedIn = false, preference, theme, realDashboard = false, withBooks = false, realAdminUsers = false, users = [], usersStatus = 200, usersBody, failMe = false, meGate, onboardingRequests = [], receivedInvitations = [], receivedStatus = 200, notificationPreview } = {}) {
+  const state = { receivedInvitations, receivedStatus, onboardingRequests, accounts, systemRole, failMe, meGate, membersByAccount: {}, invitationsByAccount: {}, invitationRequests: [], calls: [], crashes: [], users, usersStatus, usersBody, userAuthorization: [], apiKeyRequests: [] };
   page.on('pageerror', (error) => state.crashes.push(error.message));
-  await page.addInitScript(({ initialRoute, from, signedIn, preference, theme }) => {
-    window.workspaceFixture = { initialRoute, from, signedIn };
+  await page.addInitScript(({ initialRoute, from, signedIn, preference, theme, withBooks }) => {
+    window.workspaceFixture = { initialRoute, from, signedIn, withBooks };
     if (preference) localStorage.setItem('airabook:selected-workspace:fixture-user', preference);
     if (theme) localStorage.setItem('airabook-theme', theme);
-  }, { initialRoute, from, signedIn, preference, theme });
+  }, { initialRoute, from, signedIn, preference, theme, withBooks });
   await page.route('**/src/context/AuthContext.jsx*', (route) => route.fulfill({ contentType: 'text/javascript', body: `
     import React from '/node_modules/.vite/deps/react.js';
-    const { createContext, useContext, useState } = React;
+    const { createContext, useContext, useState, useEffect } = React;
     const Context = createContext(null);
     const identity = {uid: 'fixture-user', displayName: 'Saroj', email: 'saroj@example.test', emailVerified: true};
     export const AuthProvider = ({children}) => {
       const [user, setUser] = useState(() => window.workspaceFixture?.signedIn || sessionStorage.getItem('fixture-session') ? identity : null);
+      useEffect(() => { window.fixtureSwitchUser = (uid) => setUser({...identity, uid}); return () => { delete window.fixtureSwitchUser; }; }, []);
       const signIn = async () => {sessionStorage.setItem('fixture-session', 'yes'); setUser(identity); return {user: identity};};
-      return React.createElement(Context.Provider, {value: {user, appUser: {displayName:'Saroj'}, billing: {}, loading:false,
+      return React.createElement(Context.Provider, {value: {user, appUser: {displayName:'Saroj', accessibleBookIds: window.workspaceFixture?.withBooks ? [{bookId: 'fixture-book', title: 'Fixture Book'}] : []}, billing: {}, loading:false,
         login: signIn, signup: signIn, signInWithGoogle: signIn, resendVerificationEmail:async()=>{},
         logout:async()=>{if(window.workspaceFixture.failLogout) throw new Error('Sign out unavailable'); sessionStorage.removeItem('fixture-session'); setUser(null);}}}, children);
     };
@@ -34,33 +34,62 @@ async function fixture(page, { accounts = [personal, enterprise], systemRole = '
   // all three shells, Enterprise home/team, hub, and approval queue remain real.
   await page.route(/\/src\/pages\/(Home|AiraHome|Dashboard|Books|Movies|Notifications|Media|Notes|CreateBook|BabyJournalPreview|Donate|DonateSuccess|BookDetail|AlbumDetail|NoteDetail|ErrorPage|ProfileSettings)\.jsx/, (route) => {
     const name = new URL(route.request().url()).pathname.split('/').pop().replace('.jsx', '');
+    if (realDashboard && name === 'Dashboard') return route.continue();
     return route.fulfill({ contentType: 'text/javascript', body: `import React from '/node_modules/.vite/deps/react.js'; export default () => React.createElement('h1', null, '${name} page');` });
   });
   if (!realAdminUsers) await page.route('**/src/pages/admin/AdminDashboard.jsx*', (route) => route.fulfill({ contentType: 'text/javascript', body: `import React from '/node_modules/.vite/deps/react.js'; export default () => React.createElement('h1', null, 'Users and resources');` }));
-  await page.route('**/api/v1/**', (route) => {
+  await page.route('**/api/v1/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     state.calls.push(path);
     const reply = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+    if (path === '/api/v1/apiKey') {
+      state.apiKeyRequests = [...(state.apiKeyRequests || []), { accountId: new URL(route.request().url()).searchParams.get('accountId'), authorization: route.request().headers().authorization, method: route.request().method() }];
+      return reply(state.apiKeyBody || { status: true, data: { accountId: new URL(route.request().url()).searchParams.get('accountId'), apiKey: `fixture-key-${new URL(route.request().url()).searchParams.get('accountId')}`, defaultDomain: 'https://example.test' } }, state.apiKeyStatus || 200);
+    }
     if (path === '/api/v1/users') {
       state.userAuthorization.push(route.request().headers().authorization);
       return reply(state.usersBody ?? { status: true, data: state.users }, state.usersStatus);
     }
-    if (path === '/api/v1/me') return state.failMe ? reply({ message: 'Workspace service unavailable' }, 503)
-      : reply({ user: { id: 'owner', systemRole: state.systemRole }, accounts: state.accounts });
-    if (path === '/api/v1/apiKey') {
-      const accountId = new URL(route.request().url()).searchParams.get('accountId');
-      state.apiKeyRequests.push({ accountId, method: route.request().method(), authorization: route.request().headers().authorization });
-      return reply(state.apiKeyBody ?? { status: true, data: { accountId, apiKey: `fixture-key-${accountId}`, defaultDomain: 'https://example.test' } }, state.apiKeyStatus);
+    if (path === '/api/v1/me') {
+      await state.meGate;
+      return state.failMe ? reply({ message: 'Workspace service unavailable' }, 503)
+        : reply({ user: { id: 'owner', systemRole: state.systemRole }, accounts: state.accounts });
     }
     if (path === '/api/v1/enterpriseOnboardingRequest' && route.request().method() === 'POST') {
       state.submittedRequest = route.request().postDataJSON();
-      return reply({ ...state.submittedRequest, id: 'submitted-request', status: 'SUBMITTED' }, 201);
+      const submitted = { ...state.submittedRequest, id: 'submitted-request', status: 'SUBMITTED' };
+      state.onboardingRequests = [submitted, ...state.onboardingRequests];
+      return reply(submitted, 201);
     }
-    if (path.endsWith('/members')) return reply([{ userId: 'owner', displayName: 'Saroj', email: 'saroj@example.test', role: 'OWNER', status: 'ACTIVE' }]);
-    if (path.endsWith('/invitations')) return reply([]);
-    if (path.includes('enterpriseOnboardingRequest')) return reply({ items: [], page: { number: 0, size: 20, totalItems: 0, totalPages: 0 } });
+    if (path.endsWith('/members')) {
+      await state.memberGate;
+      if (state.memberStatus && state.memberStatus !== 200) return reply({ message: 'Team data unavailable' }, state.memberStatus);
+      return reply(state.membersByAccount[path.split('/')[5]] || [{ userId: 'owner', displayName: 'Saroj', email: 'saroj@example.test', role: 'OWNER', status: 'ACTIVE' }]);
+    }
+    if (path === '/api/v1/enterprise/invitations') {
+      await state.receivedGate;
+      return state.receivedStatus === 200 ? reply(state.receivedInvitations)
+        : reply({ message: 'Unable to load received invitations' }, state.receivedStatus);
+    }
+    if (/\/enterprise\/invitations\/[^/]+\/(accept|decline)$/.test(path)) {
+      await state.responseGate;
+      if (state.responseStatus) return reply({ message: 'Invitation could not be updated' }, state.responseStatus);
+      state.receivedInvitations = state.receivedInvitations.filter((item) => item.invitationId !== path.split('/').at(-2));
+      if (path.endsWith('/accept')) state.accounts = [...state.accounts, enterprise];
+      return reply({});
+    }
+    if (path.endsWith('/invitations')) {
+      const status = new URL(route.request().url()).searchParams.get('status');
+      state.invitationRequests.push({ accountId: path.split('/')[5], status });
+      return reply((state.invitationsByAccount[path.split('/')[5]] || []).filter((item) => item.status === status));
+    }
+    if (path.includes('enterpriseOnboardingRequest')) return reply({ items: state.onboardingRequests, page: { number: 0, size: 20, totalItems: 0, totalPages: 0 } });
     return reply({ message: `Unhandled endpoint: ${path}` }, 500);
   });
+  if (notificationPreview) await page.route('**/src/services/collabApi.js*', (route) => route.fulfill({
+    contentType: 'text/javascript',
+    body: `export const collabApi = {listNotifications: async () => (${JSON.stringify(notificationPreview)})}; export const getCallableErrorMessage = () => 'Notification error';`,
+  }));
   await page.goto('/e2e/fixtures/workspaceSelection.html');
   return state;
 }
@@ -198,7 +227,10 @@ test('restored auth cards fit mobile and the public menu links remain usable', a
 });
 
 test('Enterprise request submission uses only canonical request APIs and does not create a workspace', async ({ page }) => {
-  const state = await fixture(page, { signedIn: true, accounts: [personal], initialRoute: '/v2/enterprise-signup' });
+  const state = await fixture(page, { signedIn: true, accounts: [personal], initialRoute: '/v2/workspaces' });
+  // Prime an empty request cache before submitting, then verify it is refreshed.
+  await expect(page.getByText('You have not submitted an Enterprise registration request.')).toBeVisible();
+  await page.getByRole('link', { name: 'Request workspace', exact: true }).click();
   await expect(page.getByLabel('Enterprise name', { exact: true })).toHaveCSS('border-radius', '6px');
   await expect(page.getByRole('button', { name: 'Submit for System Administrator approval' })).toHaveCSS('border-radius', '4px');
   await page.getByLabel('Enterprise name', { exact: true }).fill('Example Business');
@@ -220,6 +252,9 @@ test('Enterprise request submission uses only canonical request APIs and does no
   expect(state.calls).not.toContain('/api/v1/enterprise/accounts');
   expect(state.calls).not.toContain('/api/v1/enterprise/requests/mine');
   expect(state.accounts).toEqual([personal]);
+  await page.getByRole('button', { name: 'Open workspace hub' }).click();
+  await expect(page.locator('article').getByText('Example Business', { exact: true })).toBeVisible();
+  await expect(page.getByText('You have not submitted an Enterprise registration request.')).toHaveCount(0);
   expect(state.crashes).toEqual([]);
 });
 
@@ -332,39 +367,48 @@ test('Admin mobile drawer closes after navigation and can be reopened and dismis
   expect(state.crashes).toEqual([]);
 });
 
-test('Enterprise choice opens its own shell and survives refresh', async ({ page }) => {
-  const first = { ...enterprise, website: 'https://first.example.test/' };
-  const second = { ...enterprise, id: 'team-two', name: 'Second Team', slug: 'team-two', website: 'https://second.example.test/about' };
-  const state = await fixture(page, { accounts: [personal, first, second] });
-  await login(page);
-  await expect(page.getByRole('button', { name: 'Second Team', exact: true })).toHaveCSS('border-radius', '4px');
-  await page.getByRole('button', { name: 'Second Team', exact: true }).click();
-  await expect(page).toHaveURL(/\/v2\/enterprise-home\?accountId=team-two$/);
-  await expect(page.getByRole('heading', { name: 'Organization Overview' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Airabook Enterprise' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Books', exact: true })).toHaveCount(0);
-  await expect(page.getByText('Second Team · Manage your team and account access.')).toBeVisible();
-  const website = page.getByRole('link', { name: second.website, exact: true });
-  await expect(website).toBeVisible();
-  await expect(website).toHaveAttribute('href', second.website);
-  await expect(website).toHaveAttribute('target', '_blank');
-  await expect(website).toHaveAttribute('rel', 'noopener noreferrer');
-  await expect(page.getByRole('link', { name: first.website, exact: true })).toHaveCount(0);
-  await page.reload();
-  await expect(page.getByText('Second Team · Manage your team and account access.')).toBeVisible();
-  await expect(website).toBeVisible();
-  expect(state.calls).toContain('/api/v1/enterprise/accounts/team-two/members');
-  await page.getByRole('button', { name: 'Switch workspace', exact: true }).click();
-  await page.getByRole('menuitemradio', { name: first.name, exact: true }).click();
-  await expect(page.getByRole('link', { name: first.website, exact: true })).toBeVisible();
-  await expect(website).toHaveCount(0);
+for (const [path, heading] of [['/dashboard', 'Dashboard page'], ['/books', 'Books page'], ['/media', 'Media page']]) {
+  test(`Personal ${path} loads and refreshes without a workspace-access gate`, async ({ page }) => {
+    const state = await fixture(page, { signedIn: true, initialRoute: path, preference: personal.id, failMe: true });
+    await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+    await expect(page.getByText('Loading workspace access…', { exact: true })).toHaveCount(0);
+    expect(state.calls).not.toContain('/api/v1/me');
+    await page.reload();
+    await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+    await expect(page.getByText('Loading workspace access…', { exact: true })).toHaveCount(0);
+    expect(state.calls).not.toContain('/api/v1/me');
+    expect(state.crashes).toEqual([]);
+  });
+}
+
+test('switching from Enterprise to Personal does not repeat access validation after selection', async ({ page }) => {
+  const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home?accountId=team-one' });
+  await expect(page.getByRole('navigation', { name: 'Enterprise navigation' })).toBeVisible();
+  await openProfileWorkspaces(page);
+  let selectionRequests = 0;
+  await page.route('**/api/v1/me', (route) => {
+    selectionRequests += 1;
+    return route.fulfill({
+      status: selectionRequests === 1 ? 200 : 503,
+      contentType: 'application/json',
+      body: JSON.stringify(selectionRequests === 1
+        ? { user: { id: 'owner', systemRole: 'USER' }, accounts: [personal, enterprise] }
+        : { message: 'Workspace service unavailable' }),
+    });
+  });
+  await page.getByRole('menuitemradio', { name: 'Personal account' }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page.getByRole('heading', { name: 'Dashboard page' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Personal navigation' })).toBeVisible();
+  await expect(page.getByText('Loading workspace access…', { exact: true })).toHaveCount(0);
+  expect(selectionRequests).toBe(1);
   expect(state.crashes).toEqual([]);
 });
 
 test('Enterprise website remains visible and wraps on mobile', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const website = `https://enterprise.example.test/${'organization-details/'.repeat(6)}`;
-  const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home?accountId=team-one',
+  const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home/administration?accountId=team-one',
     accounts: [personal, { ...enterprise, website }] });
   const link = page.getByRole('link', { name: website, exact: true });
   await expect(link).toBeVisible();
@@ -378,7 +422,7 @@ test('Enterprise website remains visible and wraps on mobile', async ({ page }) 
 
 for (const website of [null, 'javascript:alert(1)']) {
   test(`Enterprise overview handles an unavailable website (${website})`, async ({ page }) => {
-    const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home?accountId=team-one',
+    const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home/administration?accountId=team-one',
       accounts: [personal, { ...enterprise, website }] });
     await expect(page.getByText('Airabook Team · Manage your team and account access.')).toBeVisible();
     await expect(page.getByText('Website:', { exact: true })).toHaveCount(0);
@@ -390,7 +434,7 @@ test('Enterprise owner can view and copy the API key in a compact dialog', async
   await page.addInitScript(() => Object.defineProperty(navigator, 'clipboard', {
     configurable: true, value: { writeText: async (value) => { window.copiedApiKey = value; } },
   }));
-  const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home?accountId=team-one' });
+  const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home/administration?accountId=team-one' });
   const trigger = page.getByRole('button', { name: 'Get API key', exact: true });
   await expect(trigger).toBeVisible();
   expect(state.apiKeyRequests).toEqual([]);
@@ -424,7 +468,7 @@ test('Enterprise owner can view and copy the API key in a compact dialog', async
 
 test('Enterprise API key ignores a late response after switching workspaces', async ({ page }) => {
   const second = { ...enterprise, id: 'team-two', name: 'Second Team', slug: 'team-two' };
-  const state = await fixture(page, { signedIn: true, accounts: [personal, enterprise, second], initialRoute: '/v2/enterprise-home?accountId=team-one' });
+  const state = await fixture(page, { signedIn: true, accounts: [personal, enterprise, second], initialRoute: '/v2/enterprise-home/administration?accountId=team-one' });
   let firstRequest;
   await page.route((url) => url.pathname === '/api/v1/apiKey' && url.searchParams.get('accountId') === 'team-one',
     (route) => { firstRequest = route; });
@@ -434,6 +478,7 @@ test('Enterprise API key ignores a late response after switching workspaces', as
   await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('button', { name: 'Switch workspace', exact: true }).click();
   await page.getByRole('menuitemradio', { name: 'Second Team', exact: true }).click();
+  await page.getByRole('link', { name: 'Administration', exact: true }).click();
   await expect(page.getByText('Second Team · Manage your team and account access.')).toBeVisible();
   await page.getByRole('button', { name: 'Get API key', exact: true }).click();
   const field = page.getByRole('dialog').getByLabel('API key', { exact: true });
@@ -446,7 +491,7 @@ test('Enterprise API key ignores a late response after switching workspaces', as
 
 for (const [status, message] of [[404, 'No API key is available'], [403, 'do not have permission'], [503, 'Service unavailable']]) {
   test(`Enterprise API key handles HTTP ${status} and retries`, async ({ page }) => {
-    const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home?accountId=team-one' });
+    const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home/administration?accountId=team-one' });
     state.apiKeyStatus = status;
     state.apiKeyBody = { message: 'Service unavailable' };
     await page.getByRole('button', { name: 'Get API key', exact: true }).click();
@@ -467,7 +512,7 @@ test('Enterprise API key offers manual copying when clipboard access fails', asy
   await page.addInitScript(() => Object.defineProperty(navigator, 'clipboard', {
     configurable: true, value: { writeText: async () => { throw new Error('Clipboard denied'); } },
   }));
-  const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home?accountId=team-one' });
+  const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home/administration?accountId=team-one' });
   await page.getByRole('button', { name: 'Get API key', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: 'Copy key', exact: true }).click();
@@ -479,7 +524,7 @@ test('Enterprise API key offers manual copying when clipboard access fails', asy
 
 for (const role of ['ADMIN', 'MEMBER']) {
   test(`Enterprise ${role} cannot open the API key dialog`, async ({ page }) => {
-    const state = await fixture(page, { signedIn: true, accounts: [personal, { ...enterprise, role }], initialRoute: '/v2/enterprise-home?accountId=team-one' });
+    const state = await fixture(page, { signedIn: true, accounts: [personal, { ...enterprise, role }], initialRoute: '/v2/enterprise-home/administration?accountId=team-one' });
     await expect(page.getByText('Airabook Team · Manage your team and account access.')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Get API key', exact: true })).toHaveCount(0);
     expect(state.apiKeyRequests).toEqual([]);
@@ -487,17 +532,412 @@ for (const role of ['ADMIN', 'MEMBER']) {
 }
 
 test('System Admin can retrieve an API key from an Enterprise workspace', async ({ page }) => {
-  await fixture(page, { signedIn: true, systemRole: 'SYSTEM_ADMIN', accounts: [personal, { ...enterprise, role: 'MEMBER' }], initialRoute: '/v2/enterprise-home?accountId=team-one' });
+  await fixture(page, { signedIn: true, systemRole: 'SYSTEM_ADMIN', accounts: [personal, { ...enterprise, role: 'MEMBER' }], initialRoute: '/v2/enterprise-home/administration?accountId=team-one' });
   await page.getByRole('button', { name: 'Get API key', exact: true }).click();
   await expect(page.getByRole('dialog').getByLabel('API key', { exact: true })).toHaveValue('fixture-key-team-one');
 });
 
 test('Enterprise API key rejects a response for a different account', async ({ page }) => {
-  const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home?accountId=team-one' });
+  const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home/administration?accountId=team-one' });
   state.apiKeyBody = { status: true, data: { accountId: 'other-account', apiKey: 'wrong-workspace-key' } };
   await page.getByRole('button', { name: 'Get API key', exact: true }).click();
   await expect(page.getByRole('dialog').getByRole('alert')).toContainText('Unable to read the API key for this workspace');
   await expect(page.getByLabel('API key', { exact: true })).toHaveCount(0);
+  expect(state.crashes).toEqual([]);
+});
+
+test('existing API key dialog loads on click, copies, and fetches fresh after closing', async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (value) => { window.copiedTestKey = value; } } }));
+  const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home/administration?accountId=team-one' });
+  await expect(page.getByRole('button', { name: 'Get API key' })).toBeVisible();
+  expect(state.apiKeyRequests || []).toHaveLength(0);
+  await page.getByRole('button', { name: 'Get API key' }).click();
+  const field = page.getByLabel('API key', { exact: true });
+  await expect(field).toHaveValue('fixture-key-team-one');
+  await page.getByRole('button', { name: 'Copy key' }).click();
+  await expect(page.getByText('API key copied to clipboard.', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.copiedTestKey)).toBe('fixture-key-team-one');
+  expect(state.apiKeyRequests).toEqual([{ accountId: 'team-one', authorization: 'Bearer fixture-token', method: 'GET' }]);
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(field).toHaveCount(0);
+  state.apiKeyBody = { status: true, data: { accountId: 'team-one', apiKey: 'test-only-fresh-key' } };
+  await page.getByRole('button', { name: 'Get API key' }).click();
+  await expect(field).toHaveValue('test-only-fresh-key');
+  expect(state.apiKeyRequests).toHaveLength(2);
+  expect(state.crashes).toEqual([]);
+});
+
+for (const [role, systemRole, visible] of [['ADMIN', 'USER', false], ['MEMBER', 'USER', false], ['MEMBER', 'SYSTEM_ADMIN', true]]) {
+  test(`API key visibility follows backend permissions for ${role}/${systemRole}`, async ({ page }) => {
+    const state = await fixture(page, { signedIn: true, systemRole, accounts: [personal, { ...enterprise, role }], initialRoute: '/v2/enterprise-home/administration?accountId=team-one' });
+    await expect(page.getByRole('heading', { name: 'Organization Overview' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Get API key' })).toHaveCount(visible ? 1 : 0);
+    expect(state.apiKeyRequests || []).toHaveLength(0);
+    expect(state.crashes).toEqual([]);
+  });
+}
+
+for (const status of [403, 404]) {
+  test(`API key HTTP ${status} shows an error and can retry`, async ({ page }) => {
+    const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home/administration?accountId=team-one' });
+    state.apiKeyStatus = status;
+    state.apiKeyBody = { message: 'Workspace owner permission is required to view API keys' };
+    await page.getByRole('button', { name: 'Get API key' }).click();
+    await expect(page.getByRole('dialog').getByRole('alert')).toContainText(status === 404 ? 'No API key is available' : 'do not have permission');
+    await expect(page.getByLabel('API key', { exact: true })).toHaveCount(0);
+    state.apiKeyStatus = 200;
+    state.apiKeyBody = { status: true, data: { accountId: 'team-one', apiKey: 'test-only-recovered-key' } };
+    await page.getByRole('button', { name: 'Try again', exact: true }).click();
+    await expect(page.getByLabel('API key', { exact: true })).toHaveValue('test-only-recovered-key');
+    expect(state.crashes).toEqual([]);
+  });
+}
+
+test('API key dialog rejects a response belonging to another workspace', async ({ page }) => {
+  const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home/administration?accountId=team-one' });
+  state.apiKeyBody = { status: true, data: { accountId: 'team-two', apiKey: 'wrong-workspace-test-key' } };
+  await page.getByRole('button', { name: 'Get API key' }).click();
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('Unable to read');
+  await expect(page.getByLabel('API key', { exact: true })).toHaveCount(0);
+  expect(state.crashes).toEqual([]);
+});
+
+test('Administration preloads on the dashboard, deduplicates an in-flight fetch, and reuses fresh data', async ({ page }) => {
+  let release;
+  const meGate = new Promise((resolve) => { release = resolve; });
+  const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home?accountId=team-one', meGate });
+  let releaseMembers;
+  state.memberGate = new Promise((resolve) => { releaseMembers = resolve; });
+  const memberPath = '/api/v1/enterprise/accounts/team-one/members';
+  release();
+  await expect(page.getByRole('heading', { name: 'Dashboard page' })).toBeVisible();
+  await expect.poll(() => state.calls.filter((call) => call === memberPath).length).toBe(1);
+  try {
+    await page.getByRole('link', { name: 'Administration', exact: true }).click();
+    await expect(page.getByText('Loading team…', { exact: true })).toBeVisible();
+    expect(state.calls.filter((call) => call === memberPath)).toHaveLength(1);
+  } finally { releaseMembers(); }
+  await expect(page.getByRole('row', { name: /Saroj \(you\)/ })).toBeVisible();
+  const count = state.calls.length;
+  for (let visit = 0; visit < 2; visit += 1) {
+    await page.getByRole('link', { name: 'Dashboard', exact: true }).click();
+    await page.getByRole('link', { name: 'Administration', exact: true }).click();
+    await expect(page.getByRole('row', { name: /Saroj \(you\)/ })).toBeVisible();
+    await expect(page.getByText('Loading administration…', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Loading team…', { exact: true })).toHaveCount(0);
+  }
+  expect(state.calls).toHaveLength(count);
+  expect(state.crashes).toEqual([]);
+});
+
+test('Administration keeps organization caches separate when switching back and forth', async ({ page }) => {
+  let release;
+  const meGate = new Promise((resolve) => { release = resolve; });
+  const second = { ...enterprise, id: 'team-two', name: 'Second Team' };
+  const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home?accountId=team-one', accounts: [personal, enterprise, second], meGate });
+  state.membersByAccount = {
+    'team-one': [{ userId: 'one', displayName: 'First Organization Member', role: 'MEMBER', status: 'ACTIVE' }],
+    'team-two': [{ userId: 'two', displayName: 'Second Organization Member', role: 'MEMBER', status: 'ACTIVE' }],
+  };
+  release();
+  await page.getByRole('link', { name: 'Administration', exact: true }).click();
+  await expect(page.getByText('First Organization Member', { exact: true })).toBeVisible();
+  await openProfileWorkspaces(page);
+  await page.getByRole('menuitemradio', { name: 'Second Team' }).click();
+  await page.getByRole('link', { name: 'Administration', exact: true }).click();
+  await expect(page.getByText('Second Organization Member', { exact: true })).toBeVisible();
+  await expect(page.getByText('First Organization Member', { exact: true })).toHaveCount(0);
+  await openProfileWorkspaces(page);
+  await page.getByRole('menuitemradio', { name: 'Airabook Team' }).click();
+  await page.getByRole('link', { name: 'Administration', exact: true }).click();
+  await expect(page.getByText('First Organization Member', { exact: true })).toBeVisible();
+  await expect(page.getByText('Second Organization Member', { exact: true })).toHaveCount(0);
+  expect(state.calls.filter((call) => call.endsWith('/members'))).toHaveLength(2);
+  expect(state.crashes).toEqual([]);
+});
+
+test('Administration manual refresh updates cached data without hiding the existing team', async ({ page }) => {
+  const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home/administration?accountId=team-one' });
+  await expect(page.getByRole('row', { name: /Saroj \(you\)/ })).toBeVisible();
+  state.membersByAccount['team-one'] = [{ userId: 'new', displayName: 'Updated Member', role: 'MEMBER', status: 'ACTIVE' }];
+  let release;
+  state.memberGate = new Promise((resolve) => { release = resolve; });
+  await page.getByRole('button', { name: 'Refresh team' }).click();
+  try {
+    await expect(page.getByText('Updating team…', { exact: true })).toBeVisible();
+    await expect(page.getByRole('row', { name: /Saroj \(you\)/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Refresh team' })).toBeDisabled();
+  } finally { release(); }
+  await expect(page.getByText('Updated Member', { exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'Dashboard', exact: true }).click();
+  await page.getByRole('link', { name: 'Administration', exact: true }).click();
+  await expect(page.getByText('Updated Member', { exact: true })).toBeVisible();
+  expect(state.calls.filter((call) => call.endsWith('/members'))).toHaveLength(2);
+  expect(state.crashes).toEqual([]);
+});
+
+test('failed Administration prefetch leaves the dashboard usable and supports retry on entry', async ({ page }) => {
+  let release;
+  const meGate = new Promise((resolve) => { release = resolve; });
+  const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home?accountId=team-one', meGate });
+  state.memberStatus = 503;
+  release();
+  await expect.poll(() => state.calls.some((call) => call.endsWith('/members'))).toBe(true);
+  await expect(page.getByRole('heading', { name: 'Dashboard page' })).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await page.getByRole('link', { name: 'Administration', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Team data unavailable');
+  state.memberStatus = 200;
+  await page.getByRole('button', { name: 'Retry team data' }).click();
+  await expect(page.getByRole('row', { name: /Saroj \(you\)/ })).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  expect(state.crashes).toEqual([]);
+});
+
+test('access-denied team responses hide cached rows and privileged controls', async ({ page }) => {
+  const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home/administration?accountId=team-one' });
+  await expect(page.getByRole('row', { name: /Saroj \(you\)/ })).toBeVisible();
+  state.memberStatus = 403;
+  await page.getByRole('button', { name: 'Refresh team' }).click();
+  await expect(page.getByRole('alert')).toContainText('Team data unavailable');
+  await expect(page.getByRole('row', { name: /Saroj \(you\)/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Invite user', exact: true })).toHaveCount(0);
+  state.memberStatus = 200;
+  await page.getByRole('button', { name: 'Retry team data' }).click();
+  await expect(page.getByRole('row', { name: /Saroj \(you\)/ })).toBeVisible();
+  expect(state.crashes).toEqual([]);
+});
+
+test('Administration caches invitation filters separately and removes privileged data after demotion', async ({ page }) => {
+  let release;
+  const meGate = new Promise((resolve) => { release = resolve; });
+  const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home/administration?accountId=team-one', meGate });
+  state.invitationsByAccount['team-one'] = [
+    { invitationId: 'pending', invitedUserDisplayName: 'Pending Person', role: 'MEMBER', status: 'PENDING' },
+    { invitationId: 'accepted', invitedUserDisplayName: 'Accepted Person', role: 'MEMBER', status: 'ACCEPTED' },
+  ];
+  release();
+  await expect(page.getByText('Pending Person', { exact: true })).toBeVisible();
+  await page.getByLabel('Invitation status').selectOption('ACCEPTED');
+  await expect(page.getByText('Accepted Person', { exact: true })).toBeVisible();
+  await page.getByLabel('Invitation status').selectOption('PENDING');
+  await expect(page.getByText('Pending Person', { exact: true })).toBeVisible();
+  expect(state.invitationRequests).toHaveLength(2);
+  state.accounts = [personal, { ...enterprise, role: 'MEMBER' }];
+  await page.getByRole('button', { name: 'Refresh team' }).click();
+  await expect(page.getByText('Pending Person', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Invite user', exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Invitation status')).toHaveCount(0);
+  await page.getByRole('link', { name: 'Dashboard', exact: true }).click();
+  await page.getByRole('link', { name: 'Administration', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Invite user', exact: true })).toHaveCount(0);
+  expect(state.invitationRequests).toHaveLength(2);
+  expect(state.crashes).toEqual([]);
+});
+
+test('Administration clears its cache on sign-out, even when the same user signs in again', async ({ page }) => {
+  const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home/administration?accountId=team-one' });
+  await expect(page.getByRole('row', { name: /Saroj \(you\)/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Open profile menu' }).click();
+  await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
+  state.membersByAccount['team-one'] = [{ userId: 'after', displayName: 'New Session Member', role: 'MEMBER', status: 'ACTIVE' }];
+  await login(page);
+  await page.getByRole('button', { name: 'Airabook Team', exact: true }).click();
+  await page.getByRole('link', { name: 'Administration', exact: true }).click();
+  await expect(page.getByText('New Session Member', { exact: true })).toBeVisible();
+  await expect(page.getByRole('row', { name: /Saroj \(you\)/ })).toHaveCount(0);
+  expect(state.calls.filter((call) => call.endsWith('/members'))).toHaveLength(2);
+  expect(state.crashes).toEqual([]);
+});
+
+test('Administration isolates query observers when the authenticated user changes directly', async ({ page }) => {
+  const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home/administration?accountId=team-one' });
+  await expect(page.getByRole('row', { name: /Saroj \(you\)/ })).toBeVisible();
+  state.membersByAccount['team-one'] = [{ userId: 'second-session', displayName: 'Second User Team Data', role: 'MEMBER', status: 'ACTIVE' }];
+  await page.evaluate(() => window.fixtureSwitchUser('second-fixture-user'));
+  await expect(page.getByText('Second User Team Data', { exact: true })).toBeVisible();
+  await expect(page.getByRole('row', { name: /Saroj \(you\)/ })).toHaveCount(0);
+  await page.getByRole('link', { name: 'Dashboard', exact: true }).click();
+  await page.getByRole('link', { name: 'Administration', exact: true }).click();
+  await expect(page.getByText('Second User Team Data', { exact: true })).toBeVisible();
+  expect(state.calls.filter((call) => call.endsWith('/members'))).toHaveLength(2);
+  expect(state.crashes).toEqual([]);
+});
+
+test('Administration shows stale cached rows while revalidating in the background', async ({ page }) => {
+  await page.clock.install();
+  const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home/administration?accountId=team-one' });
+  await expect(page.getByRole('row', { name: /Saroj \(you\)/ })).toBeVisible();
+  await page.getByRole('link', { name: 'Dashboard', exact: true }).click();
+  state.membersByAccount['team-one'] = [{ userId: 'fresh', displayName: 'Fresh Member', role: 'MEMBER', status: 'ACTIVE' }];
+  let release;
+  state.memberGate = new Promise((resolve) => { release = resolve; });
+  await page.clock.fastForward(61_000);
+  await page.getByRole('link', { name: 'Administration', exact: true }).click();
+  try {
+    await expect(page.getByRole('row', { name: /Saroj \(you\)/ })).toBeVisible();
+    await expect(page.getByText('Loading team…', { exact: true })).toHaveCount(0);
+    await expect.poll(() => state.calls.filter((call) => call.endsWith('/members')).length).toBe(2);
+  } finally { release(); }
+  await expect(page.getByText('Fresh Member', { exact: true })).toBeVisible();
+  expect(state.crashes).toEqual([]);
+});
+
+test('Enterprise choice opens the shared dashboard and Administration survives refresh', async ({ page }) => {
+  const second = { ...enterprise, id: 'team-two', name: 'Second Team', slug: 'team-two' };
+  const state = await fixture(page, { accounts: [personal, enterprise, second] });
+  await login(page);
+  await expect(page.getByRole('button', { name: 'Second Team', exact: true })).toHaveCSS('border-radius', '4px');
+  await page.getByRole('button', { name: 'Second Team', exact: true }).click();
+  await expect(page).toHaveURL(/\/v2\/enterprise-home\?accountId=team-two$/);
+  await expect(page.getByRole('heading', { name: 'Dashboard page' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Airabook Enterprise home' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Books', exact: true })).toBeVisible();
+  await expect.poll(() => state.calls.includes('/api/v1/enterprise/accounts/team-two/members')).toBe(true);
+  await page.getByRole('link', { name: 'Administration', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Organization Overview' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Dashboard', exact: true })).not.toHaveAttribute('aria-current', 'page');
+  await expect(page.getByText('Second Team · Manage your team and account access.')).toBeVisible();
+  await page.reload();
+  await expect(page.getByText('Second Team · Manage your team and account access.')).toBeVisible();
+  expect(state.calls).toContain('/api/v1/enterprise/accounts/team-two/members');
+  expect(state.crashes).toEqual([]);
+});
+
+test('Enterprise shares the creation landing page and content navigation, Personal has no Administration', async ({ page }) => {
+  const state = await fixture(page, { signedIn: true, initialRoute: '/dashboard', realDashboard: true, withBooks: true });
+  await expect(page.getByRole('heading', { name: 'What do you want to create?' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Administration', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Switch workspace', exact: true }).click();
+  await page.getByRole('menuitemradio', { name: 'Airabook Team' }).click();
+  await expect(page.getByRole('heading', { name: 'What do you want to create?' })).toBeVisible();
+  const nav = page.getByRole('navigation', { name: 'Enterprise navigation' });
+  await expect(nav).toBeVisible();
+  await expect(nav.getByRole('link', { name: 'Dashboard', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(nav.getByRole('link', { name: 'Movies', exact: true })).toBeVisible();
+  await expect(nav.getByRole('link', { name: 'Asset Registry', exact: true })).toBeVisible();
+  await expect(page.getByPlaceholder('Search books, chapters, pages...')).toBeVisible();
+  await page.screenshot({ path: '/tmp/airabook-enterprise-shared-dashboard.png' });
+  await nav.getByRole('link', { name: 'Books', exact: true }).click();
+  await expect(page).toHaveURL(/\/books\?accountId=team-one$/);
+  await expect(page.getByRole('heading', { name: 'Books page' })).toBeVisible();
+  await page.reload();
+  await expect(nav).toBeVisible();
+  await expect(nav.getByRole('link', { name: 'Books', exact: true })).toHaveAttribute('aria-current', 'page');
+  await nav.getByRole('link', { name: 'Administration', exact: true }).click();
+  await expect(page).toHaveURL(/\/v2\/enterprise-home\/administration\?accountId=team-one$/);
+  await expect(page.getByRole('heading', { name: 'Organization Overview' })).toBeVisible();
+  await expect(nav.getByRole('link', { name: 'Administration', exact: true })).toHaveAttribute('aria-current', 'page');
+  await page.screenshot({ path: '/tmp/airabook-enterprise-shared-administration.png' });
+  await page.getByRole('button', { name: 'Switch workspace', exact: true }).click();
+  await page.getByRole('menuitemradio', { name: 'Personal account' }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page.getByRole('heading', { name: 'What do you want to create?' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Administration', exact: true })).toHaveCount(0);
+  expect(state.crashes).toEqual([]);
+});
+
+test('Enterprise mobile drawer opens Administration and returns to the shared dashboard', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home?accountId=team-one' });
+  await page.getByRole('button', { name: 'Open enterprise navigation' }).click();
+  await page.getByRole('link', { name: 'Administration', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Organization Overview' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Close enterprise navigation' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Open enterprise navigation' }).click();
+  await expect(page.getByRole('link', { name: 'Administration', exact: true })).toHaveAttribute('aria-current', 'page');
+  await page.screenshot({ path: '/tmp/airabook-enterprise-shared-mobile.png' });
+  await page.getByRole('link', { name: 'Dashboard', exact: true }).click();
+  await expect(page).toHaveURL(/\/v2\/enterprise-home\?accountId=team-one$/);
+  await expect(page.getByRole('heading', { name: 'Dashboard page' })).toBeVisible();
+  expect(state.crashes).toEqual([]);
+});
+
+test('Enterprise context survives page actions without account query parameters', async ({ page }) => {
+  const state = await fixture(page, { signedIn: true, initialRoute: '/books?accountId=team-one' });
+  await expect(page.getByRole('navigation', { name: 'Enterprise navigation' })).toBeVisible();
+  await page.getByRole('button', { name: 'Open profile menu' }).click();
+  await page.getByRole('menuitem', { name: 'Profile Settings' }).click();
+  await expect(page).toHaveURL(/\/settings\?accountId=team-one$/);
+  // Simulate an existing page's ordinary absolute navigation through browser history.
+  await page.evaluate(() => {
+    history.pushState({}, '', '/book/example?chapter=chapter-one#saved');
+    dispatchEvent(new PopStateEvent('popstate'));
+  });
+  await expect(page).toHaveURL(/\/book\/example\?chapter=chapter-one&accountId=team-one#saved$/);
+  await expect(page.getByRole('navigation', { name: 'Enterprise navigation' })).toBeVisible();
+  await openProfileWorkspaces(page);
+  await expect(page.getByRole('menuitemradio', { name: 'Airabook Team' })).toHaveAttribute('aria-checked', 'true');
+  expect(state.crashes).toEqual([]);
+});
+
+for (const [path, heading] of [
+  ['/v2/enterprise-home', 'What do you want to create?'],
+  ['/books', 'Books page'], ['/movies', 'Movies page'], ['/media', 'Media page'],
+]) {
+  test(`Enterprise ${path} renders before workspace validation on entry and refresh`, async ({ page }) => {
+    let release;
+    const meGate = new Promise((resolve) => { release = resolve; });
+    const state = await fixture(page, {
+      signedIn: true, initialRoute: `${path}?accountId=team-one`, meGate,
+      realDashboard: path === '/v2/enterprise-home', withBooks: true,
+    });
+    try {
+      await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+      await expect(page.getByText('Loading workspace access…', { exact: true })).toHaveCount(0);
+      await expect(page.getByText('Personal workspace', { exact: true })).toHaveCount(0);
+      const nav = page.getByRole('navigation', { name: 'Enterprise navigation' });
+      await expect(nav).toBeVisible();
+      await expect(nav.getByRole('link', { name: 'Books', exact: true })).toHaveAttribute('href', '/books?accountId=team-one');
+      await expect(nav.getByRole('link', { name: 'Administration', exact: true })).toBeVisible();
+      if (path === '/v2/enterprise-home') await page.screenshot({ path: '/tmp/airabook-enterprise-immediate-dashboard.png' });
+      await page.reload();
+      await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+      await expect(nav).toBeVisible();
+      await expect(page.getByText('Loading workspace access…', { exact: true })).toHaveCount(0);
+      expect(state.calls.filter((call) => call === '/api/v1/me').length).toBeGreaterThan(0);
+    } finally { release(); }
+    await expect(page.getByText('Airabook Team', { exact: true })).toBeVisible();
+    expect(state.crashes).toEqual([]);
+  });
+}
+
+test('Administration waits for validated access while common navigation remains visible', async ({ page }) => {
+  let release;
+  const meGate = new Promise((resolve) => { release = resolve; });
+  const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home/administration?accountId=team-one', meGate });
+  try {
+    await expect(page.getByText('Loading administration…', { exact: true })).toBeVisible();
+    await expect(page.getByRole('navigation', { name: 'Enterprise navigation' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Invite user', exact: true })).toHaveCount(0);
+    expect(state.calls.some((call) => call.endsWith('/members'))).toBe(false);
+  } finally { release(); }
+  await expect(page.getByRole('heading', { name: 'Organization Overview' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Invite user', exact: true })).toBeVisible();
+  expect(state.crashes).toEqual([]);
+});
+
+test('Enterprise shared-page access errors keep content visible and support retry', async ({ page }) => {
+  const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home?accountId=team-one', failMe: true });
+  await expect(page.getByRole('navigation', { name: 'Enterprise navigation' })).toBeVisible();
+  state.failMe = true;
+  await page.getByRole('link', { name: 'Books', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Workspace service unavailable');
+  await expect(page.getByPlaceholder('Search books, chapters, pages...')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Books page' })).toBeVisible();
+  state.failMe = false;
+  await page.getByRole('button', { name: 'Retry workspace access' }).click();
+  await expect(page.getByRole('heading', { name: 'Books page' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Enterprise navigation' })).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  expect(state.crashes).toEqual([]);
+});
+
+test('unauthorized Enterprise account on shared content returns to the chooser', async ({ page }) => {
+  const state = await fixture(page, { signedIn: true, initialRoute: '/books?accountId=removed-team', preference: enterprise.id });
+  await expect(page.getByRole('heading', { name: 'Choose a workspace' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Books page' })).toHaveCount(0);
   expect(state.crashes).toEqual([]);
 });
 
@@ -686,7 +1126,8 @@ test('profile menu switches directly across Personal, Enterprise, and System Adm
   await expect(page.getByRole('menuitemradio', { name: 'Personal account' })).toHaveAttribute('aria-checked', 'true');
   await page.getByRole('menuitemradio', { name: 'Airabook Team' }).click();
   await expect(page).toHaveURL(/enterprise-home\?accountId=team-one$/);
-  await expect(page.getByText('Airabook Team · Manage your team and account access.')).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Enterprise navigation' })).toBeVisible();
+  await expect(page.getByText('Airabook Team', { exact: true })).toBeVisible();
   await openProfileWorkspaces(page);
   await expect(page.getByRole('menuitemradio', { name: 'Airabook Team' })).toHaveAttribute('aria-checked', 'true');
   await expect(page.getByRole('menuitemradio', { name: 'Personal account' })).toHaveAttribute('aria-checked', 'false');
@@ -704,16 +1145,18 @@ test('profile menu switches directly across Personal, Enterprise, and System Adm
 test('Enterprise profile switches organizations and persists the exact account', async ({ page }) => {
   const second = { ...enterprise, id: 'team-two', name: 'Second Team', slug: 'team-two' };
   const state = await fixture(page, { signedIn: true, initialRoute: '/v2/enterprise-home?accountId=team-one', accounts: [personal, enterprise, second] });
-  await expect(page.getByText('Airabook Team · Manage your team and account access.')).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Enterprise navigation' })).toBeVisible();
+  await expect(page.getByText('Airabook Team', { exact: true })).toBeVisible();
   await expect(page.locator('header').getByRole('button', { name: 'Switch workspace', exact: true })).toHaveCount(0);
   await openProfileWorkspaces(page);
   await page.getByRole('menuitemradio', { name: 'Second Team' }).click();
-  await expect(page.getByText('Second Team · Manage your team and account access.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Dashboard page' })).toBeVisible();
+  await expect(page.getByText('Second Team', { exact: true })).toBeVisible();
   await expect(page).toHaveURL(/accountId=team-two$/);
   expect(await page.evaluate(() => localStorage.getItem('airabook:selected-workspace:fixture-user'))).toBe('team-two');
   await openProfileWorkspaces(page);
   await expect(page.getByRole('menuitemradio', { name: 'Second Team' })).toHaveAttribute('aria-checked', 'true');
-  expect(state.calls).toContain('/api/v1/enterprise/accounts/team-two/members');
+  await expect.poll(() => state.calls.includes('/api/v1/enterprise/accounts/team-two/members')).toBe(true);
   expect(state.crashes).toEqual([]);
 });
 
@@ -844,3 +1287,166 @@ for (const [mode, initialRoute] of [['Personal', '/dashboard'], ['Enterprise', '
     expect(state.crashes).toEqual([]);
   });
 }
+
+for (const mobile of [false, true]) {
+  test(`Enterprise request status appears in the ${mobile ? 'mobile' : 'desktop'} notification bell`, async ({ page }) => {
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    const state = await fixture(page, {
+      signedIn: true, initialRoute: '/dashboard', realDashboard: true,
+      onboardingRequests: [{ id: 'request-one', proposedAccountName: 'SK Travels', status: 'APPROVED' }],
+      notificationPreview: { notifications: [{ id: 'book-invite', inviteId: 'invite-one', ownerName: 'Alex', bookTitle: 'Shared Stories' }] },
+    });
+    await expect(page.getByRole('heading', { name: 'What do you want to create?' })).toBeVisible();
+    await expect.poll(() => state.calls.filter((path) => path.endsWith('/enterpriseOnboardingRequest/mine')).length).toBe(1);
+    await expect(page.getByText('SK Travels: approved')).toHaveCount(0);
+    const bell = page.getByRole('button', { name: 'Notifications', exact: true }).filter({ visible: true });
+    await expect(bell).toHaveText('1');
+    await bell.click();
+    await expect(page.getByText('SK Travels: approved')).toBeVisible();
+    await expect(page.getByText('Shared Stories', { exact: true })).toBeVisible();
+    await bell.click();
+    await expect(page.getByText('SK Travels: approved')).toHaveCount(0);
+    await bell.click();
+    await page.getByRole('link', { name: 'View request status' }).click();
+    await expect(page).toHaveURL(/\/v2\/workspaces$/);
+    expect(state.crashes).toEqual([]);
+  });
+}
+
+for (const mobile of [false, true]) {
+  test(`Deleting an enterprise notification persists on ${mobile ? 'mobile' : 'desktop'} without affecting other users`, async ({ page }) => {
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    const requests = [{ id: 'delete-request', proposedAccountName: 'Dismissed Team', status: 'APPROVED' }];
+    const state = await fixture(page, {
+      signedIn: true, initialRoute: '/dashboard', onboardingRequests: requests,
+      notificationPreview: { notifications: [] },
+    });
+    const bell = page.getByRole('button', { name: 'Notifications', exact: true }).filter({ visible: true });
+    await expect(bell).toHaveText('1');
+    await bell.click();
+    const remove = page.getByRole('button', { name: 'Delete enterprise request notification' });
+    if (!mobile) {
+      await expect(remove).toHaveCSS('opacity', '0');
+      await page.getByText('Dismissed Team: approved').hover();
+      await expect(remove).toHaveCSS('opacity', '1');
+    }
+    await remove.click();
+    await expect(page.getByText('Dismissed Team: approved')).toHaveCount(0);
+    await expect(bell).toHaveText('');
+    await page.reload();
+    await bell.click();
+    await expect(page.getByText('No notifications', { exact: false }).filter({ visible: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'View request status' })).toHaveCount(0);
+    await page.evaluate(() => window.fixtureSwitchUser('another-user'));
+    await expect(bell).toHaveText('1');
+    await bell.click();
+    await expect(page.getByText('Dismissed Team: approved')).toBeVisible();
+    expect(state.crashes).toEqual([]);
+  });
+}
+
+const receivedInvitation = { invitationId: 'invite-one', accountName: 'Inviting Team', role: 'MEMBER' };
+const receivedPath = '/api/v1/enterprise/invitations';
+
+test('workspace hub reuses session queries and shares requests with the notification', async ({ page }) => {
+  const state = await fixture(page, { signedIn: true, accounts: [personal], initialRoute: '/v2/workspaces',
+    onboardingRequests: [{ id: 'request-one', proposedAccountName: 'Requested Team', requestedSlug: 'requested', status: 'SUBMITTED' }],
+    receivedInvitations: [receivedInvitation],
+  });
+  await expect(page.getByText('Inviting Team', { exact: true })).toBeVisible();
+  await expect(page.getByText('Requested Team', { exact: true }).last()).toBeVisible();
+  const reads = state.calls.filter((path) => path === receivedPath || path.includes('enterpriseOnboarding') || path === '/api/v1/me');
+  await page.getByRole('link', { name: '← Dashboard' }).click();
+  await page.locator('aside').getByRole('link', { name: 'Invitations & requests' }).click();
+  await expect(page.getByText('Inviting Team', { exact: true })).toBeVisible();
+  expect(state.calls.filter((path) => reads.includes(path))).toEqual(reads);
+  expect(reads.filter((path) => path.includes('enterpriseOnboarding'))).toHaveLength(1);
+  expect(state.crashes).toEqual([]);
+});
+
+for (const action of ['Accept', 'Decline']) {
+  test(`workspace hub ${action} refreshes invitations and workspace access without hiding content`, async ({ page }) => {
+    const state = await fixture(page, { signedIn: true, accounts: [personal], initialRoute: '/v2/workspaces', receivedInvitations: [receivedInvitation] });
+    await expect(page.getByText('Inviting Team', { exact: true })).toBeVisible();
+    let release;
+    state.responseGate = new Promise((resolve) => { release = resolve; });
+    await page.getByRole('button', { name: action, exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Accept', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Decline', exact: true })).toBeDisabled();
+    await expect(page.getByText('My Personal Workspace', { exact: true })).toBeVisible();
+    release();
+    await expect(page.getByText('No pending workspace invitations.')).toBeVisible();
+    if (action === 'Accept') await expect(page.locator('article').getByText('Airabook Team', { exact: true })).toBeVisible();
+    expect(state.calls.filter((path) => path.endsWith('/' + action.toLowerCase()))).toHaveLength(1);
+    expect(state.calls.filter((path) => path === receivedPath)).toHaveLength(2);
+    expect(state.calls.filter((path) => path === '/api/v1/me')).toHaveLength(2);
+    expect(state.crashes).toEqual([]);
+  });
+}
+
+test('workspace hub failed invitations can retry while other sections remain usable', async ({ page }) => {
+  const state = await fixture(page, { signedIn: true, accounts: [personal], initialRoute: '/v2/workspaces', receivedStatus: 503 });
+  await expect(page.getByRole('alert')).toContainText('Unable to load received invitations');
+  await expect(page.getByText('No pending workspace invitations.')).toHaveCount(0);
+  await expect(page.getByText('My Personal Workspace', { exact: true })).toBeVisible();
+  state.receivedStatus = 200;
+  state.receivedInvitations = [receivedInvitation];
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect(page.getByText('Inviting Team', { exact: true })).toBeVisible();
+  expect(state.crashes).toEqual([]);
+});
+
+for (const status of [409, 503]) {
+  test(`workspace hub invitation HTTP ${status} preserves retryable actions`, async ({ page }) => {
+    const state = await fixture(page, { signedIn: true, accounts: [personal], initialRoute: '/v2/workspaces', receivedInvitations: [receivedInvitation] });
+    await expect(page.getByText('Inviting Team', { exact: true })).toBeVisible();
+    state.responseStatus = status;
+    if (status === 409) state.receivedInvitations = [];
+    await page.getByRole('button', { name: 'Accept', exact: true }).click();
+    if (status === 409) await expect(page.getByText('No pending workspace invitations.')).toBeVisible();
+    else {
+      await expect(page.getByRole('button', { name: 'Accept', exact: true })).toBeEnabled();
+      state.responseStatus = null;
+      await page.getByRole('button', { name: 'Decline', exact: true }).click();
+      await expect(page.getByText('No pending workspace invitations.')).toBeVisible();
+    }
+    expect(state.crashes).toEqual([]);
+  });
+}
+
+for (const receivedStatus of [200, 503, 403]) {
+  test(`workspace hub stale refresh HTTP ${receivedStatus} handles cached invitations`, async ({ page }) => {
+    await page.clock.install();
+    const state = await fixture(page, { signedIn: true, accounts: [personal], initialRoute: '/v2/workspaces', receivedInvitations: [receivedInvitation] });
+    await expect(page.getByText('Inviting Team', { exact: true })).toBeVisible();
+    await page.getByRole('link', { name: '← Dashboard' }).click();
+    state.receivedStatus = receivedStatus;
+    state.receivedInvitations = [{ ...receivedInvitation, accountName: 'Updated Invitation' }];
+    let release;
+    state.receivedGate = new Promise((resolve) => { release = resolve; });
+    await page.clock.fastForward(61_000);
+    await page.locator('aside').getByRole('link', { name: 'Invitations & requests' }).click();
+    try {
+      await expect(page.getByText('Inviting Team', { exact: true })).toBeVisible();
+      await expect(page.getByText('Loading workspace access…', { exact: true })).toHaveCount(0);
+      await expect.poll(() => state.calls.filter((path) => path === receivedPath).length).toBe(2);
+    } finally { release(); }
+    if (receivedStatus === 200) await expect(page.getByText('Updated Invitation', { exact: true })).toBeVisible();
+    else {
+      await expect(page.getByRole('alert')).toContainText('Unable to load received invitations');
+      await expect(page.getByText('Inviting Team', { exact: true })).toHaveCount(receivedStatus === 403 ? 0 : 1);
+    }
+    expect(state.crashes).toEqual([]);
+  });
+}
+
+test('workspace hub clears received invitation cache on identity change', async ({ page }) => {
+  const state = await fixture(page, { signedIn: true, accounts: [personal], initialRoute: '/v2/workspaces', receivedInvitations: [receivedInvitation] });
+  await expect(page.getByText('Inviting Team', { exact: true })).toBeVisible();
+  state.receivedInvitations = [];
+  await page.evaluate(() => window.fixtureSwitchUser('another-user'));
+  await expect(page.getByText('No pending workspace invitations.')).toBeVisible();
+  await expect(page.getByText('Inviting Team', { exact: true })).toHaveCount(0);
+  expect(state.calls.filter((path) => path === receivedPath)).toHaveLength(2);
+  expect(state.crashes).toEqual([]);
+});

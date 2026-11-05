@@ -119,7 +119,7 @@ class ApiService {
      * @param {boolean} options.includeAuth - Include Authorization header (default: true)
      * @returns {Promise<any>} Response data
      */
-    async request(endpoint, { method = 'GET', body = null, headers = {}, includeAuth = true } = {}) {
+    async request(endpoint, { method = 'GET', body = null, headers = {}, includeAuth = true, signal } = {}) {
         try {
             const url = this.buildURL(endpoint);
             const requestHeaders = await this.buildHeaders(headers, includeAuth);
@@ -127,6 +127,7 @@ class ApiService {
             const config = {
                 method,
                 headers: requestHeaders,
+                signal,
             };
 
             if (body && method !== 'GET' && method !== 'HEAD') {

@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { useWorkspace } from '@/context/WorkspaceContext';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/lib/firebase';
 import { WorkspaceSwitcher } from '@/components/workspace/WorkspaceMenu';
@@ -18,6 +19,7 @@ import {
   Building2,
   Loader2,
   Users,
+  ShieldCheck,
 } from 'lucide-react';
 
 const baseSections = [
@@ -55,6 +57,10 @@ const adminSections = [
 
 const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile, mode }) => {
   const isAdmin = mode === 'admin';
+  const workspace = useWorkspace();
+  const isEnterprise = mode === 'enterprise';
+  const pathFor = workspace?.pathFor || ((path) => path);
+  const homePath = isAdmin ? '/admin/enterprise-approvals' : isEnterprise ? '/v2/enterprise-home' : '/dashboard';
   const { user, appUser, billing } = useAuth();
   const { pathname } = useLocation();
   const [usageDialogOpen, setUsageDialogOpen] = useState(false);
@@ -77,8 +83,13 @@ const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile, mode 
       sections[0].items.splice(2, 0, { name: 'Movies', icon: Clapperboard, to: '/movies', testId: 'movies-sidebar-link' });
     }
 
+    if (isEnterprise) sections.push({
+      label: 'Enterprise',
+      items: [{ name: 'Administration', icon: ShieldCheck, to: '/v2/enterprise-home/administration' }],
+    });
+
     return sections;
-  }, [hasBooks, isAdmin]);
+  }, [hasBooks, isAdmin, isEnterprise]);
 
   const openUsageDialog = async () => {
     setUsageDialogOpen(true);
@@ -102,9 +113,9 @@ const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile, mode 
   return (
     <div className="flex flex-col h-full">
       <Link
-        to={isAdmin ? '/admin/enterprise-approvals' : '/dashboard'}
+        to={pathFor(homePath)}
         onClick={onNavigate}
-        aria-label={isAdmin ? 'Airabook Admin home' : 'Airabook Personal home'}
+        aria-label={isAdmin ? 'Airabook Admin home' : isEnterprise ? 'Airabook Enterprise home' : 'Airabook Personal home'}
         className={`flex items-center gap-2 px-4 pt-4 pb-6 ${collapsed ? 'justify-center px-0' : ''}`}
       >
         <div className="sidebar-brand-mark h-9 w-9 min-w-[36px] rounded-2xl bg-app-iris text-white flex items-center justify-center text-lg font-semibold shadow-appCard overflow-hidden">
@@ -123,12 +134,12 @@ const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile, mode 
         {!collapsed && (
           <div className="flex flex-col overflow-hidden">
             <span className="text-sm font-semibold text-app-gray-900 truncate">Airabook</span>
-            <span className="text-xs text-app-gray-600 truncate">{isAdmin ? 'System Admin' : 'Personal workspace'}</span>
+            <span className="text-xs text-app-gray-600 truncate" title={workspace?.account?.name}>{isAdmin ? 'System Admin' : isEnterprise ? workspace?.account?.name || 'Enterprise workspace' : 'Personal workspace'}</span>
           </div>
         )}
       </Link>
 
-      <nav aria-label={isAdmin ? 'Platform administration' : 'Personal navigation'} className="flex-1 px-3 space-y-6 overflow-y-auto overflow-x-hidden scrollbar-hide">
+      <nav aria-label={isAdmin ? 'Platform administration' : isEnterprise ? 'Enterprise navigation' : 'Personal navigation'} className="flex-1 px-3 space-y-6 overflow-y-auto overflow-x-hidden scrollbar-hide">
         {displaySections.map((section) => (
           <div key={section.label}>
             {!collapsed && (
@@ -142,8 +153,8 @@ const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile, mode 
                 return (
                   <NavLink
                     key={item.name}
-                    to={item.to}
-                    end={isAdmin}
+                    to={pathFor(isEnterprise && item.name === 'Dashboard' ? homePath : item.to)}
+                    end={isAdmin || item.name === 'Dashboard'}
                     aria-label={item.name}
                     data-testid={item.testId}
                     className={({ isActive }) => {
@@ -173,7 +184,7 @@ const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile, mode 
 
       {/* Footer / User / Toggle */}
       <div className="p-3 border-t border-app-gray-300 space-y-2">
-        <WorkspaceSwitcher mode={mode} onSelected={onNavigate}>
+        <WorkspaceSwitcher mode={mode} account={workspace?.account} onSelected={onNavigate}>
           <button type="button" aria-label="Switch workspace" title={collapsed ? 'Switch workspace' : ''}
             className={`flex w-full items-center gap-3 px-3 py-2 text-sm text-app-gray-600 hover:bg-app-gray-50 rounded-xl transition-colors ${collapsed ? 'justify-center' : ''}`}>
             <Building2 className="h-4 w-4 min-w-[16px]" />{!collapsed && <span>Switch workspace</span>}
@@ -310,7 +321,9 @@ const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile, mode 
   );
 };
 
-const Sidebar = ({ open, onClose, mode = 'personal' }) => {
+const Sidebar = ({ open, onClose, mode: suppliedMode }) => {
+  const workspace = useWorkspace();
+  const mode = suppliedMode || workspace?.mode || 'personal';
   // Initialize from localStorage or default to false (expanded)
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -345,7 +358,7 @@ const Sidebar = ({ open, onClose, mode = 'personal' }) => {
         <div className="fixed inset-0 z-40 flex md:hidden">
           <button
             type="button"
-            aria-label={mode === 'admin' ? 'Close admin navigation' : 'Close personal navigation'}
+            aria-label={mode === 'admin' ? 'Close admin navigation' : mode === 'enterprise' ? 'Close enterprise navigation' : 'Close personal navigation'}
             className="fixed inset-0 bg-black/30"
             onClick={onClose}
           />

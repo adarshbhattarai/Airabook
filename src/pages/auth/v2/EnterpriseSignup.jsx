@@ -1,4 +1,7 @@
 import React, { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/context/AuthContext';
+import { myEnterpriseRequestsKey } from '@/services/enterpriseQueries';
 import { Card } from '@/components/ui/card';
 import { AppInput } from '@/components/ui/input';
 import { NativeSelect } from '@/components/ui/native-select';
@@ -39,6 +42,8 @@ const EnterpriseSignup = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const navigate = useNavigate();
+  const client = useQueryClient();
+  const { user } = useAuth();
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
@@ -61,6 +66,7 @@ const EnterpriseSignup = () => {
     setSubmitError('');
     try {
       const result = await submitEnterpriseOnboardingRequest(formData);
+      await client.invalidateQueries({ queryKey: myEnterpriseRequestsKey(user?.uid) });
       navigate('/v2/enterprise-request-pending', {
         replace: true,
         state: { request: result },

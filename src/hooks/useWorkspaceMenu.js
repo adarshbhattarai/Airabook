@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { workspaceAccessKey } from '@/services/enterpriseQueries';
 import { useAuth } from '@/context/AuthContext';
+import { useWorkspace } from '@/context/WorkspaceContext';
 import { getCurrentEnterpriseUser } from '@/services/enterpriseOnboardingService';
 import { getActiveWorkspaces, getPreferredWorkspaceId, getWorkspacePath, hasSystemAdminDestination, savePreferredWorkspaceId } from '@/services/workspaceSelection';
 
-export const useWorkspaceMenu = ({ mode = 'personal', account } = {}) => {
+export const useWorkspaceMenu = ({ mode: suppliedMode, account: suppliedAccount } = {}) => {
+  const client = useQueryClient();
+  const workspace = useWorkspace();
+  const mode = suppliedMode || workspace?.mode || 'personal';
+  const account = suppliedAccount || workspace?.account;
   const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -30,6 +37,7 @@ export const useWorkspaceMenu = ({ mode = 'personal', account } = {}) => {
     try {
       const me = await getCurrentEnterpriseUser();
       if (version !== requestVersion.current) return null;
+      client.setQueryData(workspaceAccessKey(user?.uid), me);
       setProfile(me);
       return me;
     } catch (loadError) {

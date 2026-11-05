@@ -64,9 +64,15 @@ export const getSelectedWorkspaceDestination = (account, from) => {
   const personalRoutes = ['/dashboard', '/books', '/book', '/movies', '/notifications', '/media', '/notes',
     '/create-book', '/baby-journal-preview', '/billing', '/donate', '/settings',
     '/v2/enterprise-signup', '/v2/enterprise-request-pending'];
-  if (safe && account.type === 'PERSONAL'
-      && personalRoutes.some((path) => safe.pathname === path || safe.pathname.startsWith(`${path}/`))) return safe;
-  if (safe && account.type === 'ENTERPRISE' && safe.pathname === '/v2/enterprise-home'
+  const sharedRoute = safe && personalRoutes.some((path) => safe.pathname === path || safe.pathname.startsWith(`${path}/`));
+  if (sharedRoute && account.type === 'PERSONAL') {
+    const params = new URLSearchParams(safe.search);
+    if (!params.has('accountId')) return safe;
+    params.delete('accountId');
+    return { ...safe, search: params.size ? `?${params}` : '' };
+  }
+  if (safe && account.type === 'ENTERPRISE'
+      && (sharedRoute || ['/v2/enterprise-home', '/v2/enterprise-home/administration', '/v2/workspaces'].includes(safe.pathname))
       && new URLSearchParams(safe.search).get('accountId') === String(account.id)) return safe;
   const url = new URL(getWorkspacePath(account), 'https://airabook.invalid');
   return { pathname: url.pathname, search: url.search };

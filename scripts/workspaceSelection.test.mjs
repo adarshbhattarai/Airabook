@@ -43,3 +43,17 @@ test('Enterprise choice resumes only a matching account deep link', () => {
   assert.equal(getSelectedWorkspaceDestination(enterprise, { pathname: '/dashboard' }).pathname, '/v2/enterprise-home');
   assert.equal(getSelectedWorkspaceDestination(enterprise, { ...from, search: '?accountId=other' }).search, '?accountId=team%20%2F%202');
 });
+
+test('shared pages and Administration resume inside the selected Enterprise account', () => {
+  for (const pathname of ['/books', '/book/example', '/media', '/v2/enterprise-home/administration']) {
+    const from = { pathname, search: '?accountId=team%20%2F%202&sort=recent', hash: '#saved' };
+    assert.deepEqual(getSelectedWorkspaceDestination(enterprise, from), from);
+    assert.equal(getSelectedWorkspaceDestination(enterprise, { ...from, search: '?accountId=other' }).pathname, '/v2/enterprise-home');
+  }
+});
+
+test('choosing Personal removes Enterprise context from a shared return link', () => {
+  assert.deepEqual(getSelectedWorkspaceDestination(personal, {
+    pathname: '/books', search: '?accountId=team-one&sort=recent', hash: '#saved',
+  }), { pathname: '/books', search: '?sort=recent', hash: '#saved' });
+});

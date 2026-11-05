@@ -1,3 +1,4 @@
+import { useWorkspace } from '@/context/WorkspaceContext';
 import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
@@ -34,7 +35,7 @@ const DestinationItems = ({ menu, onSelected, disabled = false }) => (
 );
 
 /** Standalone switch buttons use the same destinations as the profile submenu. */
-export const WorkspaceSwitcher = ({ mode = 'personal', account, children, onSelected }) => {
+export const WorkspaceSwitcher = ({ mode, account, children, onSelected }) => {
   const [open, setOpen] = useState(false);
   const menu = useWorkspaceMenu({ mode, account });
   return <DropdownMenu open={open} onOpenChange={(next) => { setOpen(next); if (next && !menu.busy) menu.load(); }}>
@@ -47,7 +48,9 @@ export const WorkspaceSwitcher = ({ mode = 'personal', account, children, onSele
 };
 
 /** Shared profile menu across Personal, Enterprise, and platform administration. */
-export const WorkspaceProfileMenu = ({ mode = 'personal', account }) => {
+export const WorkspaceProfileMenu = ({ mode: suppliedMode, account }) => {
+  const workspace = useWorkspace();
+  const mode = suppliedMode || workspace?.mode || 'personal';
   const { user, appUser, logout } = useAuth();
   const navigate = useNavigate();
   const menu = useWorkspaceMenu({ mode, account });
@@ -102,7 +105,7 @@ export const WorkspaceProfileMenu = ({ mode = 'personal', account }) => {
         <DropdownMenuSubTrigger className={itemClass} disabled={!!menu.busy || loggingOut}><Building2 className="h-4 w-4" /><span className="min-w-0 flex-1"><span className="block">Switch workspace</span><span className="block truncate text-sm text-muted-foreground">{menu.currentLabel}</span></span></DropdownMenuSubTrigger>
         <DropdownMenuPortal><DropdownMenuSubContent className={menuClass} collisionPadding={12} sideOffset={6} onEscapeKeyDown={close} onKeyDown={(event) => { if (event.key === 'ArrowLeft') setExpanded(false); }}><DropdownMenuLabel className="truncate px-3 text-sm font-normal text-muted-foreground">{email}</DropdownMenuLabel><DestinationItems menu={menu} onSelected={close} disabled={loggingOut} /></DropdownMenuSubContent></DropdownMenuPortal>
       </DropdownMenuSub>}
-      {mode === 'personal' && <DropdownMenuItem className={itemClass} onSelect={() => navigate('/settings')} disabled={!!menu.busy || loggingOut}><User className="h-4 w-4" />Profile Settings</DropdownMenuItem>}
+      {mode !== 'admin' && <DropdownMenuItem className={itemClass} onSelect={() => navigate(workspace?.pathFor('/settings') || '/settings')} disabled={!!menu.busy || loggingOut}><User className="h-4 w-4" />Profile Settings</DropdownMenuItem>}
       <DropdownMenuSeparator />
       {logoutError && <p role="alert" className="px-3 py-2 text-sm !text-destructive">{logoutError}</p>}
       <DropdownMenuItem className={`${itemClass} !text-destructive focus:!text-destructive`} disabled={!!menu.busy || loggingOut}
