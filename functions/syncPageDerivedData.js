@@ -38,6 +38,8 @@ exports.syncPageDerivedData = onDocumentWritten(
     const contentChanged = !beforeData || pageContentChanged(beforeData, afterData);
     const needsEmbeddingSync = afterData.embeddingStatus === 'pending';
     const plainText = String(afterData.plainText || '').trim();
+    const disableAiForEmulatorTests = process.env.FUNCTIONS_EMULATOR === 'true'
+      && process.env.AIRABOOK_DISABLE_AI_FOR_EMULATOR_TESTS === 'true';
 
     if (!contentChanged && !needsEmbeddingSync) {
       return;
@@ -52,39 +54,49 @@ exports.syncPageDerivedData = onDocumentWritten(
     });
 
     if (needsEmbeddingSync) {
-      try {
-        if (plainText) {
-          const embeddings = await generateEmbeddings(plainText, {
-            taskType: 'RETRIEVAL_DOCUMENT',
-          });
+      if (disableAiForEmulatorTests) {
+        await pageRef.update({
+          embeddings: null,
+          embeddingModel: null,
+          embeddingStatus: 'ready',
+          embeddingError: FieldValue.delete(),
+          embeddingUpdatedAt: FieldValue.serverTimestamp(),
+        });
+      } else {
+        try {
+          if (plainText) {
+            const embeddings = await generateEmbeddings(plainText, {
+              taskType: 'RETRIEVAL_DOCUMENT',
+            });
 
+            await pageRef.update({
+              embeddings: embeddings.length ? FieldValue.vector(embeddings) : null,
+              embeddingModel: embeddings.length ? 'text-embedding-004' : null,
+              embeddingStatus: 'ready',
+              embeddingError: FieldValue.delete(),
+              embeddingUpdatedAt: FieldValue.serverTimestamp(),
+            });
+          } else {
+            await pageRef.update({
+              embeddings: null,
+              embeddingModel: null,
+              embeddingStatus: 'ready',
+              embeddingError: FieldValue.delete(),
+              embeddingUpdatedAt: FieldValue.serverTimestamp(),
+            });
+          }
+        } catch (error) {
+          logger.error('⚠️ Failed async page embedding sync', { bookId, chapterId, pageId, error: error?.message || error });
           await pageRef.update({
-            embeddings: embeddings.length ? FieldValue.vector(embeddings) : null,
-            embeddingModel: embeddings.length ? 'text-embedding-004' : null,
-            embeddingStatus: 'ready',
-            embeddingError: FieldValue.delete(),
-            embeddingUpdatedAt: FieldValue.serverTimestamp(),
-          });
-        } else {
-          await pageRef.update({
-            embeddings: null,
-            embeddingModel: null,
-            embeddingStatus: 'ready',
-            embeddingError: FieldValue.delete(),
+            embeddingStatus: 'error',
+            embeddingError: String(error?.message || error || 'Unknown embedding error'),
             embeddingUpdatedAt: FieldValue.serverTimestamp(),
           });
         }
-      } catch (error) {
-        logger.error('⚠️ Failed async page embedding sync', { bookId, chapterId, pageId, error: error?.message || error });
-        await pageRef.update({
-          embeddingStatus: 'error',
-          embeddingError: String(error?.message || error || 'Unknown embedding error'),
-          embeddingUpdatedAt: FieldValue.serverTimestamp(),
-        });
       }
     }
 
-    if (contentChanged) {
+    if (contentChanged && !disableAiForEmulatorTests) {
       try {
         await refreshChapterSummary(db, bookId, chapterId, plainText);
       } catch (error) {

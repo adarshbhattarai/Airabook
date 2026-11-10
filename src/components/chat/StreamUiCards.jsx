@@ -87,6 +87,17 @@ const ActionButtons = ({
   onAction,
 }) => {
   if (!Array.isArray(card.actions) || card.actions.length === 0) return null;
+  const approvalPending = card.cardType === 'APPROVAL_REQUIRED'
+    && card.actions.some((action, index) => {
+      const actionId = action?.id || `action_${index + 1}`;
+      return actionState[buildUiActionStateKey(card.id, actionId)]?.status === 'pending';
+    });
+  const approvalCompleted = card.cardType === 'APPROVAL_REQUIRED'
+    && card.actions.some((action, index) => {
+      const actionId = action?.id || `action_${index + 1}`;
+      return actionState[buildUiActionStateKey(card.id, actionId)]?.status === 'success';
+    });
+  if (approvalCompleted) return null;
   return (
     <div className="mt-3 border-t border-current/20 pt-2">
       <div className="mb-1 text-[10px] uppercase tracking-wide font-semibold opacity-80">Actions</div>
@@ -105,7 +116,7 @@ const ActionButtons = ({
                 size="sm"
                 variant={(action.kind === 'primary' || index === 0) ? 'appPrimary' : 'appOutline'}
                 className="h-7 px-2 text-[11px]"
-                disabled={isPending}
+                disabled={isPending || approvalPending}
                 onClick={() => onAction?.(card, action)}
               >
                 {isPending ? 'Working...' : (action.label || actionId)}
@@ -337,14 +348,29 @@ const StreamUiCards = ({
     <div className="mt-3 space-y-2">
       {cards.map((card, index) => {
         const cardType = String(card?.cardType || '').toUpperCase();
-        const meta = cardMeta[cardType] || {
+        const payload = card?.payload || {};
+        const completedApprovalAction = cardType === 'APPROVAL_REQUIRED'
+          ? (card.actions || []).map((action, actionIndex) => {
+            const actionId = action?.id || `action_${actionIndex + 1}`;
+            const state = actionState[buildUiActionStateKey(card.id, actionId)];
+            return state?.status === 'success' ? state : null;
+          }).find(Boolean)
+          : null;
+        const baseMeta = cardMeta[cardType] || {
           title: cardType || 'Notice',
           icon: Info,
           shell: 'border-app-gray-200 bg-app-gray-50 text-app-gray-900',
           subtitle: '',
         };
+        const meta = completedApprovalAction
+          ? {
+            ...baseMeta,
+            title: 'Completed',
+            icon: CheckCircle2,
+            shell: 'border-emerald-300 bg-emerald-50 text-emerald-950',
+          }
+          : baseMeta;
         const Icon = meta.icon;
-        const payload = card?.payload || {};
         const cardTypeSlug = buildCardTypeSlug(cardType);
 
         return (
@@ -357,7 +383,7 @@ const StreamUiCards = ({
               <div className="font-semibold uppercase tracking-wide text-[10px]">{meta.title}</div>
             </div>
             <div className="mt-1 text-[12px] leading-relaxed">
-              {payload.message || payload.question || meta.subtitle || 'Action required.'}
+              {completedApprovalAction?.message || payload.message || payload.question || meta.subtitle || 'Action required.'}
             </div>
 
             {cardType === 'LIMIT_REACHED' ? <LimitDetails payload={payload} /> : null}
@@ -366,7 +392,7 @@ const StreamUiCards = ({
                 {payload.subtitle || (payload.timeoutSec ? `Timeout: ${payload.timeoutSec}s` : '')}
               </div>
             ) : null}
-            {cardType === 'APPROVAL_REQUIRED' ? <ApprovalDetails payload={payload} /> : null}
+            {cardType === 'APPROVAL_REQUIRED' && !completedApprovalAction ? <ApprovalDetails payload={payload} /> : null}
             {cardType === 'BOOK_CREATE_RESULT' ? <BookCreateDetails payload={payload} /> : null}
             {cardType === 'BOOK_LIST' ? <BookListDetails payload={payload} /> : null}
             {cardType === 'PAGE_CONTENT_RESULT' ? <PageContentDetails payload={payload} /> : null}

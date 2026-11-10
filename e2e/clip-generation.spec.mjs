@@ -28,6 +28,7 @@
  */
 
 import { test, expect, request } from '@playwright/test';
+import { revealPageClipAction } from './helpers/page-actions.mjs';
 
 // ── env / constants ───────────────────────────────────────────────────────────
 
@@ -130,10 +131,10 @@ test.describe('Manim clip generation — full stack', () => {
     }
 
     // Find and click the Generate Clip button
-    const generateBtn = page.getByTestId('book-detail-create-video').first();
+    const generateBtn = await revealPageClipAction(page);
     test.skip(!(await generateBtn.count()), `No Generate Clip button — seed book ${SEED_BOOK_ID} must have a page.`);
 
-    await generateBtn.evaluate(el => { el.scrollIntoView({ block: 'center' }); el.click(); });
+    await generateBtn.click();
     await expect(page.getByTestId('manim-video-dialog')).toBeVisible({ timeout: 5000 });
 
     // Select "low" quality for the fastest possible render
@@ -166,13 +167,13 @@ test.describe('Manim clip generation — full stack', () => {
       await page.waitForTimeout(1500);
     }
 
-    const generateBtn = page.getByTestId('book-detail-create-video').first();
+    const generateBtn = await revealPageClipAction(page);
     test.skip(
       !(await generateBtn.count()),
       `No Generate Clip button — seed book ${SEED_BOOK_ID} must have at least one page.`
     );
 
-    await generateBtn.evaluate(el => { el.scrollIntoView({ block: 'center' }); el.click(); });
+    await generateBtn.click();
     await expect(page.getByTestId('manim-video-dialog')).toBeVisible({ timeout: 5000 });
 
     await page.getByTestId('manim-quality-low').click();

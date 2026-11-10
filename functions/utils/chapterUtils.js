@@ -12,6 +12,14 @@ const { ai } = require('../genkitClient');
 async function generateCumulativeSummary(previousSummary, newPageContent, chapterTitle) {
     console.log('🤖 Generating cumulative summary...');
 
+    if (process.env.FUNCTIONS_EMULATOR === 'true'
+        && process.env.AIRABOOK_DISABLE_AI_FOR_EMULATOR_TESTS === 'true') {
+        const combined = previousSummary
+            ? `${previousSummary}\n\n${newPageContent.substring(0, 500)}`
+            : newPageContent.substring(0, 500);
+        return combined.substring(0, 1000) + (combined.length > 1000 ? '...' : '');
+    }
+
     try {
         const { text } = await ai.prompt('airabook_chapter_summary')({
             previousSummary: previousSummary || undefined,
@@ -87,7 +95,7 @@ async function updatePageSummaryEntry(db, bookId, chapterId, pageId, plainText, 
     console.log('✅ Updated existing page summary');
 }
 
-async function refreshChapterSummary(db, bookId, chapterId, plainText) {
+async function refreshChapterSummary(db, bookId, chapterId, plainText, options = {}) {
     const chapterRef = db.collection('books').doc(bookId).collection('chapters').doc(chapterId);
     const chapterDoc = await chapterRef.get();
 
@@ -100,7 +108,8 @@ async function refreshChapterSummary(db, bookId, chapterId, plainText) {
     const previousChapterSummary = chapterData.chapterSummary || '';
     const chapterTitle = chapterData.title || '';
 
-    const newChapterSummary = await generateCumulativeSummary(
+    const summaryGenerator = options.summaryGenerator || generateCumulativeSummary;
+    const newChapterSummary = await summaryGenerator(
         previousChapterSummary,
         plainText,
         chapterTitle
@@ -131,10 +140,10 @@ async function updateChapterPageSummary(db, bookId, chapterId, pageId, plainText
     console.log(`📝 updateChapterPageSummary: ${isNew ? 'Creating' : 'Updating'} summary for page ${pageId}`);
 
     try {
-        const { skipChapterSummary = false } = options || {};
+        const { skipChapterSummary = false, summaryGenerator } = options || {};
         await updatePageSummaryEntry(db, bookId, chapterId, pageId, plainText, order, isNew, pageName);
         if (!skipChapterSummary) {
-            await refreshChapterSummary(db, bookId, chapterId, plainText);
+            await refreshChapterSummary(db, bookId, chapterId, plainText, { summaryGenerator });
         }
     } catch (error) {
         console.error('❌ Error in updateChapterPageSummary:', error);

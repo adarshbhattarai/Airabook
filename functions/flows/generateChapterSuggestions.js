@@ -97,6 +97,7 @@ const defineGenerateChapterSuggestionsFlow = ({ ai, z, db, HttpsError }) => (
       const bookTitle = bookData.babyName || bookData.title || 'Untitled Book';
       const chapterTitle = chapterData.title || 'Untitled Chapter';
       const chapterDescription = chapterData.description || 'Untitled Chapter';
+      const chapterSummary = String(chapterData.chapterSummary || '').trim().slice(0, 1000);
 
       const isBabyJournal = bookData.creationType === 0;
       const promptIntro = isBabyJournal
@@ -110,6 +111,7 @@ Return ONLY a JSON array of strings.
 Book: "${bookTitle}",
 Chapter: "${chapterTitle}",
 chapterDescription: "${chapterDescription}"
+${chapterSummary ? `Chapter summary from saved pages: "${chapterSummary}"` : ''}
         `.trim();
 
       const llmResponse = await ai.generate({ prompt });

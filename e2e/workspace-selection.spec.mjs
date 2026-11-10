@@ -1230,9 +1230,12 @@ test('desktop profile submenu supports keyboard entry, selection, and Escape foc
   await page.getByRole('menuitemradio', { name: 'Airabook Team' }).focus();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/accountId=team-one$/);
-  await page.getByRole('button', { name: 'Open profile menu' }).click();
+  const profileMenuTrigger = page.getByRole('button', { name: 'Open profile menu' });
+  await profileMenuTrigger.click();
+  await expect(page.getByRole('menu')).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('button', { name: 'Open profile menu' })).toBeFocused();
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect(profileMenuTrigger).toBeFocused();
 });
 
 test('an errored profile submenu still dismisses with Escape and can reopen', async ({ page }) => {

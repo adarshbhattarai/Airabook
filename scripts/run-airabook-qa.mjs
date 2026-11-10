@@ -84,7 +84,7 @@ const stopLocalProfile = () => {
 
 const main = async () => {
   run(process.execPath, ['scripts/check-profile.mjs', 'local']);
-  run(process.execPath, ['--test', 'scripts/workspaceSelection.test.mjs']);
+  run(process.execPath, ['--test', 'scripts/workspaceSelection.test.mjs', 'src/lib/pageWritingStats.test.mjs', 'functions/tests/chapter-summary-suggestions.test.cjs']);
 
   const missingPorts = [];
   for (const port of requiredPorts) {
@@ -103,7 +103,7 @@ const main = async () => {
     if (missingPorts.length > 0) {
       const emulators = spawn(npmCommand, ['run', 'emulators:local'], {
         cwd: root,
-        env: { ...process.env },
+        env: { ...process.env, AIRABOOK_DISABLE_AI_FOR_EMULATOR_TESTS: 'true' },
         detached: process.platform !== 'win32',
         stdio: 'inherit',
       });
@@ -153,6 +153,7 @@ const main = async () => {
       'e2e/auth.spec.mjs',
       'e2e/book-flow.spec.mjs',
       'e2e/chapter-navigation.spec.mjs',
+      'e2e/writing-assistant-context.spec.mjs',
       'e2e/manim-video-dialog.spec.mjs',
       'e2e/workspace-selection.spec.mjs',
       'e2e/enterprise-team.spec.mjs',

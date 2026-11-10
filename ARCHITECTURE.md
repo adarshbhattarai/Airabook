@@ -175,6 +175,10 @@ Frontend Spring integration points currently show up in:
 - When the frontend references a Spring endpoint, document the backend file or route that owns it.
 - When deprecating Firebase AI paths in favor of Spring, leave the boundary explicit rather than ambiguous.
 
+## Journal writing workspace
+
+Standard writing pages are vertically stacked entries with a compact page header and optional word-count guidance. Their content grows within its original page; only explicit fixed paper layouts enable automatic block reflow. Navigation saves all dirty mounted entries before leaving, and page/chapter source IDs remain stable for deep links and future citations. See [JOURNAL_WORKSPACE.md](JOURNAL_WORKSPACE.md) for the interaction contract, browser regression, and the current SDK/document-retrieval boundary.
+
 ## Firebase Security Model
 - `firestore.rules` treats top-level `albums` documents as server-authoritative. Client reads are allowed by access rules, but create/update/delete should go through Firebase Functions using the Admin SDK.
 - `firestore.rules` treats top-level `books` creation as server-authoritative. The only direct client mutation intentionally left open on the root book doc is the owner's `isPublic` publish toggle.

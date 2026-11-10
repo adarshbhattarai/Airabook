@@ -10,6 +10,7 @@
 
 import { test, expect } from '@playwright/test';
 import { mockPersonalWorkspaceAccess } from './helpers/personal-workspace.mjs';
+import { getEmulatorDocument, setEmulatorStringField } from './helpers/firestore-emulator.mjs';
 
 const email = process.env.PLAYWRIGHT_EMAIL || '';
 const password = process.env.PLAYWRIGHT_PASSWORD || '';
@@ -17,6 +18,7 @@ const bookId = process.env.PLAYWRIGHT_BOOK_ID || 'book-debug-001';
 
 test.describe('Airabook critical path', () => {
   test.beforeEach(async ({ page }) => {
+    test.skip(process.env.PLAYWRIGHT_USE_EMULATOR !== 'true', 'Critical-path writes are restricted to the local Firebase emulator.');
     test.skip(!email || !password, 'Set PLAYWRIGHT_EMAIL and PLAYWRIGHT_PASSWORD to run critical-path tests.');
 
     await mockPersonalWorkspaceAccess(page);
@@ -44,6 +46,8 @@ test.describe('Airabook critical path', () => {
     const chapterRow = page.locator('.chapter-sidebar-row').first();
     await expect(chapterRow).toBeVisible({ timeout: 10_000 });
     await chapterRow.click();
+    const chapterId = new URL(page.url()).searchParams.get('chapter');
+    expect(chapterId).toBeTruthy();
 
     const addPageButton = page.getByTestId('add-page-btn');
     await expect(addPageButton).toBeVisible({ timeout: 10_000 });
@@ -57,11 +61,15 @@ test.describe('Airabook critical path', () => {
     // the createPage payload and the sidebar summary have meaningful data.
     const editor = page.locator('[contenteditable="true"]').last();
     await editor.click();
-    await editor.fill(`Critical path page ${Date.now()}`);
+    const savedText = `Critical path page ${Date.now()}`;
+    await editor.fill(savedText);
     await page.locator('.editor-save-btn').last().click();
 
     await expect(page.locator('[data-page-id^="temp_"]')).toHaveCount(0, { timeout: 15_000 });
-    await expect(page.locator('[data-page-id]').last()).toBeVisible();
+    const savedPage = page.locator('[data-page-id]').filter({ hasText: savedText }).first();
+    await expect(savedPage).toBeVisible();
+    const pageId = await savedPage.getAttribute('data-page-id');
+    expect(pageId).toBeTruthy();
 
     const updatedPageName = `Updated E2E page ${Date.now()}`;
     const pageRow = page.locator('.chapter-page-row').last();
@@ -72,12 +80,26 @@ test.describe('Airabook critical path', () => {
     await pageNameInput.fill(updatedPageName);
     await pageNameInput.press('Enter');
 
-    await expect(page.getByText(updatedPageName, { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('.chapter-page-row').filter({ hasText: updatedPageName })).toBeVisible({ timeout: 10_000 });
 
     // Verify a fresh Firestore read, not only React local state.
     await page.goto(`/book/${bookId}`, { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.chapter-sidebar-row').first()).toBeVisible({ timeout: 10_000 });
     await page.locator('.chapter-sidebar-row').first().click();
-    await expect(page.getByText(updatedPageName, { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('.chapter-page-row').filter({ hasText: updatedPageName })).toBeVisible({ timeout: 10_000 });
+
+    const persistedPage = await getEmulatorDocument(`books/${bookId}/chapters/${chapterId}/pages/${pageId}`);
+    expect(persistedPage).toMatchObject({ pageName: updatedPageName });
+    expect(persistedPage.note).toContain(savedText);
+    expect(persistedPage.plainText).toContain(savedText);
+
+    const persistedChapter = await getEmulatorDocument(`books/${bookId}/chapters/${chapterId}`);
+    expect(persistedChapter.pagesSummary).toEqual(expect.arrayContaining([
+      expect.objectContaining({ pageId, pageName: updatedPageName }),
+    ]));
+
+    const visibleSummary = 'The saved pages describe the family preparing for a new beginning.';
+    await setEmulatorStringField(`books/${bookId}/chapters/${chapterId}`, 'chapterSummary', visibleSummary);
+    await expect(page.getByTestId('chapter-summary')).toContainText(visibleSummary);
   });
 });

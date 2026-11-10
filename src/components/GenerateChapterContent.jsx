@@ -4,7 +4,7 @@ import { RefreshCw } from 'lucide-react';
 import { functions } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 
-const GenerateChapterContent = ({ bookId, chapterId, onSuggestionSelect }) => {
+const GenerateChapterContent = ({ bookId, chapterId, onSuggestionSelect, compact = false }) => {
   const { user } = useAuth();
   const [suggestions, setSuggestions] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -12,7 +12,6 @@ const GenerateChapterContent = ({ bookId, chapterId, onSuggestionSelect }) => {
   const inFlightKeyRef = useRef(null);
   const lastCompletedKeyRef = useRef('');
   const requestIdRef = useRef(0);
-
   const cacheKey = useMemo(() => {
     if (!bookId || !chapterId || !user?.uid) return '';
     return `chapterSuggestions:${user.uid}:${bookId}:${chapterId}`;
@@ -114,7 +113,7 @@ const GenerateChapterContent = ({ bookId, chapterId, onSuggestionSelect }) => {
   if (!bookId || !chapterId) return null;
 
   return (
-    <div data-testid="chapter-suggestions" className="mt-3 rounded-lg border border-border bg-card p-3">
+    <div data-testid="chapter-suggestions" className={compact ? "chapter-ideas-list" : "mt-3 rounded-lg border border-border bg-card p-3"}>
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-foreground">Chapter suggestions</p>
         <div className="flex items-center gap-2">
@@ -134,7 +133,7 @@ const GenerateChapterContent = ({ bookId, chapterId, onSuggestionSelect }) => {
       {error ? (
         <p className="mt-2 text-xs text-destructive">{error}</p>
       ) : normalizedSuggestions.length > 0 ? (
-        <div className="mt-2 grid grid-cols-2 gap-2">
+        <div className={compact ? "mt-3 grid grid-cols-1 gap-2" : "mt-2 grid grid-cols-2 gap-2"}>
           {normalizedSuggestions.map((suggestion, index) => (
             <button
               key={`${index}-${suggestion}`}

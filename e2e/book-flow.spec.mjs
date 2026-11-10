@@ -26,7 +26,9 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { revealPageClipAction } from './helpers/page-actions.mjs';
 import { mockPersonalWorkspaceAccess } from './helpers/personal-workspace.mjs';
+import { mockFirebaseCallable } from './helpers/mock-firebase-callable.mjs';
 
 const email    = process.env.PLAYWRIGHT_EMAIL    || '';
 const password = process.env.PLAYWRIGHT_PASSWORD || '';
@@ -67,6 +69,7 @@ const selectFirstChapter = async (page) => {
 
 test.describe('Book flow', () => {
   test.beforeEach(async ({ page }) => {
+    test.skip(process.env.PLAYWRIGHT_USE_EMULATOR !== 'true', 'Book-flow tests write to seeded Firebase data and only run against the local emulator.');
     test.skip(!email || !password, 'Set PLAYWRIGHT_EMAIL and PLAYWRIGHT_PASSWORD to run book flow tests.');
     await login(page);
   });
@@ -134,25 +137,45 @@ test.describe('Book flow', () => {
   // ── 4. Chapter suggestions panel ────────────────────────────────────────────
 
   test('chapter suggestions panel appears when a chapter is selected', async ({ page }) => {
+    await mockFirebaseCallable(page, 'generateChapterSuggestions', async () => ({
+      data: { suggestions: ['A first mocked writing idea.'] },
+    }));
     await openSeededBook(page);
     await selectFirstChapter(page);
 
+    await page.getByRole('button', { name: 'Explore chapter ideas' }).click();
     // GenerateChapterContent renders its root with data-testid="chapter-suggestions"
     await expect(page.getByTestId('chapter-suggestions')).toBeVisible({ timeout: 8000 });
     // Header text
     await expect(page.getByText('Chapter suggestions')).toBeVisible();
+    await expect(page.getByTestId('chapter-suggestion-item').first()).toHaveText('A first mocked writing idea.');
   });
 
   test('chapter suggestions refresh button is present and clickable', async ({ page }) => {
+    const suggestionRequests = [];
+    await mockFirebaseCallable(page, 'generateChapterSuggestions', async (route) => {
+      const requestBody = route.request().postDataJSON() || {};
+      const callableData = requestBody.data || requestBody;
+      suggestionRequests.push(callableData);
+      return {
+        data: {
+          suggestions: callableData.refresh
+            ? ['A refreshed idea from the saved chapter summary.']
+            : ['The initial mocked writing idea.'],
+        },
+      };
+    });
     await openSeededBook(page);
     await selectFirstChapter(page);
 
+    await page.getByRole('button', { name: 'Explore chapter ideas' }).click();
     const refreshBtn = page.getByRole('button', { name: /refresh chapter suggestions/i });
     await expect(refreshBtn).toBeVisible({ timeout: 8000 });
+    await expect(page.getByTestId('chapter-suggestion-item').first()).toHaveText('The initial mocked writing idea.');
     await refreshBtn.click();
-    // After click it should be in loading or completed state — no crash
-    await page.waitForTimeout(1000);
-    await expect(page.getByTestId('chapter-suggestions')).toBeVisible();
+    await expect(page.getByTestId('chapter-suggestion-item').first()).toHaveText('A refreshed idea from the saved chapter summary.');
+    expect(suggestionRequests).toHaveLength(2);
+    expect(suggestionRequests[1].refresh).toBe(true);
   });
 
   // ── 5. Add a page manually ──────────────────────────────────────────────────
@@ -187,7 +210,7 @@ test.describe('Book flow', () => {
       await viewPagesBtn.click();
       await page.waitForTimeout(1500);
     }
-    await expect(page.getByTestId('book-detail-create-video').first()).toBeVisible({ timeout: 10000 });
+    await expect(await revealPageClipAction(page)).toBeVisible({ timeout: 10000 });
   });
 
   test('Generate Clip button opens the Manim video dialog', async ({ page }) => {
@@ -200,9 +223,9 @@ test.describe('Book flow', () => {
       await page.waitForTimeout(1500);
     }
 
-    const generateBtn = page.getByTestId('book-detail-create-video').first();
+    const generateBtn = await revealPageClipAction(page);
     await generateBtn.waitFor({ state: 'visible', timeout: 8000 });
-    await generateBtn.evaluate(el => { el.scrollIntoView({ block: 'center' }); el.click(); });
+    await generateBtn.click();
     await expect(page.getByTestId('manim-video-dialog')).toBeVisible({ timeout: 5000 });
   });
 
@@ -244,10 +267,10 @@ test.describe('Book flow', () => {
       await page.waitForTimeout(1500);
     }
 
-    const generateBtn = page.getByTestId('book-detail-create-video').first();
+    const generateBtn = await revealPageClipAction(page);
     test.skip(!(await generateBtn.count()), 'No Generate Clip button — seed data required.');
 
-    await generateBtn.evaluate(el => { el.scrollIntoView({ block: 'center' }); el.click(); });
+    await generateBtn.click();
     await expect(page.getByTestId('manim-video-dialog')).toBeVisible({ timeout: 5000 });
 
     // Select low quality for speed
@@ -269,6 +292,7 @@ test.describe('Book flow', () => {
     await page.goto('/create-book', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#book-title')).toBeVisible({ timeout: 8000 });
     await expect(page.getByTestId('create-book-submit')).toBeVisible();
+    await expect(page.getByText('Next step: Media Planner')).toHaveCount(0);
   });
 
   test('Continue button is disabled when title is empty', async ({ page }) => {

@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { ImagePlus, Sparkles, Send } from 'lucide-react';
-import { PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import GenerateChapterContent from '@/components/GenerateChapterContent';
+import { Sparkles, Lightbulb, MessageSquare, X, ArrowUp } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import WritingContextPicker from '@/components/chat/WritingContextPicker';
+import { useWritingAssistantContext } from '@/hooks/useWritingAssistantContext';
 import { streamAirabookAI } from '@/lib/aiStream';
 import MessageContent from '@/components/chat/MessageContent';
 import {
@@ -20,21 +23,29 @@ const ChatPanel = ({
   onMinimizeChange,
   bookId,
   chapterId,
-  incomingMessages,
-  incomingMessagesToken,
-  onOpenPhotoPlanner,
+  defaultMinimized = false,
+  bookTitle, chapters = [], pages = [], pageId, getPageContext, openRequest, onPageCreated,
 }) => {
-  const [messages, setMessages] = useState([
-    { role: 'assistant', content: 'Hello! I can help you plan your book, brainstorm ideas, or review your writing. What are you working on today?' }
-  ]);
+  const [messages, setMessages] = useState([]);
+  const [tab, setTab] = useState('chat');
+  const inputRef = useRef(null);
+  const launcherRef = useRef(null);
+  const endRef = useRef(null);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
-  const [panelWidth, setPanelWidth] = useState(320); // Default 320px (w-80)
+  const [isMinimized, setIsMinimized] = useState(defaultMinimized);
+  const [panelWidth, setPanelWidth] = useState(390); // Default 320px (w-80)
   const [isResizing, setIsResizing] = useState(false);
   const messagesRef = useRef(messages);
   const [conversationId, setConversationId] = useState('');
   const conversationIdRef = useRef(conversationId);
+  const context = useWritingAssistantContext({ bookId, bookTitle, chapters, chapterId, pageId, pages, getPageContext });
+  const requestContextForMessage = (messageId) => messagesRef.current.find((msg) => msg.id === messageId)?.requestContext;
+  const welcomePrompts = context.scope === 'book'
+    ? ['Help me plan the book', 'What connects these chapters?', 'Suggest what I could write next']
+    : context.scope === 'page'
+      ? ['Help me develop this page', 'What could I make clearer?', 'Suggest what I could write next']
+      : ['Help me outline this chapter', 'Suggest what I could write next', 'Help me reflect on a memory'];
 
   const attachCardsToAssistant = (assistantId, eventName, payload) => {
     const cards = extractUiCards(eventName, payload);
@@ -70,22 +81,24 @@ const ChatPanel = ({
       : `assistant-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     setMessages(prev => [
       ...prev,
-      { role: 'user', content: userQuery },
+      { role: 'user', content: userQuery, contextLabel: context.label },
       { id: assistantId, role: 'assistant', content: '', streamingContent: '', isStreaming: true, sources: [], actions: [] },
     ]);
     setInput('');
     setIsLoading(true);
 
     try {
-      // Construct history including the new user message
+      const requestContext = await context.getRequestContext();
+      setMessages(prev => prev.map(msg => msg.id === assistantId ? { ...msg, requestContext } : msg));
       const history = [...messagesRef.current, { role: 'user', content: userQuery }];
 
       await streamAirabookAI({
         messages: history,
         scope: 'book_assistant',
         bookId,
-        chapterId,
+        ...requestContext,
         conversationId: conversationIdRef.current,
+        onPageDone: (data) => onPageCreated?.(data),
         onChunk: (text) => {
           setMessages(prev => prev.map(msg => (
             msg.id === assistantId
@@ -128,7 +141,7 @@ const ChatPanel = ({
       console.error('RAG Query Error:', error);
       setMessages(prev => prev.map(msg => (
         msg.id === assistantId
-          ? { ...msg, content: 'Sorry, I encountered an error while searching your book. Please try again.', isStreaming: false }
+          ? { ...msg, content: error.name === 'WritingContextError' ? error.message : 'Sorry, I encountered an error while searching your book. Please try again.', isStreaming: false }
           : msg
       )));
     } finally {
@@ -161,14 +174,17 @@ const ChatPanel = ({
     ]));
 
     try {
-      const history = messagesRef.current;
+      const requestContext = requestContextForMessage(messageId) || await context.getRequestContext();
+      setMessages(prev => prev.map(msg => msg.id === assistantId ? { ...msg, requestContext } : msg));
+      const history = [...messagesRef.current, userMessage];
       await streamAirabookAI({
         messages: history,
         action: actionId,
         scope: 'book_assistant',
         bookId,
-        chapterId,
+        ...requestContext,
         conversationId: conversationIdRef.current,
+        onPageDone: (data) => onPageCreated?.(data),
         onChunk: (text) => {
           setMessages(prev => prev.map(msg => (
             msg.id === assistantId
@@ -241,13 +257,15 @@ const ChatPanel = ({
     setMessageActionState(messageId, card?.id, actionId, { status: 'pending', message: '' });
 
     try {
+      const requestContext = requestContextForMessage(messageId);
       const result = await executeChatUiAction({
         action,
         card,
         context: {
           conversationId: conversationIdRef.current,
           bookId,
-          chapterId,
+          chapterId: requestContext ? requestContext.chapterId : context.chapterId,
+          pageId: requestContext ? requestContext.pageId : context.pageId,
           source: 'book_assistant',
           messageId,
           cardId: card?.id,
@@ -294,6 +312,7 @@ const ChatPanel = ({
     setMessageActionState(messageId, card?.id, optionId, { status: 'pending', message: '' });
 
     try {
+      const requestContext = requestContextForMessage(messageId);
       const result = await executeChatUiAction({
         action: {
           id: optionId,
@@ -315,7 +334,8 @@ const ChatPanel = ({
         context: {
           conversationId: conversationIdRef.current,
           bookId,
-          chapterId,
+          chapterId: requestContext ? requestContext.chapterId : context.chapterId,
+          pageId: requestContext ? requestContext.pageId : context.pageId,
           source: 'book_assistant',
           messageId,
           cardId: card?.id,
@@ -377,13 +397,6 @@ const ChatPanel = ({
   }, [conversationId]);
 
   useEffect(() => {
-    if (!Array.isArray(incomingMessages) || incomingMessages.length === 0) {
-      return;
-    }
-    setMessages(incomingMessages);
-  }, [incomingMessagesToken, incomingMessages]);
-
-  useEffect(() => {
     const handleMouseMove = (e) => {
       if (!isResizing) return;
       const newWidth = window.innerWidth - e.clientX;
@@ -406,28 +419,40 @@ const ChatPanel = ({
     };
   }, [isResizing]);
 
+  useEffect(() => {
+    if (!openRequest) return;
+    setIsMinimized(false);
+    setTab(openRequest.tab || 'chat');
+    if (openRequest.prompt) setInput(openRequest.prompt);
+  }, [openRequest]);
+
+  useEffect(() => {
+    if (isMinimized) return;
+    const frame = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [isMinimized, tab]);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [messages, tab]);
+
+  const choosePrompt = (prompt) => { setInput(prompt); setTab('chat'); };
+  const closeAssistant = () => { setIsMinimized(true); requestAnimationFrame(() => launcherRef.current?.focus()); };
+
   if (isMinimized) {
     return (
-      <div className="shrink-0 bg-card border-l border-border flex flex-col items-center w-12 transition-all duration-300">
-        <div className="h-[57px] flex items-center justify-center w-full border-b border-border bg-card/80 backdrop-blur-sm">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setIsMinimized(false)}
-            className="h-6 w-6 text-muted-foreground hover:text-foreground"
-            title="Expand AI Assistant"
-          >
-            <PanelRightOpen className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+      <Button ref={launcherRef} className="book-assistant-launcher" variant="appPrimary" onClick={() => setIsMinimized(false)} title="Expand AI Assistant" aria-label="Open writing assistant">
+        <Sparkles className="h-4 w-4" />Ask AI
+      </Button>
     );
   }
 
   return (
-    <div
-      className="flex flex-col h-full bg-card border-l border-border shrink-0 relative transition-all duration-200"
-      style={{ width: `${panelWidth}px` }}
+    <aside
+      aria-label="Writing assistant"
+      className="book-assistant-panel flex flex-col bg-card text-foreground shrink-0 relative"
+      style={{ '--assistant-width': `${panelWidth}px` }}
+      onKeyDown={(event) => { if (event.key === 'Escape' && !event.defaultPrevented && !event.target.closest('[role="menu"]')) { event.stopPropagation(); closeAssistant(); } }}
     >
       {/* Resize handle */}
       <div
@@ -436,51 +461,43 @@ const ChatPanel = ({
         title="Drag to resize"
       />
 
-      <div className="h-[57px] px-4 border-b border-border flex items-center justify-between bg-card/80 backdrop-blur-sm">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-app-iris" />
-          <h3 className="font-semibold text-foreground text-sm">AI Assistant</h3>
-        </div>
-        <div className="flex items-center gap-1">
-          {onOpenPhotoPlanner && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onOpenPhotoPlanner({
-                source: 'book_assistant',
-                initialPrompt: input.trim(),
-              })}
-              className="h-7 px-2 text-xs"
-              title="Plan with media"
-            >
-              <ImagePlus className="h-3.5 w-3.5 mr-1 text-app-iris" />
-              Plan media
-            </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setIsMinimized(true)}
-            className="h-6 w-6 text-muted-foreground hover:text-foreground"
-            title="Minimize"
-          >
-            <PanelRightClose className="h-4 w-4" />
-          </Button>
-        </div>
+      <div className="book-assistant-header">
+        <div className="flex items-center gap-2 min-w-0"><Sparkles className="h-4 w-4 text-primary" /><h3 className="text-sm font-semibold">Writing assistant</h3></div>
+        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 rounded-md" title="Minimize" aria-label="Close writing assistant" onClick={closeAssistant}><X className="h-4 w-4" /></Button>
       </div>
-
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="book-assistant-context-row">
+        <WritingContextPicker context={context} chapters={chapters} bookTitle={bookTitle} />
+        <span data-testid="assistant-context-mode" className="book-assistant-context-mode">{context.selection.mode === 'follow' ? 'Following editor' : 'Pinned'}</span>
+      </div>
+      <div className="book-assistant-tabs" role="tablist" aria-label="Assistant tools" onKeyDown={(event) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        const nextTab = event.key === 'Home' ? 'chat' : event.key === 'End' ? 'ideas' : tab === 'chat' ? 'ideas' : 'chat';
+        setTab(nextTab);
+        document.getElementById(`assistant-${nextTab === 'chat' ? 'chat' : 'ideas'}-tab`)?.focus();
+      }}>
+        <button id="assistant-chat-tab" role="tab" aria-label="Conversation" tabIndex={tab === 'chat' ? 0 : -1} aria-selected={tab === 'chat'} aria-controls="assistant-content" onClick={() => setTab('chat')}><MessageSquare className="h-3.5 w-3.5" />Chat</button>
+        <button id="assistant-ideas-tab" role="tab" aria-label="Chapter ideas" tabIndex={tab === 'ideas' ? 0 : -1} aria-selected={tab === 'ideas'} aria-controls="assistant-content" onClick={() => setTab('ideas')}><Lightbulb className="h-3.5 w-3.5" />Chapter ideas</button>
+      </div>
+      <div id="assistant-content" className="book-assistant-content flex-1 min-h-0 overflow-y-auto" role="tabpanel" aria-labelledby={tab === 'chat' ? 'assistant-chat-tab' : 'assistant-ideas-tab'}>
+        {tab === 'ideas' ? (
+          <>
+            <p className="text-xs text-muted-foreground mb-4 leading-relaxed">A starting point for your chapter. Pick an idea to add it to your message.</p>
+            {context.chapterId ? <GenerateChapterContent key={context.chapterId} bookId={bookId} chapterId={context.chapterId} onSuggestionSelect={choosePrompt} compact /> : <p className="text-sm text-muted-foreground">Choose a chapter in the context menu to explore writing ideas.</p>}
+          </>
+        ) : <>
+        {messages.length === 0 && <div className="book-assistant-welcome">
+          <h4 className="text-base font-semibold tracking-tight">A little space to think.</h4>
+          <p className="text-sm text-muted-foreground leading-relaxed mt-2">Work through an idea or ask about your {context.scope}. Your writing stays yours.</p>
+          <div className="grid gap-1 mt-5">
+            {welcomePrompts.map(prompt => <button key={prompt} className="book-assistant-prompt" onClick={() => choosePrompt(prompt)}>{prompt}<ArrowUp className="h-3.5 w-3.5 rotate-45 shrink-0" /></button>)}
+          </div>
+        </div>}
         {messages.map((msg, i) => (
-          <div key={msg.id || i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${msg.role === 'user'
-              ? 'bg-app-iris text-white rounded-br-none'
-              : 'bg-app-gray-100 text-foreground rounded-bl-none'
-              }`}>
-              <MessageContent
-                content={msg.content}
-                streamingContent={msg.streamingContent}
-                isStreaming={msg.isStreaming}
-              />
+          <div key={msg.id || i} className={`book-assistant-message book-assistant-message-${msg.role}`}>
+            {msg.role === 'user' && msg.contextLabel && <p className="book-assistant-message-context">{msg.contextLabel}</p>}
+            <div className={msg.role === 'user' ? 'book-assistant-user-text' : 'book-assistant-answer'}>
+              {msg.role === 'user' ? <p className="whitespace-pre-wrap">{msg.content}</p> : (msg.streamingContent || msg.content) ? <ReactMarkdown>{msg.isStreaming ? (msg.streamingContent || msg.content) : msg.content}</ReactMarkdown> : <MessageContent isStreaming={msg.isStreaming} />}
               {msg.sources && msg.sources.length > 0 && (
                 <div className="mt-2 pt-2 border-t border-border/20 text-xs opacity-80">
                   <p className="font-semibold mb-1">Sources:</p>
@@ -523,30 +540,17 @@ const ChatPanel = ({
             </div>
           </div>
         ))}
-      </div>
 
-      <div className="p-3 border-t border-border bg-card">
-        <div className="relative">
-          <Input
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            placeholder="Lets manifest your Idea."
-            className="pr-10 text-sm"
-            onKeyDown={e => e.key === 'Enter' && !isLoading && handleSend()}
-            disabled={isLoading}
-          />
-          <Button
-            size="icon"
-            variant="ghost"
-            className="absolute right-1 top-1 h-7 w-7 text-app-iris hover:bg-app-iris/10"
-            onClick={handleSend}
-            disabled={isLoading || !input.trim()}
-          >
-            <Send className="h-4 w-4" />
-          </Button>
-        </div>
+        <div ref={endRef} />
+        </>}
       </div>
-    </div>
+      {tab === 'chat' && <form className="book-assistant-composer" onSubmit={(event) => { event.preventDefault(); handleSend(); }}>
+        <div className="book-assistant-input-wrap">
+          <Textarea ref={inputRef} value={input} onChange={event => setInput(event.target.value)} aria-label="Message writing assistant" placeholder={`Ask about this ${context.scope}…`} className="book-assistant-input" rows={2} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); handleSend(); } }} disabled={isLoading} />
+          <div className="flex items-center justify-between px-3 pb-2"><span className="text-[10px] text-muted-foreground">{isLoading ? 'Thinking…' : 'Shift + Enter for a new line'}</span><Button type="submit" size="icon" variant="appPrimary" className="h-8 w-8 rounded-lg" aria-label="Send message" disabled={isLoading || !input.trim()}><ArrowUp className="h-4 w-4" /></Button></div>
+        </div>
+      </form>}
+    </aside>
   );
 };
 

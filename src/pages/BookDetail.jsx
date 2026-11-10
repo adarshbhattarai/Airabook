@@ -19,14 +19,13 @@ import { httpsCallable } from 'firebase/functions';
 import EditBookModal from '@/components/EditBookModal';
 import PageEditor from '@/components/PageEditor';
 import ChatPanel from '@/components/ChatPanel';
-import GenerateChapterContent from '@/components/GenerateChapterContent';
-import ChapterChatBox from '@/components/ChapterChatBox';
-import PhotoPlannerDialog from '@/components/planner/PhotoPlannerDialog';
 import VoiceAssistantButton from '@/components/VoiceAssistantButton';
 import HoverDeleteMenu from '@/components/ui/HoverDeleteMenu';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import { usePaginationReflow } from '@/hooks/usePaginationReflow';
 import { useBookDetailState } from '@/hooks/useBookDetailState';
+import { useWritingPreferences } from '@/hooks/useWritingPreferences';
+import { getPageWritingText } from '@/lib/pageWritingStats';
 import { PanelLeftClose, PanelLeftOpen, Type } from 'lucide-react';
 import {
   getMidpointString,
@@ -99,6 +98,10 @@ const BookDetail = () => {
   // ⚡ OPTIMIZATION 1: Synchronous State Initialization
   // ---------------------------------------------------------------------------
   const [book, setBook] = useState(() => location.state?.prefetchedBook || null);
+  const isOwner = book?.ownerId === user?.uid || book?.members?.[user?.uid] === 'Owner';
+  const isCoAuthor = book?.members?.[user?.uid] === 'Co-author';
+  const canEdit = isOwner || isCoAuthor;
+  const { lengthGuideTarget, setLengthGuideTarget } = useWritingPreferences(bookId);
   const [chapters, setChapters] = useState(() => location.state?.prefetchedChapters || []);
   const [loading, setLoading] = useState(() => !location.state?.prefetchedBook);
   const [selectedChapterId, setSelectedChapterId] = useState(() => {
@@ -114,15 +117,16 @@ const BookDetail = () => {
     return new Set();
   });
   const [pages, setPages] = useState([]);
+  const selectedChapterIdRef = useRef(selectedChapterId);
+  selectedChapterIdRef.current = selectedChapterId;
+  const pagesStateRef = useRef(pages);
+  pagesStateRef.current = pages;
   const [selectedPageId, setSelectedPageId] = useState(null);
-  const [chapterChatInput, setChapterChatInput] = useState('');
-  const [chatPanelSeed, setChatPanelSeed] = useState(null);
-  const [photoPlannerOpen, setPhotoPlannerOpen] = useState(false);
-  const [photoPlannerSeed, setPhotoPlannerSeed] = useState(null);
+  const [assistantRequest, setAssistantRequest] = useState(null);
+  const openWritingAssistant = (tab = 'chat') => setAssistantRequest({ tab, token: Date.now() });
   const [creatingVideoJob, setCreatingVideoJob] = useState(false);
   const [videoDialogOpen, setVideoDialogOpen] = useState(false);
   const [videoDialogContext, setVideoDialogContext] = useState({ pageId: null, instruction: '' });
-  const plannerSeedHandledRef = useRef(false);
   const isForcedReadRoute = location.pathname.endsWith('/view');
   const [viewMode, setViewMode] = useState(() => (isForcedReadRoute ? 'pages' : 'chapter')); // 'chapter' or 'pages'
   const focusedChapterIdFromQuery = useMemo(() => {
@@ -140,9 +144,6 @@ const BookDetail = () => {
     navigate(`${location.pathname}?${query.toString()}`, { replace: true });
   }, [location.pathname, location.search, navigate]);
   const lastAppliedChapterQueryRef = useRef(null);
-  const [pageTurnAnimatingId, setPageTurnAnimatingId] = useState(null);
-  const lastActivePageIndexRef = useRef(-1);
-  const pageTurnTimeoutRef = useRef(null);
   const [editingPageId, setEditingPageId] = useState(null);
   const [editingPageName, setEditingPageName] = useState('');
   const [isSavingPageName, setIsSavingPageName] = useState(false);
@@ -151,7 +152,6 @@ const BookDetail = () => {
   const [isCreatingChapter, setIsCreatingChapter] = useState(false);
   const isCreatingChapterRef = useRef(false);
   const showGlobalPagesFooter = false;
-  const isReadOnlyPagesMode = isForcedReadRoute && viewMode === 'pages';
 
   // UI States
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
@@ -239,6 +239,8 @@ const BookDetail = () => {
   const [verificationEmailSent, setVerificationEmailSent] = useState(false);
   const wasCoAuthorModalOpenRef = useRef(false);
   const manualPageNavRef = useRef({ targetId: null, expiresAt: 0 });
+  const navigationRequestRef = useRef(0);
+  const navigationSaveRef = useRef(null);
 
   // ---------------------------------------------------------------------------
   // 📜 Continuous Scroll & Footer Logic
@@ -280,6 +282,7 @@ const BookDetail = () => {
   }), []);
 
   const { requestReflow } = usePaginationReflow({
+    enabled: canEdit && !isForcedReadRoute && ['a4', 'scrapbook'].includes(book?.layoutMode),
     layoutMode: book?.layoutMode || 'standard',
     pages,
     setPages,
@@ -336,30 +339,16 @@ const BookDetail = () => {
     setViewMode(isForcedReadRoute ? 'pages' : 'chapter');
   }, [isForcedReadRoute]);
 
-  useEffect(() => {
-    if (plannerSeedHandledRef.current) return;
-    const seededPlanner = location.state?.plannerSeed;
-    if (seededPlanner?.open) {
-      setPhotoPlannerSeed(seededPlanner);
-      setPhotoPlannerOpen(true);
-      plannerSeedHandledRef.current = true;
-    }
-  }, [location.state]);
-
-  const openPhotoPlanner = useCallback((seed = {}) => {
-    setPhotoPlannerSeed({
-      source: seed?.source || 'book_assistant',
-      ...seed,
-    });
-    setPhotoPlannerOpen(true);
-  }, []);
-
-  const handlePhotoPlannerOpenChange = useCallback((open) => {
-    setPhotoPlannerOpen(open);
-    if (!open) {
-      setPhotoPlannerSeed(null);
-    }
-  }, []);
+  const scrollToPage = useCallback((pageId, behavior = 'smooth') => {
+    const container = scrollContainerRef.current;
+    const target = pageContainerRefs.current[pageId];
+    if (!container || !target) return false;
+    const top = container.scrollTop + target.getBoundingClientRect().top - container.getBoundingClientRect().top;
+    manualPageNavRef.current = { targetId: pageId, expiresAt: Date.now() + 1000 };
+    container.scrollTo({ top, left: 0, behavior });
+    setActivePageId(pageId);
+    return true;
+  }, [scrollContainerRef]);
 
   const handleBackspaceAtStart = useCallback((pageId) => {
     const pageIdx = pages.findIndex(p => p.id === pageId);
@@ -392,15 +381,14 @@ const BookDetail = () => {
         const container = scrollContainerRef.current;
         const target = pageContainerRefs.current[prevPage.id];
         if (container && target) {
-          const left = target.offsetLeft - container.offsetLeft;
-          container.scrollTo({ left, behavior: 'smooth' });
+          scrollToPage(prevPage.id);
         }
         focusWithRetry(pageRefs, prevPage.id, 'end');
       }
     }, 0);
 
     return true;
-  }, [pages, pageDrafts, selectedChapterId, selectedPageId, isBlocksEmpty, scrollContainerRef]);
+  }, [pages, pageDrafts, selectedChapterId, selectedPageId, isBlocksEmpty, scrollContainerRef, scrollToPage]);
 
   const removeTempPage = useCallback((pageId) => {
     const pageIdx = pages.findIndex(p => p.id === pageId);
@@ -423,105 +411,53 @@ const BookDetail = () => {
     }
   }, [pages, selectedChapterId, selectedPageId]);
 
-  const scrollToPageHorizontally = useCallback((pageId, behavior = 'smooth') => {
-    if (!pageId) return false;
-    const container = scrollContainerRef.current;
-    const target = pageContainerRefs.current[pageId];
-    if (!container || !target) return false;
-    if (isReadOnlyPagesMode) {
-      const top = target.offsetTop - container.offsetTop;
-      container.scrollTo({ top, behavior });
-      return true;
-    }
-    const left = target.offsetLeft - container.offsetLeft;
-    container.scrollTo({ left, behavior });
-    return true;
-  }, [isReadOnlyPagesMode, scrollContainerRef]);
-
-  const handlePagesWheel = useCallback((event) => {
-    if (viewMode !== 'pages') return;
-    const container = scrollContainerRef.current;
-    if (!container) return;
-    if (container.scrollWidth <= container.clientWidth) return;
-    const shouldScrollHorizontally = Math.abs(event.deltaX) > 0 || event.shiftKey;
-    if (!shouldScrollHorizontally) return;
-    const delta = Math.abs(event.deltaX) > 0 ? event.deltaX : event.deltaY;
-    if (!delta) return;
-    container.scrollLeft += delta;
-    event.preventDefault();
-  }, [viewMode, scrollContainerRef]);
-
-  // Update active page on scroll
+  // A reading anchor works for entries of any length; intersection ratios do not.
   useEffect(() => {
+    if (viewMode !== 'pages') return undefined;
     const container = scrollContainerRef.current;
     if (!container) return undefined;
-    const observedEntries = new Map();
-    const pageOrder = new Map(pages.map((page, index) => [page.id, index]));
-
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        const pageId = entry.target.getAttribute('data-page-id');
-        if (!pageId) return;
-        observedEntries.set(pageId, entry);
-      });
-
-      const containerRect = container.getBoundingClientRect();
-      const containerPrimaryCenter = isReadOnlyPagesMode
-        ? containerRect.top + (containerRect.height / 2)
-        : containerRect.left + (containerRect.width / 2);
-      const visible = Array.from(observedEntries.entries())
-        .map(([pageId, entry]) => {
-          if (!entry.isIntersecting || entry.intersectionRatio <= 0.15) {
-            return null;
+    let frame = null;
+    const updateActivePage = () => {
+      frame = null;
+      const viewport = container.getBoundingClientRect();
+      const anchor = viewport.top + Math.min(160, viewport.height * 0.3);
+      const entries = pages.map((page) => {
+        const element = pageContainerRefs.current[page.id];
+        return element ? { pageId: page.id, rect: element.getBoundingClientRect() } : null;
+      }).filter(Boolean);
+      const nav = manualPageNavRef.current;
+      if (nav.targetId && Date.now() < nav.expiresAt) {
+        const target = entries.find((entry) => entry.pageId === nav.targetId);
+        if (target) {
+          setActivePageId(target.pageId);
+          if (Math.abs(target.rect.top - viewport.top) <= 2) {
+            manualPageNavRef.current = { targetId: null, expiresAt: 0 };
           }
-
-          const rect = entry.boundingClientRect;
-          const pagePrimaryCenter = isReadOnlyPagesMode
-            ? rect.top + (rect.height / 2)
-            : rect.left + (rect.width / 2);
-
-          return {
-            entry,
-            pageId,
-            centerDelta: Math.abs(pagePrimaryCenter - containerPrimaryCenter),
-            pageIndex: pageOrder.get(pageId) ?? Number.MAX_SAFE_INTEGER,
-          };
-        })
-        .filter(Boolean);
-
-      if (!visible.length) return;
-      const now = Date.now();
-      const navState = manualPageNavRef.current;
-      if (navState?.targetId && now < navState.expiresAt) {
-        const targetVisible = visible.find((item) => item.pageId === navState.targetId);
-        if (targetVisible) {
-          setActivePageId(targetVisible.pageId);
-          manualPageNavRef.current = { targetId: null, expiresAt: 0 };
+          return;
         }
-        return;
       }
-      visible.sort((a, b) => {
-        if (a.centerDelta !== b.centerDelta) {
-          return a.centerDelta - b.centerDelta;
-        }
-        if (b.entry.intersectionRatio !== a.entry.intersectionRatio) {
-          return b.entry.intersectionRatio - a.entry.intersectionRatio;
-        }
-        return a.pageIndex - b.pageIndex;
-      });
-      setActivePageId(visible[0].pageId);
-    }, {
-      root: container,
-      threshold: [0.15, 0.3, 0.5, 0.7]
+      const visible = entries.filter(({ rect }) => rect.bottom > viewport.top && rect.top < viewport.bottom);
+      const atAnchor = visible.find(({ rect }) => rect.top <= anchor && rect.bottom > anchor);
+      const nearest = atAnchor || visible.sort((a, b) => Math.abs(a.rect.top - anchor) - Math.abs(b.rect.top - anchor))[0];
+      if (nearest) setActivePageId((current) => current === nearest.pageId ? current : nearest.pageId);
+    };
+    const schedule = () => {
+      if (frame === null) frame = requestAnimationFrame(updateActivePage);
+    };
+    const observer = new ResizeObserver(schedule);
+    observer.observe(container);
+    pages.forEach((page) => {
+      const element = pageContainerRefs.current[page.id];
+      if (element) observer.observe(element);
     });
-
-    const currentRefs = pageContainerRefs.current;
-    Object.values(currentRefs).forEach(el => {
-      if (el) observer.observe(el);
-    });
-
-    return () => observer.disconnect();
-  }, [isReadOnlyPagesMode, pages, scrollContainerRef]);
+    container.addEventListener('scroll', schedule, { passive: true });
+    schedule();
+    return () => {
+      observer.disconnect();
+      container.removeEventListener('scroll', schedule);
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
+  }, [pages, viewMode, scrollContainerRef]);
 
   // Standard layout: compute viewport-based fixed page height
   useEffect(() => {
@@ -557,53 +493,14 @@ const BookDetail = () => {
 
   // Sync activePageId with selectedPageId when user clicks sidebar
   useEffect(() => {
-    if (selectedPageId) {
-      manualPageNavRef.current = { targetId: selectedPageId, expiresAt: Date.now() + 800 };
-      if (scrollToPageHorizontally(selectedPageId, 'auto')) {
-        setActivePageId(selectedPageId);
-        requestAnimationFrame(() => {
-          pageRefs.current?.[selectedPageId]?.scrollToStart?.();
-        });
-      }
-    }
-  }, [selectedPageId, scrollToPageHorizontally]);
+    if (viewMode === 'pages' && selectedPageId) scrollToPage(selectedPageId, 'auto');
+  }, [selectedPageId, viewMode, scrollToPage]);
 
   useEffect(() => {
-    lastActivePageIndexRef.current = -1;
-    setPageTurnAnimatingId(null);
     setEditingPageId(null);
     setEditingPageName('');
     setIsSavingPageName(false);
   }, [selectedChapterId]);
-
-  useEffect(() => {
-    const isBabyTemplate = book?.templateType === 'babyJournalPage';
-    if (!isBabyTemplate || !activePageId || !pages.length) return;
-
-    const currentIndex = pages.findIndex((p) => p.id === activePageId);
-    if (currentIndex < 0) return;
-
-    const previousIndex = lastActivePageIndexRef.current;
-    if (previousIndex >= 0 && currentIndex > previousIndex) {
-      setPageTurnAnimatingId(activePageId);
-      if (pageTurnTimeoutRef.current) {
-        clearTimeout(pageTurnTimeoutRef.current);
-      }
-      pageTurnTimeoutRef.current = setTimeout(() => {
-        setPageTurnAnimatingId(null);
-      }, 650);
-    }
-
-    lastActivePageIndexRef.current = currentIndex;
-  }, [activePageId, pages, book?.templateType]);
-
-  useEffect(() => {
-    return () => {
-      if (pageTurnTimeoutRef.current) {
-        clearTimeout(pageTurnTimeoutRef.current);
-      }
-    };
-  }, []);
 
   const handleSaveChapter = async () => {
     if (!selectedChapterId || isSavingChapter) return;
@@ -719,12 +616,10 @@ const BookDetail = () => {
       const pagesRef = collection(firestore, 'books', bookId, 'chapters', chapterId, 'pages');
       const qy = query(pagesRef, orderBy('order'));
       const pagesSnap = await getDocs(qy);
-      const persistedPages = pagesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      let pagesList = [];
-      setPages((prevPages) => {
-        pagesList = mergePersistedAndTempPagesNow(persistedPages, prevPages, chapterId);
-        return pagesList;
-      });
+      if (selectedChapterIdRef.current !== chapterId) return [];
+      const persistedPages = pagesSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), chapterId }));
+      const pagesList = mergePersistedAndTempPagesNow(persistedPages, pagesStateRef.current, chapterId);
+      setPages(pagesList);
 
       // Auto-select first page if none selected
       if (pagesList.length > 0) {
@@ -763,6 +658,10 @@ const BookDetail = () => {
       next.add(focusedChapterIdFromQuery);
       return next;
     });
+    if (selectedChapterIdRef.current !== focusedChapterIdFromQuery) {
+      setPages([]);
+      setActivePageId(null);
+    }
     setSelectedChapterId(focusedChapterIdFromQuery);
     if (!isForcedReadRoute && !focusedPageIdFromQuery) {
       setViewMode('chapter');
@@ -790,7 +689,8 @@ const BookDetail = () => {
 
     const unsubscribe = onSnapshot(qy, (snapshot) => {
       console.log('📄 Pages snapshot update received:', snapshot.docs.length, 'pages');
-      const persistedPages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      if (selectedChapterIdRef.current !== selectedChapterId) return;
+      const persistedPages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), chapterId: selectedChapterId }));
 
       setPages((prevPages) => {
         const pagesList = mergePersistedAndTempPagesNow(persistedPages, prevPages, selectedChapterId);
@@ -833,6 +733,24 @@ const BookDetail = () => {
     };
   }, [selectedChapterId, bookId]);
 
+  // Keep the selected chapter summary in sync with server generated summaries.
+  useEffect(() => {
+    if (!selectedChapterId || !bookId) return;
+
+    const chapterRef = doc(firestore, 'books', bookId, 'chapters', selectedChapterId);
+    const unsubscribe = onSnapshot(chapterRef, (snapshot) => {
+      if (!snapshot.exists() || selectedChapterIdRef.current !== selectedChapterId) return;
+      const chapterSummary = snapshot.data()?.chapterSummary || '';
+      setChapters((previousChapters) => previousChapters.map((chapter) => (
+        chapter.id === selectedChapterId ? { ...chapter, chapterSummary } : chapter
+      )));
+    }, (error) => {
+      console.error('Chapter summary listener failed:', error);
+    });
+
+    return unsubscribe;
+  }, [bookId, selectedChapterId]);
+
   // Deprecated old fetchers (keeping names to avoid breaking other refs if any, but making them no-ops or aliased)
   // We don't need separate fetchChapters anymore as it's handled in main effect
   const fetchChapters = useCallback(async () => {
@@ -856,10 +774,6 @@ const BookDetail = () => {
   }, []);
 
   // Permission checks
-  // Permission checks
-  const isOwner = book?.ownerId === user?.uid || book?.members?.[user?.uid] === 'Owner';
-  const isCoAuthor = book?.members?.[user?.uid] === 'Co-author';
-  const canEdit = isOwner || isCoAuthor;
   const memberPermissions = book?.memberPermissions?.[user?.uid] || {};
   const collaborationPermissions = isOwner
     ? {
@@ -948,31 +862,26 @@ const BookDetail = () => {
     [orderedChapters, currentChapterIndex]
   );
   const nextChapterLabel = nextChapter ? `Continue to ${nextChapter.title}` : '';
-  const isAtChapterEnd = useMemo(() => {
-    if (viewMode !== 'pages' || pages.length === 0) return false;
-    const currentId = activePageId || selectedPageId;
-    return !!currentId && currentId === pages[pages.length - 1]?.id;
-  }, [viewMode, pages, activePageId, selectedPageId]);
-  const chapterTitle = chapters.find(c => c.id === selectedChapterId)?.title;
-  const accessibleAlbums = useMemo(() => {
-    if (!Array.isArray(appUser?.accessibleAlbums)) return [];
-    return appUser.accessibleAlbums
-      .map((album) => {
-        if (!album) return null;
-        if (typeof album === 'string') {
-          return { id: album, name: 'Untitled album', mediaCount: 0 };
-        }
-        return {
-          id: album.id,
-          name: album.name || 'Untitled album',
-          mediaCount: album.mediaCount || 0,
-          ...album,
-        };
-      })
-      .filter((album) => !!album?.id);
-  }, [appUser?.accessibleAlbums]);
-
-
+  const selectedChapter = chapters.find((chapter) => chapter.id === selectedChapterId);
+  const chapterTitle = selectedChapter?.title;
+  const chapterSummary = typeof selectedChapter?.chapterSummary === 'string'
+    ? selectedChapter.chapterSummary.trim()
+    : '';
+  const getAssistantPageContext = (contextChapterId, contextPageId) => {
+    if (contextChapterId !== selectedChapterId) return null;
+    const page = pages.find((item) => item.id === contextPageId);
+    if (!page) return null;
+    const draft = pageDrafts[contextPageId];
+    const blocks = pageRefs.current[contextPageId]?.getBlocks?.() || draft?.blocks;
+    const template = draft?.templateContent || page.content;
+    const templateText = template && typeof template === 'object'
+      ? Object.values(template).filter((value) => typeof value === 'string' && !/^https?:\/\//.test(value)).join('\n')
+      : '';
+    const text = Array.isArray(blocks) && blocks.length
+      ? getPageWritingText({ blocks })
+      : templateText || getPageWritingText({ html: draft?.html || page.note || '' });
+    return { title: draft?.pageName ?? page.pageName, text, isDraft: Boolean(draft) || contextPageId.startsWith('temp_') };
+  };
   // Permissions end
 
 
@@ -1223,96 +1132,6 @@ const BookDetail = () => {
   const handleBookUpdate = (updatedBook) => {
     setBook(prev => ({ ...prev, ...updatedBook }));
   };
-
-  const handleEnsurePlannerChapter = useCallback(async ({ title }) => {
-    if (!bookId) throw new Error('Book is required.');
-    const normalizedTitle = (title || '').trim();
-    if (!normalizedTitle) throw new Error('Chapter title is required.');
-    if (isCreatingChapterRef.current) {
-      throw new Error('Chapter creation already in progress.');
-    }
-
-    const existingChapter = chapters.find((chapter) =>
-      (chapter?.title || '').trim().toLowerCase() === normalizedTitle.toLowerCase()
-    );
-    if (existingChapter?.id) {
-      return existingChapter.id;
-    }
-
-    isCreatingChapterRef.current = true;
-    setIsCreatingChapter(true);
-    try {
-      const newOrder = getMidpointString(chapters[chapters.length - 1]?.order);
-      const addChapterFn = httpsCallable(functions, 'addChapter');
-      const result = await addChapterFn({
-        bookId,
-        title: normalizedTitle,
-        order: newOrder,
-      });
-      const chapterId = result?.data?.chapterId;
-      if (!chapterId) {
-        throw new Error('Chapter creation failed.');
-      }
-      const createdChapter = {
-        id: chapterId,
-        title: result?.data?.title || normalizedTitle,
-        order: result?.data?.order || newOrder,
-        pagesSummary: [],
-        createdAt: new Date(),
-        ownerId: user?.uid || null,
-      };
-
-      setChapters((prev) => [...prev, createdChapter].sort((a, b) => compareOrder(a.order, b.order)));
-      setExpandedChapters((prev) => {
-        const next = new Set(prev);
-        next.add(createdChapter.id);
-        return next;
-      });
-      setSelectedChapterId(createdChapter.id);
-      navigateToChapter(createdChapter.id);
-
-      toast({
-        title: 'Chapter created',
-        description: `"${normalizedTitle}" is ready for media planning.`,
-      });
-
-      return createdChapter.id;
-    } finally {
-      isCreatingChapterRef.current = false;
-      setIsCreatingChapter(false);
-    }
-  }, [bookId, chapters, compareOrder, navigateToChapter, user?.uid, toast]);
-
-  const handlePlannerApplied = useCallback(async ({ resolvedTarget }) => {
-    const targetScope = resolvedTarget?.scope;
-    const targetChapterId = resolvedTarget?.chapterId;
-    const routeToChapters = () => {
-      if (!isForcedReadRoute) {
-        setViewMode('chapter');
-      }
-      handlePhotoPlannerOpenChange(false);
-    };
-
-    await fetchChapters();
-
-    if (targetScope === 'chapter' && targetChapterId) {
-      setExpandedChapters((prev) => {
-        const next = new Set(prev);
-        next.add(targetChapterId);
-        return next;
-      });
-      setSelectedChapterId(targetChapterId);
-      navigateToChapter(targetChapterId);
-      await fetchPages(targetChapterId);
-      routeToChapters();
-      return;
-    }
-
-    if (selectedChapterId) {
-      await fetchPages(selectedChapterId);
-    }
-    routeToChapters();
-  }, [fetchChapters, fetchPages, handlePhotoPlannerOpenChange, isForcedReadRoute, navigateToChapter, selectedChapterId]);
 
   // Fetch co-author user details while modal is open.
   useEffect(() => {
@@ -1607,6 +1426,7 @@ const BookDetail = () => {
         next.add(chapterId);
         return next;
       });
+      setPages([]);
       setSelectedChapterId(chapterId);
       navigateToChapter(chapterId);
       setNewChapterTitle('');
@@ -1647,13 +1467,13 @@ const BookDetail = () => {
     }
 
     if (targetPageId) {
-      scrollToPageHorizontally(targetPageId, 'smooth');
+      scrollToPage(targetPageId, 'smooth');
       // Focus using PageEditor ref with proper cursor positioning
       const focusPosition = direction === 'next' ? 'start' : 'end';
       console.log(`📄 handlePageNavigate: Moving cursor to ${direction} page ${targetPageId} at ${focusPosition}`);
       await focusWithRetry(pageRefs, targetPageId, focusPosition);
     }
-  }, [pages, scrollToPageHorizontally]);
+  }, [pages, scrollToPage]);
 
   const getLocalTodayDate = () => {
     const now = new Date();
@@ -1764,7 +1584,7 @@ const BookDetail = () => {
 
         // UX: Scroll and focus on the new draft page
         setTimeout(() => {
-          if (scrollToPageHorizontally(tempId, 'smooth')) {
+          if (scrollToPage(tempId, 'smooth')) {
             pageRefs.current[tempId]?.focus?.();
           }
         }, 50);
@@ -1829,7 +1649,7 @@ const BookDetail = () => {
       setSelectedPageId(createdPage.id);
       toast({ title: 'New Page Added', description: overflowContent ? 'Content has been moved to the new page.' : 'Page created and saved.' });
       setTimeout(() => {
-        scrollToPageHorizontally(createdPage.id, 'smooth');
+        scrollToPage(createdPage.id, 'smooth');
         focusWithRetry(pageRefs, createdPage.id, 'start');
       }, 60);
 
@@ -1846,61 +1666,42 @@ const BookDetail = () => {
     }
   };
 
-  const selectedPage = selectedPageId ? pages.find(p => p.id === selectedPageId) : null;
-  const selectedDraft = selectedPageId ? pageDrafts[selectedPageId] : undefined;
-  const isSelectedPageDirty = !!(selectedPageId && selectedPage && selectedDraft != null);
+  const hasPageDrafts = pages.some((page) => pageDrafts[page.id] != null);
   const currentVideoPageId = activePageId || selectedPageId || '';
   const canCreateVideo = !isForcedReadRoute && !!selectedChapterId && (isOwner || collaborationPermissions.canManageMedia);
 
-  const onDraftChange = useCallback((pageId, nextNote) => {
-    setPageDrafts(prev => {
-      const next = { ...prev };
-      if (nextNote == null) {
-        delete next[pageId];
-      } else {
-        next[pageId] = nextNote;
-      }
-      return next;
-    });
-  }, []);
-
-  const saveSelectedDraft = useCallback(async () => {
-    if (!selectedPageId) return;
-
-    try {
-      // Prefer saving through the page editor (handles temp_ pages too).
-      if (pageRefs.current?.[selectedPageId]?.save) {
-        const saved = await pageRefs.current[selectedPageId].save({ silent: true });
-        if (saved === false) {
-          throw new Error('Page save failed');
+  // Scrolling can focus a different page from the URL selection. Save every
+  // dirty entry before a navigation can unmount its editor.
+  const savePageDrafts = useCallback(async () => {
+    if (navigationSaveRef.current) return navigationSaveRef.current;
+    const dirtyPages = pages.filter((page) => pageDrafts[page.id] != null);
+    const saving = (async () => {
+      for (const page of dirtyPages) {
+        const editor = pageRefs.current[page.id];
+        if (!editor?.save || await editor.save({ silent: true }) === false) {
+          throw new Error('Could not save page changes.');
         }
-        return;
       }
-
-      // Fallback: save HTML directly if ref is unavailable
-      const current = selectedPageId ? pages.find(p => p.id === selectedPageId) : null;
-      if (!current) return;
-      const html = await (pageRefs.current?.[selectedPageId]?.getHTML?.() ?? Promise.resolve(current.note || ''));
-      const plain = stripHtml(html);
-      const shortNote = plain.substring(0, 40) + (plain.length > 40 ? '...' : '');
-
-      const updatePageFn = httpsCallable(functions, 'updatePage');
-      await updatePageFn({
-        bookId,
-        chapterId: selectedChapterId,
-        pageId: selectedPageId,
-        note: html,
-        media: current.media || [],
-        embeddedMedia: current.embeddedMedia || [],
-      });
-      handlePageUpdate({ ...current, note: html, shortNote });
-      onDraftChange(selectedPageId, null);
-    } catch (e) {
-      console.error('Failed to save page before leaving:', e);
-      toast({ title: 'Error', description: 'Failed to save page.', variant: 'destructive' });
-      throw e;
+    })();
+    navigationSaveRef.current = saving;
+    try {
+      await saving;
+    } catch (error) {
+      toast({ title: 'Changes could not be saved', description: 'Please try saving again before leaving this page.', variant: 'destructive' });
+      throw error;
+    } finally {
+      navigationSaveRef.current = null;
     }
-  }, [bookId, selectedChapterId, selectedPageId, pages, onDraftChange, toast]);
+  }, [pages, pageDrafts, toast]);
+
+  const navigateAfterSaving = useCallback(async (url) => {
+    try {
+      if (hasPageDrafts) await savePageDrafts();
+      navigate(url);
+    } catch (_) {
+      // Keep the editor open when persistence fails.
+    }
+  }, [hasPageDrafts, savePageDrafts, navigate]);
 
   // Step 1: "Generate Clip" button click → open the prompt dialog
   const handleCreateVideo = useCallback(({ pageId, instruction } = {}) => {
@@ -1978,15 +1779,23 @@ const BookDetail = () => {
 
   const requestSelectPage = useCallback(async (chapterId, pageId) => {
     if (chapterId === selectedChapterId && pageId === selectedPageId && pageId === activePageId) {
+      scrollToPage(pageId, 'auto');
       return;
     }
-    if (isSelectedPageDirty) {
+    const navigationRequest = ++navigationRequestRef.current;
+    if (hasPageDrafts) {
       try {
-        await saveSelectedDraft();
+        await savePageDrafts();
       } catch (_) {
         return;
       }
     }
+    if (navigationRequest !== navigationRequestRef.current) return;
+    if (chapterId !== selectedChapterId) {
+      setPages([]);
+      setActivePageId(null);
+    }
+    setViewMode('pages');
     manualPageNavRef.current = { targetId: pageId, expiresAt: Date.now() + 800 };
     const query = new URLSearchParams(location.search);
     query.set('chapter', chapterId);
@@ -1994,29 +1803,45 @@ const BookDetail = () => {
     navigate(`${location.pathname}?${query.toString()}`, { replace: true });
     setSelectedChapterId(chapterId);
     setSelectedPageId(pageId);
-  }, [isSelectedPageDirty, saveSelectedDraft, selectedChapterId, selectedPageId, activePageId, location.pathname, location.search, navigate]);
+    if (chapterId === selectedChapterId) scrollToPage(pageId, 'auto');
+  }, [scrollToPage, hasPageDrafts, savePageDrafts, selectedChapterId, selectedPageId, activePageId, location.pathname, location.search, navigate]);
+
+  const requestSelectChapter = useCallback(async (chapterId) => {
+    const navigationRequest = ++navigationRequestRef.current;
+    try {
+      if (hasPageDrafts) await savePageDrafts();
+    } catch (_) { return; }
+    if (navigationRequest !== navigationRequestRef.current) return;
+    if (chapterId !== selectedChapterId) setPages([]);
+    setActivePageId(null);
+    setSelectedPageId(null);
+    setSelectedChapterId(chapterId);
+    navigateToChapter(chapterId);
+    setViewMode(isForcedReadRoute ? 'pages' : 'chapter');
+    setExpandedChapters(new Set([chapterId]));
+  }, [hasPageDrafts, savePageDrafts, selectedChapterId, navigateToChapter, isForcedReadRoute]);
 
   const requestAddPage = useCallback(async () => {
-    if (isSelectedPageDirty) {
-      void saveSelectedDraft().catch(() => {});
+    if (hasPageDrafts) {
+      try { await savePageDrafts(); } catch (_) { return; }
     }
     await handleAddPage(false);
-  }, [isSelectedPageDirty, saveSelectedDraft, handleAddPage]);
+  }, [hasPageDrafts, savePageDrafts, handleAddPage]);
 
   const requestAddPageAfter = useCallback(async (pageId) => {
     if (!pageId) return;
-    if (isSelectedPageDirty) {
-      void saveSelectedDraft().catch(() => {});
+    if (hasPageDrafts) {
+      try { await savePageDrafts(); } catch (_) { return; }
     }
     await handleAddPage(false, '', pageId);
-  }, [isSelectedPageDirty, saveSelectedDraft, handleAddPage]);
+  }, [hasPageDrafts, savePageDrafts, handleAddPage]);
 
   const handleGoToNextChapter = useCallback(async () => {
     if (!nextChapter || isChapterSwitching) return;
 
-    if (isSelectedPageDirty) {
+    if (hasPageDrafts) {
       try {
-        await saveSelectedDraft();
+        await savePageDrafts();
       } catch (_) {
         return;
       }
@@ -2026,6 +1851,8 @@ const BookDetail = () => {
     try {
       setExpandedChapters(new Set([nextChapter.id]));
       setViewMode('pages');
+      setPages([]);
+      setActivePageId(null);
       setSelectedChapterId(nextChapter.id);
       navigateToChapter(nextChapter.id);
       setSelectedPageId(null);
@@ -2038,10 +1865,12 @@ const BookDetail = () => {
       const nextPages = await fetchPages(nextChapter.id);
       if (nextPages?.length > 0) {
         const firstPageId = nextPages[0].id;
+        const query = new URLSearchParams(location.search);
+        query.set('chapter', nextChapter.id);
+        query.set('page', firstPageId);
+        navigate(`${location.pathname}?${query.toString()}`, { replace: true });
+        setViewMode('pages');
         setSelectedPageId(firstPageId);
-        setTimeout(() => {
-          scrollToPageHorizontally(firstPageId, 'smooth');
-        }, 60);
       }
     } finally {
       setIsChapterSwitching(false);
@@ -2049,17 +1878,18 @@ const BookDetail = () => {
   }, [
     nextChapter,
     isChapterSwitching,
-    isSelectedPageDirty,
-    saveSelectedDraft,
+    hasPageDrafts,
+    savePageDrafts,
     fetchPages,
     navigateToChapter,
-    scrollToPageHorizontally
+    navigate,
+    location.pathname,
+    location.search
   ]);
 
-  function handlePageUpdate(update) {
+  function handlePageUpdate(update, targetPageId = update?.id) {
     setPages(prevPages => {
-      // Figure out the current page being edited
-      const current = prevPages.find(p => p.id === selectedPageId);
+      const current = prevPages.find(p => p.id === targetPageId);
       if (!current) return prevPages;
 
       const updatedPage = (typeof update === 'function') ? update(current) : update;
@@ -2091,7 +1921,7 @@ const BookDetail = () => {
     });
   }
 
-  const handleReplacePageId = (oldId, newPage) => {
+  const handleReplacePageId = (oldId, newPage, { savedDraftVersion } = {}) => {
     setPages((prev) => {
       const replaced = prev.map((p) => (p.id === oldId ? newPage : p));
       const withInsertedPersisted = replaced.some((p) => p.id === newPage.id)
@@ -2129,13 +1959,14 @@ const BookDetail = () => {
       const val = prev[oldId];
       const next = { ...prev };
       delete next[oldId];
-      if (val !== undefined) next[newPage.id] = val;
+      if (val !== undefined && val.updatedAt !== savedDraftVersion) next[newPage.id] = val;
       return next;
     });
     if (selectedPageId === oldId) setSelectedPageId(newPage.id);
+    if (activePageId === oldId) setActivePageId(newPage.id);
   };
 
-  // Pagination overflow/underflow is handled centrally via the reflow engine (no HTML splitting).
+  // Only fixed paper layouts reflow; journal entries retain their own blocks.
 
   // ---------- Chapter Title Editing ----------
   const handleStartEditChapter = (chapter) => {
@@ -2407,7 +2238,6 @@ const BookDetail = () => {
         onClose={() => setEditBookModalOpen(false)}
         book={book}
         onUpdate={handleBookUpdate}
-        onOpenPhotoPlanner={openPhotoPlanner}
       />
 
       {/* Co-Author Invitation Modal */}
@@ -2651,7 +2481,7 @@ const BookDetail = () => {
             <div className="min-w-0 flex items-center gap-3">
               <Button
                 variant="appGhost"
-                onClick={() => navigate('/books')}
+                onClick={() => navigateAfterSaving('/books')}
                 className="asset-header-btn asset-top-action-btn inline-flex items-center gap-2 h-8 rounded-pill px-4 text-xs font-semibold"
               >
                 <ArrowLeft className="h-4 w-4" />
@@ -2684,7 +2514,7 @@ const BookDetail = () => {
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
-                  onClick={() => navigate(`/book/${bookId}/view`)}
+                  onClick={() => navigateAfterSaving(`/book/${bookId}/view`)}
                   className="flex items-center gap-2 h-8 text-xs"
                 >
                   <Eye className="h-3 w-3" />
@@ -2693,7 +2523,7 @@ const BookDetail = () => {
                 <VoiceAssistantButton
                   bookId={bookId}
                   chapterId={selectedChapterId}
-                  pageId={selectedPageId}
+                  pageId={viewMode === 'pages' ? (activePageId || selectedPageId) : null}
                 />
                 {canOpenCoAuthorModal && (
                   <>
@@ -2732,7 +2562,7 @@ const BookDetail = () => {
                 <VoiceAssistantButton
                   bookId={bookId}
                   chapterId={selectedChapterId}
-                  pageId={selectedPageId}
+                  pageId={viewMode === 'pages' ? (activePageId || selectedPageId) : null}
                   className="h-10 rounded-xl px-5 text-sm font-semibold"
                 />
                 <Button
@@ -2812,15 +2642,7 @@ const BookDetail = () => {
                                 setSaveConfirmOpen(true);
                                 return;
                               }
-                              setSelectedChapterId(chapter.id);
-                              navigateToChapter(chapter.id);
-                              if (isForcedReadRoute) {
-                                setViewMode('pages');
-                              } else {
-                                setViewMode('chapter');
-                                setSelectedPageId(null);
-                              }
-                              setExpandedChapters(new Set([chapter.id]));
+                              void requestSelectChapter(chapter.id);
                             }}
                             className={`chapter-sidebar-row w-full text-left p-2 rounded-lg flex items-center justify-between ${editingChapterId === chapter.id ? '' : 'cursor-pointer'} ${selectedChapterId === chapter.id && viewMode === 'chapter' ? 'bg-app-iris/10 text-app-iris font-medium chapter-sidebar-row-active' : 'text-foreground'}`}
                           >
@@ -3011,30 +2833,41 @@ const BookDetail = () => {
             {/* Center: Editor List */}
             <div className="flex-1 flex flex-col min-h-0 relative bg-card overflow-hidden matrix-surface">
               <div
-                className={`flex-1 h-full scroll-smooth ${isReadOnlyPagesMode ? 'overflow-y-auto overflow-x-hidden' : 'overflow-x-auto overflow-y-auto'} ${viewMode === 'pages' && !isReadOnlyPagesMode ? 'snap-x snap-mandatory' : ''}`}
+                className="book-writing-scroll flex-1 h-full min-w-0 overflow-y-auto overflow-x-hidden"
+                data-testid="book-pages-scroll"
                 ref={scrollContainerRef}
-                onWheel={handlePagesWheel}
               >
-                <div className={`${viewMode === 'pages'
-                  ? (isReadOnlyPagesMode
-                    ? 'min-h-full flex flex-col items-stretch gap-8 px-0 pb-8'
-                    : 'min-h-full flex flex-row items-start gap-0 px-0 pb-8')
-                  : 'min-h-full pb-32'}`}
-                >
+                <div className={viewMode === 'pages' ? 'book-writing-pages min-h-full flex flex-col items-stretch gap-8 px-0 pb-8' : 'min-h-full pb-32'}>
                   {selectedChapterId ? (
                     <>
                       {viewMode === 'chapter' ? (
                         /* Chapter View: Show AI Assistant */
-                        <div className="flex flex-col justify-center items-center text-center h-full p-6">
+                        <div className="chapter-writing-overview">
                           <div className="bg-app-gray-50 rounded-full p-6 mb-4">
                             <Sparkles className="h-8 w-8 text-app-iris" />
                           </div>
-                          <h3 className="text-lg font-medium text-app-iris mb-1">
-                            {chapters.find(c => c.id === selectedChapterId)?.title}
+                          <h3 className="text-3xl font-semibold tracking-tight text-foreground mb-2">
+                            {chapterTitle}
                           </h3>
-                          <h2 className="text-xl font-semibold text-gray-800">Ready to write?</h2>
-                          <p className="mt-2 text-gray-500 max-w-xs">Use the AI assistant below to add content or create pages manually.</p>
+                          <h2 className="text-base font-medium text-muted-foreground">{pages.length ? 'Pick up where you left off.' : 'A new chapter starts here.'}</h2>
+                          <p className="mt-3 text-sm leading-relaxed text-muted-foreground max-w-sm">Start a page, or work through an idea with your writing assistant.</p>
 
+                          {(chapterSummary || pages.length > 0) && (
+                            <section
+                              aria-label="Chapter summary"
+                              data-testid="chapter-summary"
+                              className="mt-6 w-full max-w-2xl rounded-2xl border border-border bg-card/80 px-5 py-4 text-left shadow-sm"
+                            >
+                              <h4 className="text-sm font-semibold text-foreground">Chapter summary</h4>
+                              {chapterSummary ? (
+                                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{chapterSummary}</p>
+                              ) : (
+                                <p className="mt-2 text-sm leading-6 text-muted-foreground">A summary will appear here after your saved pages are processed.</p>
+                              )}
+                            </section>
+                          )}
+
+                          <div className="mt-6 flex flex-wrap justify-center gap-2">
                           {/* Show "Go to Pages" button if pages exist */}
                           {pages.length > 0 && (
                             <Button
@@ -3044,7 +2877,7 @@ const BookDetail = () => {
                                 setSelectedPageId(pages[0].id);
                               }}
                               variant="outline"
-                              className="mt-4"
+                              className="rounded-xl"
                             >
                               <Type className="h-4 w-4 mr-2" />
                               View Pages ({pages.length})
@@ -3052,39 +2885,17 @@ const BookDetail = () => {
                           )}
 
                           {canEdit && (
-                            <Button data-testid="add-page-btn" onClick={requestAddPage} className="mt-2" disabled={isAddingPage}>
+                            <Button data-testid="add-page-btn" onClick={requestAddPage} variant={pages.length ? 'outline' : 'appPrimary'} className="rounded-xl" disabled={isAddingPage}>
                               <PlusCircle className="h-4 w-4 mr-2" />
                               Add Page Manually
                             </Button>
                           )}
 
-                          {/* AI Assistant Box */}
-                          <div className="w-full max-w-3xl mt-8 text-left space-y-4">
-                            <ChapterChatBox
-                              inputValue={chapterChatInput}
-                              onInputChange={setChapterChatInput}
-                              bookId={bookId}
-                              chapterId={selectedChapterId}
-                              onOpenPhotoPlanner={openPhotoPlanner}
-                              canTransfer={pages.length > 0}
-                              onTransfer={(transferMessages) => {
-                                setChatPanelSeed({
-                                  messages: transferMessages,
-                                  token: Date.now(),
-                                });
-                              }}
-                              onPageCreated={(pageData) => {
-                                console.log('🔄 Refreshing pages after page creation:', pageData);
-                                // Refresh pages for the current chapter
-                                fetchPages(selectedChapterId);
-                              }}
-                            />
-                            <GenerateChapterContent
-                              bookId={bookId}
-                              chapterId={selectedChapterId}
-                              onSuggestionSelect={setChapterChatInput}
-                            />
                           </div>
+                          {canEdit && <div className="mt-6 flex items-center gap-4 text-sm">
+                            <button className="text-muted-foreground hover:text-foreground hover:underline" onClick={() => openWritingAssistant('ideas')}>Explore chapter ideas</button>
+                          </div>}
+
                         </div>
                       ) : (
                         /* Pages View: Show all pages */
@@ -3095,22 +2906,14 @@ const BookDetail = () => {
                                 key={p.id}
                                 ref={el => pageContainerRefs.current[p.id] = el}
                                 data-page-id={p.id}
-                                className={`${book?.layoutMode === 'standard'
-                                  ? (isReadOnlyPagesMode ? 'w-full px-0' : 'w-full min-w-full shrink-0 px-0 snap-start snap-always')
-                                  : (isReadOnlyPagesMode ? 'w-full px-0' : 'w-full min-w-full shrink-0 px-0 snap-start snap-always')
-                                } ${book?.templateType === 'babyJournalPage' && !isReadOnlyPagesMode && pageTurnAnimatingId === p.id ? 'baby-page-turn-enter' : ''}`}
+                                className="book-writing-page w-full min-w-0 px-0"
                               >
-                                {/* Page Divider (except for first page) */}
-                                {index > 0 && book?.layoutMode !== 'standard' && (
-                                  <div className="w-full h-px bg-gray-100 my-10" />
-                                )}
-
                                 <PageEditor
                                   ref={el => pageRefs.current[p.id] = el}
                                   bookId={bookId}
-                                  chapterId={selectedChapterId}
+                                  chapterId={p.chapterId || selectedChapterId}
                                   page={p}
-                                  onPageUpdate={handlePageUpdate}
+                                  onPageUpdate={(update) => handlePageUpdate(update, p.id)}
                                   onAddPage={handleAddPage}
                                   onNavigate={(dir) => handlePageNavigate(p.id, dir)}
                                   pageIndex={index}
@@ -3130,6 +2933,8 @@ const BookDetail = () => {
                                   layoutMode={book?.layoutMode}
                                   pageAlign={pageAlign}
                                   standardPageHeightPx={standardPageHeightPx}
+                                  lengthGuideTarget={lengthGuideTarget}
+                                  onLengthGuideTargetChange={setLengthGuideTarget}
                                   readOnly={isForcedReadRoute || !canEdit}
                                   canUploadMedia={isOwner || collaborationPermissions.canManageMedia}
                                   canCreateVideo={canCreateVideo}
@@ -3155,12 +2960,8 @@ const BookDetail = () => {
                     </div>
                   )}
 
-                  {/* Space at bottom for scrolling past last page */}
-                  <div className={viewMode === 'pages' ? (isReadOnlyPagesMode ? 'h-8' : 'w-0 shrink-0') : 'h-20'}></div>
-                </div>
-              </div>
-              {viewMode === 'pages' && isAtChapterEnd && nextChapter && (
-                <div className="pointer-events-none absolute bottom-4 left-1/2 z-30 -translate-x-1/2">
+              {viewMode === 'pages' && pages.length > 0 && nextChapter && (
+                <div className="flex justify-center px-4 pb-8">
                   <Button
                     variant="appPrimary"
                     onClick={handleGoToNextChapter}
@@ -3178,6 +2979,11 @@ const BookDetail = () => {
                   </Button>
                 </div>
               )}
+
+                  {/* Space at bottom for scrolling past last page */}
+                  <div className="h-8 shrink-0" />
+                </div>
+              </div>
               {isChapterSwitching && (
                 <div className="absolute inset-0 z-40 flex items-center justify-center bg-background/60 backdrop-blur-[2px]">
                   <div className="inline-flex items-center rounded-full border border-app-iris/20 bg-card px-4 py-2 text-sm font-medium text-app-iris shadow-md matrix-surface-soft">
@@ -3239,12 +3045,18 @@ const BookDetail = () => {
             {/* Right Sidebar: Chat */}
             {!isForcedReadRoute && (
               <ChatPanel
+                key={bookId}
+                defaultMinimized
                 onMinimizeChange={setIsChatMinimized}
                 bookId={bookId}
                 chapterId={selectedChapterId}
-                incomingMessages={chatPanelSeed?.messages}
-                incomingMessagesToken={chatPanelSeed?.token}
-                onOpenPhotoPlanner={openPhotoPlanner}
+                bookTitle={book?.title || book?.babyName}
+                chapters={orderedChapters}
+                pages={pages}
+                pageId={viewMode === 'pages' ? (activePageId || selectedPageId) : undefined}
+                getPageContext={getAssistantPageContext}
+                openRequest={assistantRequest}
+                onPageCreated={() => { fetchPages(selectedChapterId); fetchChapters(); }}
               />
             )}
           </div>
@@ -3256,19 +3068,6 @@ const BookDetail = () => {
         defaultInstruction={videoDialogContext.instruction}
         loading={creatingVideoJob}
         onConfirm={handleConfirmVideoDialog}
-      />
-      <PhotoPlannerDialog
-        isOpen={photoPlannerOpen}
-        onOpenChange={handlePhotoPlannerOpenChange}
-        bookId={bookId}
-        chapters={chapters}
-        defaultChapterId={selectedChapterId || chapters[0]?.id}
-        accessibleAlbums={accessibleAlbums}
-        isBabyJournal={book?.templateType === 'babyJournalPage'}
-        source={photoPlannerSeed?.source || 'book_assistant'}
-        seed={photoPlannerSeed || {}}
-        onEnsureChapter={canEdit ? handleEnsurePlannerChapter : undefined}
-        onApplied={handlePlannerApplied}
       />
       <style>{`
         .baby-page-turn-enter {

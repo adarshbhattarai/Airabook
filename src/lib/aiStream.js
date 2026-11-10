@@ -181,8 +181,10 @@ const buildRequestPayload = ({
   action,
   bookId,
   chapterId,
+  pageId,
   scope,
   conversationId,
+  uiContext,
 }) => {
   const source = typeof scope === 'string' && scope.trim() ? scope.trim() : 'dashboard';
   const trimmedConversationId = typeof conversationId === 'string' ? conversationId.trim() : '';
@@ -192,6 +194,10 @@ const buildRequestPayload = ({
   }
   if (typeof chapterId === 'string' && chapterId.trim()) {
     metadata.chapterId = chapterId.trim();
+  }
+  if (typeof pageId === 'string' && pageId.trim()) metadata.pageId = pageId.trim();
+  if (uiContext?.surface === 'book_writer' && ['book', 'chapter', 'page'].includes(uiContext.scope)) {
+    metadata.contextScope = uiContext.scope;
   }
   if (typeof action === 'string' && action.trim()) {
     metadata.action = action.trim();
@@ -209,6 +215,9 @@ const buildRequestPayload = ({
   };
   if (trimmedConversationId) {
     payload.conversationId = trimmedConversationId;
+  }
+  if (uiContext && typeof uiContext === 'object' && !Array.isArray(uiContext)) {
+    payload.uiContext = uiContext;
   }
 
   return payload;
@@ -280,8 +289,10 @@ export const streamAirabookAI = async ({
   action,
   bookId,
   chapterId,
+  pageId,
   scope,
   conversationId,
+  uiContext,
   onChunk,
   onOutline,
   onPageStart,
@@ -299,7 +310,7 @@ export const streamAirabookAI = async ({
   }
 
   const idToken = await user.getIdToken();
-  const payload = buildRequestPayload({ messages, isSurprise, action, bookId, chapterId, scope, conversationId });
+  const payload = buildRequestPayload({ messages, isSurprise, action, bookId, chapterId, pageId, scope, conversationId, uiContext });
   const response = await fetch(getStreamUrl(), {
     method: 'POST',
     headers: {
