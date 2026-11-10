@@ -4,9 +4,9 @@
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
-# Ensure Node 20 is used by prioritizing it in PATH
+# Ensure Node 22 is used by prioritizing it in PATH
 # simple 'nvm use' can fail in some shell environments
-TARGET_VER=20
+TARGET_VER=22
 NODE_BIN=$(nvm which $TARGET_VER)
 
 if [ -z "$NODE_BIN" ]; then

@@ -1,79 +1,59 @@
 # Frontend Context Report
 
-Generated: 2026-11-03 15:24:02Z
+Generated: 2026-11-10 22:00:45Z
 
 ## Frontend Repo Snapshot
-- Workspace: /home/sarojx/Documents/airabookai/airabook
-- Branch: feature/enterprise-workspace-changes
-- HEAD: 819f04b
-- Backend repo: /home/sarojx/Documents/airabookai/Agent
+- Workspace: /Users/adarshbhattarai/code/Airabook/Airabook
+- Branch: main
+- HEAD: b864b76
+- Backend repo: /Users/adarshbhattarai/code/Airabook/Agent
 
 ## Read First
-- /home/sarojx/Documents/airabookai/airabook/AGENTS.md
-- /home/sarojx/Documents/airabookai/airabook/ARCHITECTURE.md
-- /home/sarojx/Documents/airabookai/airabook/README.md
-- /home/sarojx/Documents/airabookai/airabook/SELF_UPDATE_WORKFLOW.md
-- /home/sarojx/Documents/airabookai/Agent/AGENTS.md
+- /Users/adarshbhattarai/code/Airabook/Airabook/AGENTS.md
+- /Users/adarshbhattarai/code/Airabook/Airabook/ARCHITECTURE.md
+- /Users/adarshbhattarai/code/Airabook/Airabook/README.md
+- /Users/adarshbhattarai/code/Airabook/Airabook/SELF_UPDATE_WORKFLOW.md
+- /Users/adarshbhattarai/code/Airabook/Agent/AGENTS.md
 
 ## Frontend Working Tree
 
 
 ```text
- M ARCHITECTURE.md
- M WORKSPACE_SELECTION.md
- M e2e/fixtures/enterpriseWorkspace.jsx
- M e2e/workspace-selection.spec.mjs
+ M .github/workflows/deploy-dev.yml
+ M .github/workflows/deploy-go.yml
+ M .github/workflows/deploy-prod.yml
+ M .github/workflows/deploy-qa.yml
+ M DEVELOPMENT_PROFILES.md
+ M functions/package-lock.json
+ M functions/package.json
  M generated/frontend-context-report.md
- M package-lock.json
- M package.json
- M scripts/workspaceSelection.test.mjs
- M src/App.jsx
- M src/components/navigation/AppHeader.jsx
- M src/components/navigation/MobileTopBar.jsx
- M src/components/navigation/Sidebar.jsx
- M src/components/workspace/EnterpriseOnboardingNotice.jsx
- M src/components/workspace/EnterpriseTeamManagement.jsx
- M src/components/workspace/WorkspaceMenu.jsx
- M src/hooks/useWorkspaceMenu.js
- M src/layouts/AppShell.jsx
- M src/pages/Dashboard.jsx
- M src/pages/EnterpriseHome.jsx
- M src/pages/EnterpriseWorkspaceHub.jsx
- M src/pages/WorkspaceChooser.jsx
- M src/pages/auth/v2/EnterpriseSignup.jsx
- M src/services/ApiService.js
- M src/services/enterpriseOnboardingService.js
- M src/services/workspaceSelection.js
-?? src/context/AppQueryProvider.jsx
-?? src/context/WorkspaceContext.jsx
-?? src/hooks/useEnterpriseOnboardingNotification.js
-?? src/services/enterpriseQueries.js
+ M start-firebase.sh
 ```
 
 ## Backend Snapshot
-- Branch: saroj/enterprise-info-refine
-- HEAD: 975fd54
+- Branch: dev-adarsh-pg
+- HEAD: 90d0e46
 
 
 ```text
-Working tree clean.
+ M agent/src/test/java/com/ethela/agent/config/OpenApiIntegrationTest.java
 ```
 
 ## Recent Commits
+- 2026-11-10 b864b76 Fix dependency lockfile for clean installs
+- 2026-11-10 e0aa5a5 Updates
+- 2026-11-04 8345a7e Merge pull request #112 from adarshbhattarai/feature/enterprise-workspace-changes
+- 2026-11-04 fce0164 redesign the enterprise-workspace and introduced tanstack(reqct-query)
 - 2026-10-29 819f04b Merge pull request #111 from adarshbhattarai/feature/api-key-ui
 - 2026-10-27 7635dc1 Fix API key dialog smoke test expectations
 - 2026-10-27 a4a054e api-key-ui
 - 2026-10-16 d32b34e Merge pull request #110 from adarshbhattarai/feature/enterprise-ui-refinment
-- 2026-10-17 06e7865 Restore lockfile unrelated to UI changes
-- 2026-10-17 068c198 workspace selector ui
-- 2026-10-16 c0969c0 ui refinment
-- 2026-10-12 fa90d8d Merge pull request #105 from adarshbhattarai/feature/enterprise-signin-login-FE
 
 ## High-Signal Paths
-- /home/sarojx/Documents/airabookai/airabook/src/App.jsx
-- /home/sarojx/Documents/airabookai/airabook/src/config/serviceEndpoints.js
-- /home/sarojx/Documents/airabookai/airabook/src/services/ApiService.js
-- /home/sarojx/Documents/airabookai/airabook/functions/index.js
-- /home/sarojx/Documents/airabookai/airabook/functions/airabookaiStream.js
-- /home/sarojx/Documents/airabookai/Agent/agent/src/main/java/com/ethela/agent/service/UnifiedChatStreamService.java
-- /home/sarojx/Documents/airabookai/Agent/agent/src/main/java/com/ethela/agent/service/planner/PlannerAgentGraphService.java
+- /Users/adarshbhattarai/code/Airabook/Airabook/src/App.jsx
+- /Users/adarshbhattarai/code/Airabook/Airabook/src/config/serviceEndpoints.js
+- /Users/adarshbhattarai/code/Airabook/Airabook/src/services/ApiService.js
+- /Users/adarshbhattarai/code/Airabook/Airabook/functions/index.js
+- /Users/adarshbhattarai/code/Airabook/Airabook/functions/airabookaiStream.js
+- /Users/adarshbhattarai/code/Airabook/Agent/agent/src/main/java/com/ethela/agent/service/UnifiedChatStreamService.java
+- /Users/adarshbhattarai/code/Airabook/Agent/agent/src/main/java/com/ethela/agent/service/planner/PlannerAgentGraphService.java

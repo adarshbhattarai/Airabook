@@ -17,6 +17,9 @@ emulators disabled. This includes project number `359520066111`; mixing Web App
 credentials from another Firebase project produces valid tokens that dev Firestore
 and Functions will reject as unauthenticated.
 
+Cloud Functions use the Node.js 22 runtime. Keep deployment workflows and the
+`start-firebase.sh` emulator launcher on Node.js 22 for local and CI parity.
+
 ## Local Profile
 
 Run the complete isolated stack with one command:
