@@ -24,9 +24,10 @@ export const WorkspaceProvider = ({ children }) => {
     && String(validatedSelection.id) === preferredId ? preferredId : null;
   const candidateId = explicitId ?? (enterpriseRoute ? preferredId : retainedId);
   const needsResolution = candidateId !== null || enterpriseRoute;
-  const access = useQuery({ ...workspaceAccessOptions(user?.uid), enabled: !!user?.uid && needsResolution });
+  const access = useQuery({ ...workspaceAccessOptions(user?.uid), enabled: !!user?.uid });
   const profile = access.data;
   const active = getActiveWorkspaces(profile);
+  const personalAccount = active.find((item) => item.type === 'PERSONAL') || null;
   const enterprise = active.filter((item) => item.type === 'ENTERPRISE');
   let account = needsResolution ? enterprise.find((item) => String(item.id) === candidateId) : null;
   if (!account && explicitId === null && enterpriseRoute && enterprise.length === 1) account = enterprise[0];
@@ -77,7 +78,7 @@ export const WorkspaceProvider = ({ children }) => {
     return `${url.pathname}${url.search}${url.hash}`;
   };
   return <WorkspaceContext.Provider value={{
-    account, actorUser: profile?.user, mode, pathFor,
+    account, personalAccount, actorUser: profile?.user, mode, pathFor,
     loading: needsResolution && access.isPending,
     error: needsResolution ? access.error?.message : null,
     retry: () => access.refetch(),

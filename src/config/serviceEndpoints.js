@@ -73,6 +73,14 @@ export const SERVICE_ENDPOINTS = {
         import.meta.env.VITE_SPRING_ENTERPRISE_ONBOARDING_ADMIN_REQUESTS_ENDPOINT || 'api/v1/admin/enterpriseOnboardingRequest',
       enterpriseOnboardingAdminRequest:
         import.meta.env.VITE_SPRING_ENTERPRISE_ONBOARDING_ADMIN_REQUEST_ENDPOINT || 'api/v1/admin/enterpriseOnboardingRequest/{requestId}',
+      accountFileUpload: import.meta.env.VITE_SPRING_ACCOUNT_FILE_UPLOAD_ENDPOINT || 'api/v1/accounts/{accountId}/upload',
+      accountFiles: import.meta.env.VITE_SPRING_ACCOUNT_FILES_ENDPOINT || 'api/v1/accounts/{accountId}/files',
+      accountFile: import.meta.env.VITE_SPRING_ACCOUNT_FILE_ENDPOINT || 'api/v1/accounts/{accountId}/files/{fileId}',
+      accountFileDelete: import.meta.env.VITE_SPRING_ACCOUNT_FILE_DELETE_ENDPOINT || 'api/v1/accounts/{accountId}/files/{fileId}',
+      accountFileContent: import.meta.env.VITE_SPRING_ACCOUNT_FILE_CONTENT_ENDPOINT || 'api/v1/accounts/{accountId}/files/{fileId}/content',
+      accountFileReferences: import.meta.env.VITE_SPRING_ACCOUNT_FILE_REFERENCES_ENDPOINT || 'api/v1/accounts/{accountId}/files/{fileId}/references',
+      accountFileVectorize: import.meta.env.VITE_SPRING_ACCOUNT_FILE_VECTORIZE_ENDPOINT || 'api/v1/accounts/{accountId}/files/{fileId}/vectorize',
+      accountFileExecute: import.meta.env.VITE_SPRING_ACCOUNT_FILE_EXECUTE_ENDPOINT || 'api/v1/accounts/{accountId}/files/{fileId}/execute',
     },
   },
 };

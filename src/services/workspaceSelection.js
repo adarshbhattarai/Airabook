@@ -61,7 +61,7 @@ export const getSafeReturnLocation = (from) => {
 /** Resume a deep link only inside the destination the user actually chose. */
 export const getSelectedWorkspaceDestination = (account, from) => {
   const safe = getSafeReturnLocation(from);
-  const personalRoutes = ['/dashboard', '/books', '/book', '/movies', '/notifications', '/media', '/notes',
+  const personalRoutes = ['/dashboard', '/books', '/book', '/movies', '/notifications', '/media', '/files', '/notes',
     '/create-book', '/baby-journal-preview', '/billing', '/donate', '/settings',
     '/v2/enterprise-signup', '/v2/enterprise-request-pending'];
   const sharedRoute = safe && personalRoutes.some((path) => safe.pathname === path || safe.pathname.startsWith(`${path}/`));

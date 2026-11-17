@@ -78,6 +78,12 @@ Frontend Spring integration points currently show up in:
 - `src/services/ApiService.js`
 - feature-specific browser services under `src/services/`
 
+### Private account files
+- `/files` is the account-scoped document library. The dashboard, writing assistant, and page editor use the same multipart upload control.
+- Raw PDF, Markdown, and DOCX bytes go to Spring through `POST /api/v1/accounts/{accountId}/upload` from `src/services/accountFilesService.js`; file listing and references remain under `/files`. The authenticated content route serves private previews; future indexing and book execution remain separate actions.
+- Spring owns file metadata and conversation/page references. The page editor does not copy file metadata into Firestore or use the public page media Storage workflow for documents.
+- The current frontend request and response assumptions are documented in `docs/ACCOUNT_FILES_API_CONTRACT.md`. Upload, list, references, and private content preview are implemented in Spring; permanent delete, explicit document indexing, and PDF-to-book execution remain backend work.
+
 ### Enterprise onboarding administration
 - The System Admin queue is routed at `/admin/enterprise-approvals` and rendered by `src/pages/admin/EnterpriseApprovals.jsx`.
 - Queue, detail, approve, and decline calls use `/api/v1/admin/enterpriseOnboardingRequest` through `src/services/enterpriseOnboardingService.js`.
@@ -191,3 +197,12 @@ Standard writing pages are vertically stacked entries with a compact page header
 - `src/services/ApiService.js`
 - `functions/index.js`
 - `/Users/adeshbhattarai/code/AiraAI/Agent/AGENTS.md`
+
+
+## My files processing actions
+
+My files offers a one-way Vectorize switch for PDF/Markdown and a separate Create book from PDF action.
+A successful vectorization request locks the switch on; indexing readiness is shown separately and read
+from `vectorization` metadata on refresh. PDF destinations include a new book, a new chapter in an
+existing book, or new pages in a selected chapter. Spring action routes require implementation; see
+[ACCOUNT_FILES_API_CONTRACT.md](docs/ACCOUNT_FILES_API_CONTRACT.md) for payloads and backend prerequisites.

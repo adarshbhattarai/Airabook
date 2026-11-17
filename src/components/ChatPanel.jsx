@@ -16,6 +16,9 @@ import {
 } from '@/lib/chatUiEvents';
 import { executeChatUiAction } from '@/services/chatUiActionService';
 import StreamUiCards from '@/components/chat/StreamUiCards';
+import FileUploadControl from '@/components/files/FileUploadControl';
+import { linkAccountFile } from '@/services/accountFilesService';
+import { useWorkspace } from '@/context/WorkspaceContext';
 
 const appendStreamingText = (currentText, nextText) => `${currentText || ''}${nextText || ''}`;
 
@@ -32,6 +35,8 @@ const ChatPanel = ({
   const launcherRef = useRef(null);
   const endRef = useRef(null);
   const [input, setInput] = useState('');
+  const [draftFiles, setDraftFiles] = useState([]);
+  const [fileUploadKey, setFileUploadKey] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isMinimized, setIsMinimized] = useState(defaultMinimized);
   const [panelWidth, setPanelWidth] = useState(390); // Default 320px (w-80)
@@ -40,6 +45,8 @@ const ChatPanel = ({
   const [conversationId, setConversationId] = useState('');
   const conversationIdRef = useRef(conversationId);
   const context = useWritingAssistantContext({ bookId, bookTitle, chapters, chapterId, pageId, pages, getPageContext });
+  const workspace = useWorkspace();
+  const uploadAccountId = workspace?.account?.id || workspace?.personalAccount?.id || '';
   const requestContextForMessage = (messageId) => messagesRef.current.find((msg) => msg.id === messageId)?.requestContext;
   const welcomePrompts = context.scope === 'book'
     ? ['Help me plan the book', 'What connects these chapters?', 'Suggest what I could write next']
@@ -76,15 +83,18 @@ const ChatPanel = ({
     if (!input.trim() || isLoading) return;
 
     const userQuery = input.trim();
+    const attachments = draftFiles.filter((file) => file?.id);
     const assistantId = typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID()
       : `assistant-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     setMessages(prev => [
       ...prev,
-      { role: 'user', content: userQuery, contextLabel: context.label },
+      { role: 'user', content: userQuery, contextLabel: context.label, attachments },
       { id: assistantId, role: 'assistant', content: '', streamingContent: '', isStreaming: true, sources: [], actions: [] },
     ]);
     setInput('');
+    setDraftFiles([]);
+    setFileUploadKey((current) => current + 1);
     setIsLoading(true);
 
     try {
@@ -111,6 +121,8 @@ const ChatPanel = ({
           if (resolvedConversationId) {
             setConversationId(resolvedConversationId);
           }
+          const effectiveConversationId = resolvedConversationId || conversationIdRef.current;
+          if (effectiveConversationId) attachments.forEach((file) => linkAccountFile({ accountId: uploadAccountId, fileId: file.id, reference: { type: 'conversation', conversationId: effectiveConversationId, bookId, chapterId, pageId } }).catch((error) => console.warn('Could not link uploaded file to conversation:', error?.message || error)));
           const doneCards = extractUiCards('done', data);
           setMessages(prev => prev.map(msg => (
             msg.id === assistantId
@@ -498,6 +510,7 @@ const ChatPanel = ({
             {msg.role === 'user' && msg.contextLabel && <p className="book-assistant-message-context">{msg.contextLabel}</p>}
             <div className={msg.role === 'user' ? 'book-assistant-user-text' : 'book-assistant-answer'}>
               {msg.role === 'user' ? <p className="whitespace-pre-wrap">{msg.content}</p> : (msg.streamingContent || msg.content) ? <ReactMarkdown>{msg.isStreaming ? (msg.streamingContent || msg.content) : msg.content}</ReactMarkdown> : <MessageContent isStreaming={msg.isStreaming} />}
+              {msg.role === 'user' && msg.attachments?.length > 0 && <><div className="mt-2 flex flex-wrap gap-1.5">{msg.attachments.map((file) => <span key={file.id} className="rounded-md border border-border/40 bg-background/50 px-2 py-1 text-xs">📄 {file.name || file.fileName}</span>)}</div><p className="mt-1 text-[10px] opacity-70">Saved for future processing. Aira has not read these files.</p></>}
               {msg.sources && msg.sources.length > 0 && (
                 <div className="mt-2 pt-2 border-t border-border/20 text-xs opacity-80">
                   <p className="font-semibold mb-1">Sources:</p>
@@ -546,6 +559,7 @@ const ChatPanel = ({
       </div>
       {tab === 'chat' && <form className="book-assistant-composer" onSubmit={(event) => { event.preventDefault(); handleSend(); }}>
         <div className="book-assistant-input-wrap">
+          <div className="flex items-center gap-2 px-2 pt-1"><FileUploadControl key={fileUploadKey} accountId={uploadAccountId} scope="conversation" onChange={setDraftFiles} compact disabled={isLoading} label="Attach files" />{draftFiles.length > 0 && <span className="text-[10px] text-muted-foreground">Saved for later · not yet readable by Aira</span>}</div>
           <Textarea ref={inputRef} value={input} onChange={event => setInput(event.target.value)} aria-label="Message writing assistant" placeholder={`Ask about this ${context.scope}…`} className="book-assistant-input" rows={2} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); handleSend(); } }} disabled={isLoading} />
           <div className="flex items-center justify-between px-3 pb-2"><span className="text-[10px] text-muted-foreground">{isLoading ? 'Thinking…' : 'Shift + Enter for a new line'}</span><Button type="submit" size="icon" variant="appPrimary" className="h-8 w-8 rounded-lg" aria-label="Send message" disabled={isLoading || !input.trim()}><ArrowUp className="h-4 w-4" /></Button></div>
         </div>

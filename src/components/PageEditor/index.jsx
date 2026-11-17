@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { doc, getDoc, updateDoc, arrayRemove, arrayUnion } from 'firebase/firestore';
 import { ref as firebaseRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { firestore, storage, functions } from '@/lib/firebase';
@@ -8,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { httpsCallable } from 'firebase/functions';
 import {
-  ChevronDown, ChevronLeft, ChevronRight, Sparkles, UploadCloud, X, Trash2, Save, Clapperboard, Loader2, Plus
+  ChevronDown, ChevronLeft, ChevronRight, Sparkles, UploadCloud, X, Trash2, Save, Clapperboard, Loader2, Plus, FileText
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
@@ -30,6 +31,9 @@ import WritingPageHeader from '@/components/PageEditor/WritingPageHeader';
 import { pageTemplates } from '@/constants/pageTemplates';
 import { pageBlockApiService } from '@/services/pageBlockApiService';
 import { getPageWritingStats } from '@/lib/pageWritingStats';
+import { useWorkspace } from '@/context/WorkspaceContext';
+import FileUploadControl from '@/components/files/FileUploadControl';
+import { accountFilesQueryKey, linkAccountFile, listAccountFiles, unlinkAccountFile } from '@/services/accountFilesService';
 
 const MEDIA_PICKER_CONTEXT_EDITOR = 'editor';
 const MEDIA_PICKER_CONTEXT_TEMPLATE = 'template';
@@ -98,6 +102,8 @@ const PageEditor = forwardRef(({
 
   const quillRef = useRef(null);
   const { user, appUser } = useAuth();
+  const workspace = useWorkspace();
+  const uploadAccountId = workspace?.account?.id || workspace?.personalAccount?.id || '';
   const { toast } = useToast();
   const fileInputRef = useRef(null);
   const pageRootRef = useRef(null);
@@ -110,8 +116,52 @@ const PageEditor = forwardRef(({
   const editorContainerRef = useRef(null);
   const genImgInputRef = useRef(null);
   const mediaPickerCloseReasonRef = useRef('idle');
+  const pageFileIdsRef = useRef(new Set());
   const [modelDropdownPlacement, setModelDropdownPlacement] = useState('top');
   const [aiStyleDropdownPlacement, setAiStyleDropdownPlacement] = useState('top');
+  const [removingPageFileId, setRemovingPageFileId] = useState('');
+  const queryClient = useQueryClient();
+  const accountFilesQuery = useQuery({
+    queryKey: accountFilesQueryKey(uploadAccountId),
+    queryFn: ({ signal }) => listAccountFiles({ accountId: uploadAccountId, signal }),
+    enabled: !!uploadAccountId,
+    staleTime: 30_000,
+  });
+  const attachedPageFiles = (accountFilesQuery.data || []).filter((file) => file.pageId === page?.id
+    || file.references?.some((reference) => String(reference.type || reference.scope || '').toLowerCase() === 'page'
+      && reference.bookId === bookId && reference.chapterId === chapterId && reference.pageId === page?.id));
+
+  const removePageFile = async (file) => {
+    const reference = file.references?.find((item) => String(item.type || item.scope || '').toLowerCase() === 'page'
+      && item.bookId === bookId && item.chapterId === chapterId && item.pageId === page?.id);
+    if (!reference?.id) {
+      toast({ title: 'Cannot remove this attachment yet', description: 'The file API must return the page reference ID to remove this link.', variant: 'destructive' });
+      return;
+    }
+    setRemovingPageFileId(file.id);
+    try {
+      await unlinkAccountFile({ accountId: uploadAccountId, fileId: file.id, referenceId: reference.id });
+      queryClient.setQueryData(accountFilesQueryKey(uploadAccountId), (current = []) => current.map((item) => {
+        if (item.id !== file.id) return item;
+        const references = (item.references || []).filter((candidate) => candidate.id !== reference.id);
+        const nextPage = references.find((candidate) => String(candidate.type || candidate.scope || '').toLowerCase() === 'page') || {};
+        const nextConversation = references.find((candidate) => String(candidate.type || candidate.scope || '').toLowerCase() === 'conversation') || {};
+        return {
+          ...item,
+          references,
+          scope: nextPage.type || nextConversation.type || (references.length ? item.scope : 'library'),
+          bookId: nextPage.bookId || '',
+          chapterId: nextPage.chapterId || '',
+          pageId: nextPage.pageId || '',
+          conversationId: nextConversation.conversationId || '',
+        };
+      }));
+    } catch (error) {
+      toast({ title: 'Could not remove the page attachment', description: error?.message || 'Try again.', variant: 'destructive' });
+    } finally {
+      setRemovingPageFileId('');
+    }
+  };
 
   // Track last saved blocks for reconciliation (to detect deleted album images)
   const previousBlocksRef = useRef(null);
@@ -2082,6 +2132,8 @@ const PageEditor = forwardRef(({
               </div>
             )}
 
+            {attachedPageFiles.length > 0 && <div className="mb-4 flex flex-wrap gap-2" aria-label="Attached files">{attachedPageFiles.map((file) => <span key={file.id} className="inline-flex items-center gap-1.5 rounded-lg border border-app-gray-200 bg-app-gray-50 px-2.5 py-1.5 text-xs text-app-gray-700"><FileText className="h-3.5 w-3.5 shrink-0 text-app-iris" /><span className="max-w-52 truncate" title={file.name}>{file.name}</span>{file.documentType === 'DOCX' && <span className="text-amber-700">· processing unavailable</span>}<button type="button" aria-label={`Remove ${file.name} from this page`} title="Remove from this page" disabled={removingPageFileId === file.id} onClick={() => void removePageFile(file)} className="rounded p-0.5 hover:bg-app-gray-200 disabled:opacity-50"><X className="h-3.5 w-3.5" /></button></span>)}</div>}
+
             {/* Hidden file input for uploader */}
             <input
               ref={fileInputRef}
@@ -2138,6 +2190,39 @@ const PageEditor = forwardRef(({
                   </Button>
                 </div>
 
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-app-gray-200 bg-app-gray-50 px-3 py-2">
+                  <div><p className="text-sm font-medium text-app-gray-800">Page files</p><p className="text-xs text-app-gray-500">Documents are saved with this page and in My files.</p></div>
+                  <FileUploadControl
+                    accountId={uploadAccountId}
+                    scope="page"
+                    label="Attach file"
+                    allowRemoveReady={false}
+                    disabled={readOnly || !canUploadMedia || !page?.id || page.id.startsWith('temp_')}
+                    onChange={(files) => {
+                      files.forEach((file) => {
+                        if (!file?.id || pageFileIdsRef.current.has(file.id) || !page?.id || page.id.startsWith('temp_')) return;
+                        pageFileIdsRef.current.add(file.id);
+                        const reference = { type: 'page', bookId, chapterId, pageId: page.id };
+                        void linkAccountFile({ accountId: uploadAccountId, fileId: file.id, reference })
+                          .then((response) => {
+                            const linked = response?.data || response || {};
+                            const linkedReference = linked.reference
+                              || linked.references?.find((item) => item.type === 'page' && item.pageId === page.id)
+                              || (String(linked.type || '').toLowerCase() === 'page' ? linked : {});
+                            const referenceWithId = { ...reference, ...linkedReference, id: linkedReference.id || linked.referenceId || null };
+                            queryClient.setQueryData(accountFilesQueryKey(uploadAccountId), (current = []) => [
+                              ...current.filter((item) => item.id !== file.id),
+                              { ...file, ...reference, scope: 'page', references: [...(file.references || []), referenceWithId] },
+                            ]);
+                          })
+                          .catch((error) => {
+                            pageFileIdsRef.current.delete(file.id);
+                            toast({ title: 'File uploaded, but not attached', description: error?.message || 'Retry the page attachment from My files.', variant: 'destructive' });
+                          });
+                      });
+                    }}
+                  />
+                </div>
                 {mediaPickerTab === 'upload' ? (
                   <div
                     className="media-picker-upload-dropzone p-6 border-2 border-dashed rounded-lg bg-gray-50 text-center text-sm text-app-gray-700"

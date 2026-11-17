@@ -20,6 +20,7 @@ import Books from '@/pages/Books';
 import Movies from '@/pages/Movies';
 import Notifications from '@/pages/Notifications';
 import AssetRegistry from '@/pages/Media';
+import MyFiles from '@/pages/MyFiles';
 import Notes from '@/pages/Notes';
 import CreateBook from '@/pages/CreateBook';
 import BabyJournalPreview from '@/pages/BabyJournalPreview';
@@ -177,6 +178,10 @@ function App() {
                   </ThemedAppShell>
                 </PrivateRoute>
               }
+            />
+            <Route
+              path="/files"
+              element={<PrivateRoute><ThemedAppShell><MyFiles /></ThemedAppShell></PrivateRoute>}
             />
             <Route
               path="/media"

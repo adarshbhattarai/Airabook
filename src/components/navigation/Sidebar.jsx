@@ -12,6 +12,7 @@ import {
   BookOpen,
   Clapperboard,
   Image as ImageIcon,
+  Files,
   Heart,
   PanelLeftClose,
   PanelLeftOpen,
@@ -29,6 +30,7 @@ const baseSections = [
       { name: 'Dashboard', icon: LayoutDashboard, to: '/dashboard' },
       { name: 'Books', icon: BookOpen, to: '/books' },
       { name: 'Asset Registry', icon: ImageIcon, to: '/media' },
+      { name: 'My files', icon: Files, to: '/files' },
     ],
   },
   {

@@ -157,6 +157,26 @@ class ApiService {
         return this.request(endpoint, { ...options, method: 'GET' });
     }
 
+    /** Fetch an authenticated binary response without parsing it as JSON or text. */
+    async getBlob(endpoint, { headers = {}, includeAuth = true, signal } = {}) {
+        try {
+            const url = this.buildURL(endpoint);
+            const requestHeaders = { ...headers };
+            if (includeAuth) {
+                const token = await this.getAuthToken();
+                if (!token) throw new Error('Sign in again to open this file.');
+                requestHeaders.Authorization = `Bearer ${token}`;
+            }
+
+            const response = await fetch(url, { method: 'GET', headers: requestHeaders, signal });
+            if (!response.ok) await this.handleResponse(response);
+            return await response.blob();
+        } catch (error) {
+            console.error(`❌ Binary API request failed:`, endpoint, error);
+            throw error;
+        }
+    }
+
     /**
      * POST request
      * @param {string} endpoint - API endpoint
@@ -238,6 +258,41 @@ class ApiService {
             console.error(`❌ Upload failed:`, endpoint, error);
             throw error;
         }
+    }
+
+    async uploadWithProgress(endpoint, formData, { onProgress, signal, headers: customHeaders = {} } = {}) {
+        const token = await this.getAuthToken();
+        if (!token) throw new Error('Sign in again before uploading a file.');
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', this.buildURL(endpoint));
+            xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+            Object.entries(customHeaders).forEach(([key, value]) => xhr.setRequestHeader(key, value));
+            xhr.upload.addEventListener('progress', (event) => {
+                if (event.lengthComputable && typeof onProgress === 'function') {
+                    onProgress(Math.round((event.loaded / event.total) * 100));
+                }
+            });
+            xhr.addEventListener('load', () => {
+                const contentType = xhr.getResponseHeader('content-type') || '';
+                let data = xhr.responseText;
+                if (contentType.includes('application/json')) {
+                    try { data = JSON.parse(xhr.responseText); } catch { /* response parser reports below */ }
+                }
+                if (xhr.status < 200 || xhr.status >= 300) {
+                    reject(new Error(data?.message || data?.error || data || `Upload failed (${xhr.status}).`));
+                    return;
+                }
+                resolve(data);
+            });
+            xhr.addEventListener('error', () => reject(new Error('Network error while uploading.')));
+            xhr.addEventListener('abort', () => reject(new DOMException('Upload cancelled.', 'AbortError')));
+            if (signal) {
+                if (signal.aborted) { xhr.abort(); return; }
+                signal.addEventListener('abort', () => xhr.abort(), { once: true });
+            }
+            xhr.send(formData);
+        });
     }
 
     /**

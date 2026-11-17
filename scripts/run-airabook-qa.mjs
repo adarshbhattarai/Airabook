@@ -150,6 +150,7 @@ const main = async () => {
     ? []
     : [
       'e2e/critical-path.spec.mjs',
+      'e2e/my-files-upload.spec.mjs',
       'e2e/auth.spec.mjs',
       'e2e/book-flow.spec.mjs',
       'e2e/chapter-navigation.spec.mjs',
