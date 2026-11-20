@@ -369,14 +369,35 @@ test('Admin mobile drawer closes after navigation and can be reopened and dismis
 
 for (const [path, heading] of [['/dashboard', 'Dashboard page'], ['/books', 'Books page'], ['/media', 'Media page']]) {
   test(`Personal ${path} loads and refreshes without a workspace-access gate`, async ({ page }) => {
-    const state = await fixture(page, { signedIn: true, initialRoute: path, preference: personal.id, failMe: true });
-    await expect(page.getByRole('heading', { name: heading })).toBeVisible();
-    await expect(page.getByText('Loading workspace access…', { exact: true })).toHaveCount(0);
-    expect(state.calls).not.toContain('/api/v1/me');
-    await page.reload();
-    await expect(page.getByRole('heading', { name: heading })).toBeVisible();
-    await expect(page.getByText('Loading workspace access…', { exact: true })).toHaveCount(0);
-    expect(state.calls).not.toContain('/api/v1/me');
+    let release;
+    const meGate = new Promise((resolve) => { release = resolve; });
+    const state = await fixture(page, { signedIn: true, initialRoute: path, preference: personal.id, failMe: true, meGate });
+    const countAccessRequests = () => state.calls.filter((call) => call === '/api/v1/me').length;
+    const pageHeading = page.getByRole('heading', { name: heading });
+    const accessLoading = page.getByText('Loading workspace access…', { exact: true });
+
+    try {
+      await expect.poll(countAccessRequests).toBeGreaterThan(0);
+      await expect(pageHeading).toBeVisible();
+      await expect(accessLoading).toHaveCount(0);
+      const requestsBeforeReload = countAccessRequests();
+
+      await page.reload();
+      await expect.poll(countAccessRequests).toBeGreaterThan(requestsBeforeReload);
+      await expect(pageHeading).toBeVisible();
+      await expect(accessLoading).toHaveCount(0);
+
+      const unavailable = page.waitForResponse((response) =>
+        new URL(response.url()).pathname === '/api/v1/me' && response.status() === 503
+      );
+      release();
+      await unavailable;
+    } finally {
+      release();
+    }
+
+    await expect(pageHeading).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Retry workspace access' })).toHaveCount(0);
     expect(state.crashes).toEqual([]);
   });
 }
