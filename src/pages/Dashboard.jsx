@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Send, Sparkles, BookText, X, History, Plus, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useWorkspace } from '@/context/WorkspaceContext';
 import { streamAirabookAI } from '@/lib/aiStream';
 import MessageContent from '@/components/chat/MessageContent';
 import {
@@ -13,6 +14,8 @@ import {
 } from '@/lib/chatUiEvents';
 import { executeChatUiAction } from '@/services/chatUiActionService';
 import StreamUiCards from '@/components/chat/StreamUiCards';
+import FileUploadControl from '@/components/files/FileUploadControl';
+import { linkAccountFile } from '@/services/accountFilesService';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -83,9 +86,12 @@ const appendResultText = (baseText, extraText) => {
 const appendStreamingText = (currentText, nextText) => `${currentText || ''}${nextText || ''}`;
 
 const Dashboard = () => {
+  const workspace = useWorkspace();
   const location = useLocation();
   const { appUser } = useAuth();
   const [prompt, setPrompt] = useState('');
+  const [draftFiles, setDraftFiles] = useState([]);
+  const [fileUploadKey, setFileUploadKey] = useState(0);
   const [messages, setMessages] = useState([]);
   const [isChatStarted, setIsChatStarted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -107,6 +113,7 @@ const Dashboard = () => {
   const hasSubmittedInitialPrompt = React.useRef(false);
   const messagesRef = useRef(messages);
   const conversationIdRef = useRef(conversationId);
+  const uploadAccountId = workspace?.account?.id || workspace?.personalAccount?.id || '';
   const historyPanelRef = useRef(null);
 
   const attachCardsToAssistant = (assistantId, eventName, payload) => {
@@ -329,7 +336,8 @@ const Dashboard = () => {
 
     // Display user-friendly message in chat for surprise mode
     const displayContent = isSurprise ? "Surprise me with a creative book idea!" : promptText;
-    const userMessage = { role: 'user', content: displayContent };
+    const attachments = draftFiles.filter((file) => file?.id);
+    const userMessage = { role: 'user', content: displayContent, attachments };
     const assistantId = typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID()
       : `assistant-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -344,6 +352,8 @@ const Dashboard = () => {
     };
     setMessages(prev => [...prev, userMessage, assistantMessage]);
     setPrompt('');
+    setDraftFiles([]);
+    setFileUploadKey((current) => current + 1);
     setIsChatStarted(true);
     setIsSubmitting(true);
 
@@ -372,6 +382,7 @@ const Dashboard = () => {
             setConversationId(resolvedConversationId);
           }
           if (effectiveConversationId) {
+            attachments.forEach((file) => linkAccountFile({ accountId: uploadAccountId, fileId: file.id, reference: { type: 'conversation', conversationId: effectiveConversationId } }).catch((error) => console.warn('Could not link uploaded file to conversation:', error?.message || error)));
             const historyEntry = {
               conversationId: effectiveConversationId,
               title: data?.title || userMessage.content || 'Untitled conversation',
@@ -829,6 +840,8 @@ const Dashboard = () => {
                       streamingContent={msg.streamingContent}
                       isStreaming={msg.isStreaming}
                     />
+                    {msg.attachments?.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{msg.attachments.map((file) => <span key={file.id} className="rounded-lg border border-app-gray-200 bg-white/70 px-2.5 py-1.5 text-xs">📄 {file.name || file.fileName}</span>)}</div>}
+                    {msg.attachments?.length > 0 && <p className="mt-2 text-xs text-app-gray-500">Saved for future processing. Aira has not read these files.</p>}
                     {msg.sources && msg.sources.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-gray-100 text-sm text-gray-500">
                         <p className="font-medium mb-1">Sources:</p>
@@ -953,6 +966,14 @@ const Dashboard = () => {
 
                     <div className="flex items-center justify-between px-4 py-3 bg-app-gray-50/50 border-t border-app-gray-100">
                       <div className="flex items-center gap-2">
+                        <FileUploadControl
+                          key={fileUploadKey}
+                          accountId={uploadAccountId}
+                          scope="conversation"
+                          onChange={setDraftFiles}
+                          compact
+                          disabled={isSubmitting}
+                        />
                         <Button
                           type="button"
                           variant="ghost"

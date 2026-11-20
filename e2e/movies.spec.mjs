@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { revealPageClipAction } from './helpers/page-actions.mjs';
 
 const email = process.env.PLAYWRIGHT_EMAIL || '';
 const password = process.env.PLAYWRIGHT_PASSWORD || '';
@@ -74,6 +75,8 @@ test.describe('Movies workspace smoke', () => {
     test.skip(!(await firstBookLink.count()), 'No visible book card was available for smoke coverage.');
 
     await firstBookLink.click();
-    await expect(page.getByTestId('book-detail-create-video')).toBeVisible();
+    await page.getByRole('button', { name: 'Edit', exact: true }).click();
+    await page.getByTestId('view-pages-btn').click();
+    await expect(await revealPageClipAction(page)).toBeVisible();
   });
 });

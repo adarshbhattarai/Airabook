@@ -23,7 +23,16 @@ await db.doc(`users/${UID}`).set({
     coverImageUrl: null,
   }],
   accessibleAlbums: [],
-  billing: { planLabel: 'Free Explorer', creditBalance: 150 },
+  // The local QA account uses Creator quotas so create-book journeys stay
+  // independent of a restored emulator's old free-tier usage counters.
+  billing: { planTier: 'creator', planLabel: 'Creator QA', creditBalance: 150 },
+  quotaCounters: {
+    apiCalls: { used: 0, windowStart: admin.firestore.FieldValue.serverTimestamp() },
+    storageBytesUsed: 0,
+    lastStorageCreditChargeAt: null,
+    books: 0,
+    pages: 0,
+  },
   notificationCounters: { pendingInvites: 0 },
   createdAt: admin.firestore.FieldValue.serverTimestamp(),
 }, { merge: true });

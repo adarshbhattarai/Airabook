@@ -1,8 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import React, { useMemo, useState } from 'react';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { useWorkspace } from '@/context/WorkspaceContext';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/lib/firebase';
+import { WorkspaceSwitcher } from '@/components/workspace/WorkspaceMenu';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
@@ -10,12 +12,15 @@ import {
   BookOpen,
   Clapperboard,
   Image as ImageIcon,
+  Files,
   Heart,
-  ShieldCheck,
   PanelLeftClose,
   PanelLeftOpen,
   BarChart3,
+  Building2,
   Loader2,
+  Users,
+  ShieldCheck,
 } from 'lucide-react';
 
 const baseSections = [
@@ -25,6 +30,7 @@ const baseSections = [
       { name: 'Dashboard', icon: LayoutDashboard, to: '/dashboard' },
       { name: 'Books', icon: BookOpen, to: '/books' },
       { name: 'Asset Registry', icon: ImageIcon, to: '/media' },
+      { name: 'My files', icon: Files, to: '/files' },
     ],
   },
   {
@@ -33,55 +39,59 @@ const baseSections = [
       { name: 'Upgrade', icon: Heart, to: '/billing' },
     ],
   },
+  {
+    label: 'Workspace access',
+    items: [
+      { name: 'Invitations & requests', icon: Building2, to: '/v2/workspaces' },
+    ],
+  },
 ];
 
-const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile }) => {
+const adminSections = [
+  {
+    label: 'Administration',
+    items: [
+      { name: 'Enterprise requests', icon: Building2, to: '/admin/enterprise-approvals' },
+      { name: 'Users & resources', icon: Users, to: '/admin' },
+    ],
+  },
+];
+
+const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile, mode }) => {
+  const isAdmin = mode === 'admin';
+  const workspace = useWorkspace();
+  const isEnterprise = mode === 'enterprise';
+  const pathFor = workspace?.pathFor || ((path) => path);
+  const homePath = isAdmin ? '/admin/enterprise-approvals' : isEnterprise ? '/v2/enterprise-home' : '/dashboard';
   const { user, appUser, billing } = useAuth();
   const { pathname } = useLocation();
-  const [isAdmin, setIsAdmin] = useState(false);
   const [usageDialogOpen, setUsageDialogOpen] = useState(false);
   const [usageLoading, setUsageLoading] = useState(false);
   const [usageSummary, setUsageSummary] = useState(null);
   const [usageError, setUsageError] = useState('');
-
-  useEffect(() => {
-    const checkAdmin = async () => {
-      if (user) {
-        try {
-          const tokenResult = await user.getIdTokenResult();
-          setIsAdmin(!!tokenResult.claims.admin);
-        } catch (error) {
-          console.error("Error checking sidebar admin:", error);
-        }
-      }
-    };
-    checkAdmin();
-  }, [user]);
 
   const hasBooks = useMemo(
     () => Array.isArray(appUser?.accessibleBookIds) && appUser.accessibleBookIds.length > 0,
     [appUser?.accessibleBookIds]
   );
 
-  const adminSection = isAdmin ? {
-    label: 'Admin',
-    items: [
-      { name: 'Admin Dashboard', icon: ShieldCheck, to: '/admin' },
-    ],
-  } : null;
-
   const displaySections = useMemo(() => {
-    const sections = baseSections.map((section) => ({
+    const sections = (isAdmin ? adminSections : baseSections).map((section) => ({
       ...section,
       items: [...section.items],
     }));
 
-    if (hasBooks) {
+    if (!isAdmin && hasBooks) {
       sections[0].items.splice(2, 0, { name: 'Movies', icon: Clapperboard, to: '/movies', testId: 'movies-sidebar-link' });
     }
 
-    return adminSection ? [...sections, adminSection] : sections;
-  }, [adminSection, hasBooks]);
+    if (isEnterprise) sections.push({
+      label: 'Enterprise',
+      items: [{ name: 'Administration', icon: ShieldCheck, to: '/v2/enterprise-home/administration' }],
+    });
+
+    return sections;
+  }, [hasBooks, isAdmin, isEnterprise]);
 
   const openUsageDialog = async () => {
     setUsageDialogOpen(true);
@@ -104,9 +114,11 @@ const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile }) => 
 
   return (
     <div className="flex flex-col h-full">
-      <div
-        className={`flex items-center gap-2 px-4 pt-4 pb-6 cursor-pointer ${collapsed ? 'justify-center px-0' : ''}`}
-        onClick={() => { if (!collapsed) window.location.href = '/dashboard'; }}
+      <Link
+        to={pathFor(homePath)}
+        onClick={onNavigate}
+        aria-label={isAdmin ? 'Airabook Admin home' : isEnterprise ? 'Airabook Enterprise home' : 'Airabook Personal home'}
+        className={`flex items-center gap-2 px-4 pt-4 pb-6 ${collapsed ? 'justify-center px-0' : ''}`}
       >
         <div className="sidebar-brand-mark h-9 w-9 min-w-[36px] rounded-2xl bg-app-iris text-white flex items-center justify-center text-lg font-semibold shadow-appCard overflow-hidden">
           <img
@@ -124,12 +136,12 @@ const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile }) => 
         {!collapsed && (
           <div className="flex flex-col overflow-hidden">
             <span className="text-sm font-semibold text-app-gray-900 truncate">Airabook</span>
-            <span className="text-xs text-app-gray-600 truncate">Creative studio</span>
+            <span className="text-xs text-app-gray-600 truncate" title={workspace?.account?.name}>{isAdmin ? 'System Admin' : isEnterprise ? workspace?.account?.name || 'Enterprise workspace' : 'Personal workspace'}</span>
           </div>
         )}
-      </div>
+      </Link>
 
-      <nav className="flex-1 px-3 space-y-6 overflow-y-auto overflow-x-hidden scrollbar-hide">
+      <nav aria-label={isAdmin ? 'Platform administration' : isEnterprise ? 'Enterprise navigation' : 'Personal navigation'} className="flex-1 px-3 space-y-6 overflow-y-auto overflow-x-hidden scrollbar-hide">
         {displaySections.map((section) => (
           <div key={section.label}>
             {!collapsed && (
@@ -143,7 +155,9 @@ const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile }) => 
                 return (
                   <NavLink
                     key={item.name}
-                    to={item.to}
+                    to={pathFor(isEnterprise && item.name === 'Dashboard' ? homePath : item.to)}
+                    end={isAdmin || item.name === 'Dashboard'}
+                    aria-label={item.name}
                     data-testid={item.testId}
                     className={({ isActive }) => {
                       const isBookDetailRoute = item.to === '/books' && pathname.startsWith('/book/');
@@ -172,7 +186,13 @@ const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile }) => 
 
       {/* Footer / User / Toggle */}
       <div className="p-3 border-t border-app-gray-300 space-y-2">
-        <button
+        <WorkspaceSwitcher mode={mode} account={workspace?.account} onSelected={onNavigate}>
+          <button type="button" aria-label="Switch workspace" title={collapsed ? 'Switch workspace' : ''}
+            className={`flex w-full items-center gap-3 px-3 py-2 text-sm text-app-gray-600 hover:bg-app-gray-50 rounded-xl transition-colors ${collapsed ? 'justify-center' : ''}`}>
+            <Building2 className="h-4 w-4 min-w-[16px]" />{!collapsed && <span>Switch workspace</span>}
+          </button>
+        </WorkspaceSwitcher>
+        {!isAdmin && <button
           type="button"
           onClick={openUsageDialog}
           className={`flex items-center gap-3 px-3 py-2 text-sm text-app-gray-600 hover:bg-app-gray-50 rounded-xl w-full transition-colors ${collapsed ? 'justify-center' : ''}`}
@@ -185,11 +205,13 @@ const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile }) => 
               <span className="text-xs text-app-gray-500">{formatNumber(billing?.creditBalance)} cr</span>
             </div>
           )}
-        </button>
+        </button>}
 
         {/* Toggle Button (Desktop only) */}
         {!isMobile && (
           <button
+            type="button"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             onClick={toggleCollapse}
             className={`flex items-center gap-3 px-3 py-2 text-sm text-app-gray-500 hover:bg-app-gray-50 rounded-xl w-full transition-colors ${collapsed ? 'justify-center' : ''}`}
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -301,7 +323,9 @@ const SidebarContent = ({ onNavigate, collapsed, toggleCollapse, isMobile }) => 
   );
 };
 
-const Sidebar = ({ open, onClose }) => {
+const Sidebar = ({ open, onClose, mode: suppliedMode }) => {
+  const workspace = useWorkspace();
+  const mode = suppliedMode || workspace?.mode || 'personal';
   // Initialize from localStorage or default to false (expanded)
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -328,18 +352,20 @@ const Sidebar = ({ open, onClose }) => {
         className={`hidden md:flex flex-col bg-white border-r border-app-gray-300 shadow-sm transition-all duration-300 ${collapsed ? 'w-20' : 'w-64'
           } matrix-surface-soft`}
       >
-        <SidebarContent collapsed={collapsed} toggleCollapse={toggleCollapse} isMobile={false} />
+        <SidebarContent collapsed={collapsed} toggleCollapse={toggleCollapse} isMobile={false} mode={mode} />
       </aside>
 
       {/* Mobile drawer */}
       {open && (
         <div className="fixed inset-0 z-40 flex md:hidden">
-          <div
+          <button
+            type="button"
+            aria-label={mode === 'admin' ? 'Close admin navigation' : mode === 'enterprise' ? 'Close enterprise navigation' : 'Close personal navigation'}
             className="fixed inset-0 bg-black/30"
             onClick={onClose}
           />
           <div className="relative z-50 h-full w-72 bg-white border-r border-app-gray-300 shadow-appCard matrix-surface-soft">
-            <SidebarContent onNavigate={onClose} collapsed={false} isMobile={true} />
+            <SidebarContent onNavigate={onClose} collapsed={false} isMobile={true} mode={mode} />
           </div>
         </div>
       )}

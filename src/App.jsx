@@ -1,20 +1,26 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { ThemeProvider } from '@/context/ThemeContext';
+import AppQueryProvider from '@/context/AppQueryProvider';
 import MarketingLayout from '@/layouts/MarketingLayout';
 import AppShell from '@/layouts/AppShell';
+import AdminShell from '@/layouts/AdminShell';
+import WorkspaceChooser from '@/pages/WorkspaceChooser';
 import Home from '@/pages/Home';
 import AiraHome from '@/pages/AiraHome';
 import Login from '@/pages/Login';
 import Signup from '@/pages/Signup';
 import ForgotPassword from '@/pages/ForgotPassword';
+import EnterpriseHome from '@/pages/EnterpriseHome';
+import EnterpriseWorkspaceHub from '@/pages/EnterpriseWorkspaceHub';
 import Dashboard from '@/pages/Dashboard';
 import Books from '@/pages/Books';
 import Movies from '@/pages/Movies';
 import Notifications from '@/pages/Notifications';
 import AssetRegistry from '@/pages/Media';
+import MyFiles from '@/pages/MyFiles';
 import Notes from '@/pages/Notes';
 import CreateBook from '@/pages/CreateBook';
 import BabyJournalPreview from '@/pages/BabyJournalPreview';
@@ -26,11 +32,20 @@ import NoteDetail from '@/pages/NoteDetail';
 import ErrorPage from '@/pages/ErrorPage';
 import ProfileSettings from '@/pages/ProfileSettings';
 import AdminDashboard from '@/pages/admin/AdminDashboard';
+import EnterpriseApprovals from '@/pages/admin/EnterpriseApprovals';
 import AdminRoute from '@/components/AdminRoute';
+import {
+  EnterpriseRequestPending,
+  EnterpriseSignup,
+  PersonalLogin,
+  PersonalSignup,
+  V2AccountSelector,
+} from '@/pages/auth/v2';
 
 // A wrapper to protect routes that require authentication
-const PrivateRoute = ({ children }) => {
+const PrivateRoute = ({ children, loginPath = '/v2/login' }) => {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -40,7 +55,7 @@ const PrivateRoute = ({ children }) => {
     );
   }
 
-  return user ? children : <Navigate to="/login" />;
+  return user ? children : <Navigate to={loginPath} replace state={{ from: location }} />;
 };
 
 const ThemedAppShell = ({ children }) => (
@@ -51,18 +66,77 @@ const ThemedAppShell = ({ children }) => (
   </ThemeProvider>
 );
 
+const ThemedAdminShell = ({ children }) => (
+  <ThemeProvider><AdminShell>{children}</AdminShell></ThemeProvider>
+);
+
 function App() {
   return (
     <AuthProvider>
       <Router>
+      <AppQueryProvider>
         <main>
           <Routes>
             {/* Public / marketing routes */}
             <Route path="/aira" element={<MarketingLayout><AiraHome /></MarketingLayout>} />
             <Route path="/" element={<MarketingLayout><Home /></MarketingLayout>} />
+            {/* Existing auth routes remain unchanged. */}
             <Route path="/signup" element={<MarketingLayout><Signup /></MarketingLayout>} />
             <Route path="/login" element={<MarketingLayout><Login /></MarketingLayout>} />
             <Route path="/forgot-password" element={<MarketingLayout><ForgotPassword /></MarketingLayout>} />
+
+            {/* Version 2 auth aliases and account-specific pages. */}
+            <Route path="/v2/login" element={<V2AccountSelector />} />
+            <Route path="/v2/personal-login" element={<PersonalLogin />} />
+            <Route path="/v2/personal-signup" element={<PersonalSignup />} />
+            <Route path="/v2/chooseWorkspace" element={<PrivateRoute loginPath="/v2/personal-login"><ThemeProvider><WorkspaceChooser /></ThemeProvider></PrivateRoute>} />
+            <Route path="/v2/enterprise-login" element={<Navigate to="/v2/personal-login" replace />} />
+            <Route
+              path="/v2/enterprise-signup"
+              element={
+                <PrivateRoute loginPath="/v2/personal-login">
+                  <ThemedAppShell>
+                    <EnterpriseSignup />
+                  </ThemedAppShell>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/v2/enterprise-request-pending"
+              element={
+                <PrivateRoute loginPath="/v2/personal-login">
+                  <ThemedAppShell>
+                    <EnterpriseRequestPending />
+                  </ThemedAppShell>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/v2/enterprise-home"
+              element={
+                <PrivateRoute loginPath="/v2/personal-login">
+                  <ThemedAppShell><Dashboard /></ThemedAppShell>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/v2/enterprise-home/administration"
+              element={
+                <PrivateRoute loginPath="/v2/personal-login">
+                  <ThemedAppShell><EnterpriseHome /></ThemedAppShell>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/v2/workspaces"
+              element={
+                <PrivateRoute loginPath="/v2/personal-login">
+                  <ThemedAppShell>
+                    <EnterpriseWorkspaceHub />
+                  </ThemedAppShell>
+                </PrivateRoute>
+              }
+            />
 
             {/* Authenticated app routes */}
             <Route
@@ -104,6 +178,10 @@ function App() {
                   </ThemedAppShell>
                 </PrivateRoute>
               }
+            />
+            <Route
+              path="/files"
+              element={<PrivateRoute><ThemedAppShell><MyFiles /></ThemedAppShell></PrivateRoute>}
             />
             <Route
               path="/media"
@@ -227,9 +305,19 @@ function App() {
               path="/admin"
               element={
                 <AdminRoute>
-                  <ThemedAppShell>
+                  <ThemedAdminShell>
                     <AdminDashboard />
-                  </ThemedAppShell>
+                  </ThemedAdminShell>
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/enterprise-approvals"
+              element={
+                <AdminRoute>
+                  <ThemedAdminShell>
+                    <EnterpriseApprovals />
+                  </ThemedAdminShell>
                 </AdminRoute>
               }
             />
@@ -238,6 +326,7 @@ function App() {
           </Routes>
         </main>
         <Toaster />
+      </AppQueryProvider>
       </Router>
     </AuthProvider>
   );

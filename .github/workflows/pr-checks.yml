@@ -15,7 +15,8 @@ concurrency:
 jobs:
   frontend:
     name: Build, coverage, and local E2E
-    runs-on: ubuntu-latest
+    # Keep the image compatible with the Playwright version in package-lock.json.
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
 
     steps:

@@ -29,6 +29,7 @@ const isBlockEmpty = (block) => {
  * - Optionally pull blocks start(i+1) -> end(i) to fill gaps (backward cascade)
  */
 export function usePaginationReflow({
+  enabled = true,
   layoutMode,
   pages,
   setPages,
@@ -372,14 +373,14 @@ export function usePaginationReflow({
 
   const requestReflow = React.useCallback(
     (startPageId) => {
-      if (!startPageId) return;
+      if (!enabled || !startPageId) return;
       if (runningRef.current) {
         queuedStartIdRef.current = startPageId;
         return;
       }
       void runReflow(startPageId);
     },
-    [runReflow]
+    [enabled, runReflow]
   );
 
   // Convenience: when layout changes, reflow from the first page.
@@ -387,7 +388,7 @@ export function usePaginationReflow({
     const firstId = pagesRef.current?.[0]?.id;
     if (firstId) requestReflow(firstId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layoutMode]);
+  }, [layoutMode, enabled]);
 
   return { requestReflow };
 }

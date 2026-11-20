@@ -11,7 +11,7 @@ import { httpsCallable } from 'firebase/functions';
 import { useAuth } from '@/context/AuthContext';
 import { ensureStorageUploadAuth, getStorageUploadDebugContext, logStorageUploadFailure } from '@/lib/storageUpload';
 
-const EditBookModal = ({ isOpen, onClose, book, onUpdate, onOpenPhotoPlanner }) => {
+const EditBookModal = ({ isOpen, onClose, book, onUpdate }) => {
     const { user } = useAuth();
     const { toast } = useToast();
     const [title, setTitle] = useState('');
@@ -228,17 +228,6 @@ const EditBookModal = ({ isOpen, onClose, book, onUpdate, onOpenPhotoPlanner }) 
                 </div>
 
                 <DialogFooter>
-                    <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                            onClose();
-                            onOpenPhotoPlanner?.({ source: 'edit_book' });
-                        }}
-                        disabled={loading}
-                    >
-                        Plan with media
-                    </Button>
                     <Button variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
                     <Button variant="appPrimary" onClick={handleSave} disabled={loading}>
                         {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

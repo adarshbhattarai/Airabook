@@ -1,0 +1,53 @@
+/* Semantic status colors shared by workspace cards, reviews, and team dialogs. */
+.workspace-tone[data-tone] {
+  --workspace-color: hsl(var(--muted-foreground));
+  --workspace-tint: hsl(var(--muted));
+  --workspace-border: hsl(var(--border));
+  color: var(--workspace-color);
+}
+
+.workspace-tone[data-tone='info'] {
+  --workspace-color: hsl(var(--primary));
+  --workspace-tint: hsl(var(--primary) / 0.08);
+  --workspace-border: hsl(var(--primary) / 0.2);
+}
+
+.workspace-tone[data-tone='success'] {
+  --workspace-color: #166534;
+  --workspace-tint: rgb(34 197 94 / 0.08);
+  --workspace-border: rgb(34 197 94 / 0.2);
+}
+
+.workspace-tone[data-tone='warning'] {
+  --workspace-color: #92400e;
+  --workspace-tint: rgb(245 158 11 / 0.08);
+  --workspace-border: rgb(245 158 11 / 0.2);
+}
+
+.workspace-tone[data-tone='danger'] {
+  --workspace-color: #9f1239;
+  --workspace-tint: rgb(244 63 94 / 0.08);
+  --workspace-border: rgb(244 63 94 / 0.2);
+}
+
+:is(.theme-dark, .theme-matrix) .workspace-tone[data-tone='success'] {
+  --workspace-color: #86efac;
+}
+
+:is(.theme-dark, .theme-matrix) .workspace-tone[data-tone='warning'] {
+  --workspace-color: #fcd34d;
+}
+
+:is(.theme-dark, .theme-matrix) .workspace-tone[data-tone='danger'] {
+  --workspace-color: #fda4af;
+}
+
+.workspace-badge,
+.workspace-notice {
+  background-color: var(--workspace-tint);
+  border-color: var(--workspace-border);
+}
+
+.workspace-tone.workspace-notice :is(p, span, strong, svg) {
+  color: inherit;
+}

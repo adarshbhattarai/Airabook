@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { doc, getDoc, updateDoc, arrayRemove, arrayUnion } from 'firebase/firestore';
 import { ref as firebaseRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { firestore, storage, functions } from '@/lib/firebase';
@@ -8,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { httpsCallable } from 'firebase/functions';
 import {
-  ChevronDown, ChevronLeft, ChevronRight, Sparkles, UploadCloud, X, Trash2, Save, Clapperboard, Loader2, Plus
+  ChevronDown, ChevronLeft, ChevronRight, Sparkles, UploadCloud, X, Trash2, Save, Clapperboard, Loader2, Plus, FileText
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
@@ -26,8 +27,13 @@ import {
 } from '@/lib/storageUpload';
 import GenerateImagePrompt from '@/components/PageEditor/GenerateImagePrompt';
 import TemplatePage from '@/components/PageEditor/TemplatePage';
+import WritingPageHeader from '@/components/PageEditor/WritingPageHeader';
 import { pageTemplates } from '@/constants/pageTemplates';
 import { pageBlockApiService } from '@/services/pageBlockApiService';
+import { getPageWritingStats } from '@/lib/pageWritingStats';
+import { useWorkspace } from '@/context/WorkspaceContext';
+import FileUploadControl from '@/components/files/FileUploadControl';
+import { accountFilesQueryKey, linkAccountFile, listAccountFiles, unlinkAccountFile } from '@/services/accountFilesService';
 
 const MEDIA_PICKER_CONTEXT_EDITOR = 'editor';
 const MEDIA_PICKER_CONTEXT_TEMPLATE = 'template';
@@ -55,6 +61,8 @@ const PageEditor = forwardRef(({
   onCreateVideo,
   layoutMode = 'standard',
   standardPageHeightPx,
+  lengthGuideTarget = 400,
+  onLengthGuideTargetChange,
   readOnly = false,
   canUploadMedia = true,
   canCreateVideo = false,
@@ -73,7 +81,6 @@ const PageEditor = forwardRef(({
   const [showAiStyleDropdown, setShowAiStyleDropdown] = useState(false);
   const [aiModel, setAiModel] = useState('gpt-4o');
   const [showModelDropdown, setShowModelDropdown] = useState(false);
-  const [toolbarOpen, setToolbarOpen] = useState(false);
   const [genImgOpen, setGenImgOpen] = useState(false);
   const [genImgPrompt, setGenImgPrompt] = useState('');
   const [genImgUseContext, setGenImgUseContext] = useState(true);
@@ -95,6 +102,8 @@ const PageEditor = forwardRef(({
 
   const quillRef = useRef(null);
   const { user, appUser } = useAuth();
+  const workspace = useWorkspace();
+  const uploadAccountId = workspace?.account?.id || workspace?.personalAccount?.id || '';
   const { toast } = useToast();
   const fileInputRef = useRef(null);
   const pageRootRef = useRef(null);
@@ -107,8 +116,52 @@ const PageEditor = forwardRef(({
   const editorContainerRef = useRef(null);
   const genImgInputRef = useRef(null);
   const mediaPickerCloseReasonRef = useRef('idle');
+  const pageFileIdsRef = useRef(new Set());
   const [modelDropdownPlacement, setModelDropdownPlacement] = useState('top');
   const [aiStyleDropdownPlacement, setAiStyleDropdownPlacement] = useState('top');
+  const [removingPageFileId, setRemovingPageFileId] = useState('');
+  const queryClient = useQueryClient();
+  const accountFilesQuery = useQuery({
+    queryKey: accountFilesQueryKey(uploadAccountId),
+    queryFn: ({ signal }) => listAccountFiles({ accountId: uploadAccountId, signal }),
+    enabled: !!uploadAccountId,
+    staleTime: 30_000,
+  });
+  const attachedPageFiles = (accountFilesQuery.data || []).filter((file) => file.pageId === page?.id
+    || file.references?.some((reference) => String(reference.type || reference.scope || '').toLowerCase() === 'page'
+      && reference.bookId === bookId && reference.chapterId === chapterId && reference.pageId === page?.id));
+
+  const removePageFile = async (file) => {
+    const reference = file.references?.find((item) => String(item.type || item.scope || '').toLowerCase() === 'page'
+      && item.bookId === bookId && item.chapterId === chapterId && item.pageId === page?.id);
+    if (!reference?.id) {
+      toast({ title: 'Cannot remove this attachment yet', description: 'The file API must return the page reference ID to remove this link.', variant: 'destructive' });
+      return;
+    }
+    setRemovingPageFileId(file.id);
+    try {
+      await unlinkAccountFile({ accountId: uploadAccountId, fileId: file.id, referenceId: reference.id });
+      queryClient.setQueryData(accountFilesQueryKey(uploadAccountId), (current = []) => current.map((item) => {
+        if (item.id !== file.id) return item;
+        const references = (item.references || []).filter((candidate) => candidate.id !== reference.id);
+        const nextPage = references.find((candidate) => String(candidate.type || candidate.scope || '').toLowerCase() === 'page') || {};
+        const nextConversation = references.find((candidate) => String(candidate.type || candidate.scope || '').toLowerCase() === 'conversation') || {};
+        return {
+          ...item,
+          references,
+          scope: nextPage.type || nextConversation.type || (references.length ? item.scope : 'library'),
+          bookId: nextPage.bookId || '',
+          chapterId: nextPage.chapterId || '',
+          pageId: nextPage.pageId || '',
+          conversationId: nextConversation.conversationId || '',
+        };
+      }));
+    } catch (error) {
+      toast({ title: 'Could not remove the page attachment', description: error?.message || 'Try again.', variant: 'destructive' });
+    } finally {
+      setRemovingPageFileId('');
+    }
+  };
 
   // Track last saved blocks for reconciliation (to detect deleted album images)
   const previousBlocksRef = useRef(null);
@@ -147,6 +200,11 @@ const PageEditor = forwardRef(({
   const isBabyTemplatePage = template?.type === 'babyJournalPage';
   const BABY_REFLECTION_MAX_CHARS = 500;
   const isResponsiveLayout = layoutMode === 'standard';
+  const isFlowingWritingPage = isResponsiveLayout && !isTemplatePage;
+  const writingStats = React.useMemo(() => getPageWritingStats({
+    blocks: draft?.blocks,
+    html: page.note || '',
+  }), [draft?.blocks, page.note]);
   const templateDraft = draft?.templateContent || null;
   const templateMediaDraft = draft?.templateMedia;
   const latestDraftRef = useRef(draft);
@@ -255,26 +313,6 @@ const PageEditor = forwardRef(({
     };
   }, [page.id, logContentMeasure]);
 
-  useEffect(() => {
-    if (!toolbarOpen) return undefined;
-    const handleClick = (event) => {
-      if (!toolbarRef.current?.contains(event.target)) {
-        setToolbarOpen(false);
-      }
-    };
-    const handleKey = (event) => {
-      if (event.key === 'Escape') {
-        setToolbarOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClick);
-    document.addEventListener('keydown', handleKey);
-    return () => {
-      document.removeEventListener('mousedown', handleClick);
-      document.removeEventListener('keydown', handleKey);
-    };
-  }, [toolbarOpen]);
-
   const resolveDropdownPlacement = React.useCallback((triggerEl, menuHeight = 220) => {
     const rect = triggerEl?.getBoundingClientRect();
     if (!rect) return 'top';
@@ -349,12 +387,6 @@ const PageEditor = forwardRef(({
     });
     return () => cancelAnimationFrame(raf);
   }, [genImgOpen]);
-
-  useEffect(() => {
-    if (!isResponsiveLayout) {
-      setToolbarOpen(false);
-    }
-  }, [isResponsiveLayout]);
 
   // Helper: Extract metadata from a media block's name prop (image or video)
   const getMediaMetadata = (block) => {
@@ -1122,7 +1154,7 @@ const PageEditor = forwardRef(({
           media: mediaToSave,
           embeddedMedia: [],
           content: normalizedContent
-        });
+        }, { savedDraftVersion: draftVersion });
         if (!silent) {
           toast({ title: 'Page Created', description: 'Your draft page has been saved.' });
         }
@@ -1222,7 +1254,7 @@ const PageEditor = forwardRef(({
           order: page.order
         });
         const newPage = result.data.page;
-        onReplacePageId?.(page.id, newPage);
+        onReplacePageId?.(page.id, newPage, { savedDraftVersion: draftVersion });
         if (!silent) {
           toast({ title: 'Page Created', description: 'Your draft page has been saved.' });
         }
@@ -1278,6 +1310,7 @@ const PageEditor = forwardRef(({
   };
 
   const updateLimitStatusFromMeasure = () => {
+    if (isFlowingWritingPage) return;
     const measureRoot = contentMeasureRef.current;
     const editorContentEl = measureRoot?.querySelector('.bn-editor');
     let contentHeight = 0;
@@ -1303,11 +1336,21 @@ const PageEditor = forwardRef(({
 
   const handleBlocksChange = (blocks) => {
     if (readOnly) return;
-    const nextDraft = { blocks, updatedAt: Date.now() };
+    const nextDraft = {
+      ...(draft || {}),
+      blocks,
+      updatedAt: Date.now(),
+    };
     onDraftChange?.(page.id, nextDraft);
-    onBlocksChange?.(page.id, blocks);
+    if (!isFlowingWritingPage) onBlocksChange?.(page.id, blocks);
     onUserInput?.(page.id);
-    requestAnimationFrame(updateLimitStatusFromMeasure);
+    if (!isFlowingWritingPage) requestAnimationFrame(updateLimitStatusFromMeasure);
+  };
+
+  const handlePageNameChange = (pageName) => {
+    if (readOnly) return;
+    onPageUpdate?.({ ...page, pageName });
+    onDraftChange?.(page.id, { ...(draft || {}), pageName, updatedAt: Date.now() });
   };
 
   // Fast-path: detect typing at end of page when near overflow
@@ -1315,6 +1358,7 @@ const PageEditor = forwardRef(({
     if (readOnly) return;
     // Track user input timestamp
     onUserInput?.(page.id);
+    if (isFlowingWritingPage) return;
 
     // Track content fill status while typing.
     if (e.key === 'Backspace') return;
@@ -1992,7 +2036,7 @@ const PageEditor = forwardRef(({
   const isLastPage = pageIndex >= totalPages - 1;
   const showNewPageAction = isLastPage && typeof onAddPage === 'function';
   const showSidePageNav = !readOnly && isBabyTemplatePage && totalPages > 1 && typeof onNavigate === 'function';
-  const showPageOverflowCue = !readOnly && !isTemplatePage && limitStatus === 'full';
+  const showPageOverflowCue = !readOnly && !isTemplatePage && !isFlowingWritingPage && limitStatus === 'full';
   const overflowCueLabel = 'Recommended page length reached';
 
   const handleNewPageAction = async () => {
@@ -2004,7 +2048,7 @@ const PageEditor = forwardRef(({
   const handleCreateVideoAction = async () => {
     await onCreateVideo?.({
       pageId: page.id,
-      instruction: clipPrompt,
+      instruction: isFlowingWritingPage ? '' : clipPrompt,
     });
   };
 
@@ -2053,13 +2097,42 @@ const PageEditor = forwardRef(({
           )}
 
           <div ref={contentMeasureRef} className={isTemplatePage ? 'min-h-full overflow-visible flex flex-col' : 'min-h-full overflow-visible flex flex-col page-writing-scroll'}>
-                <div className="flex justify-center items-center mb-6 relative">
+            {isFlowingWritingPage ? (
+              <WritingPageHeader
+                page={page}
+                chapterId={chapterId}
+                chapterTitle={chapterTitle}
+                pageIndex={pageIndex}
+                totalPages={totalPages}
+                stats={writingStats}
+                hasDraft={!!draft}
+                readOnly={readOnly}
+                isSaving={isSaving}
+                onSave={handleSave}
+                onNewPage={typeof onAddPage === 'function' ? handleNewPageAction : undefined}
+                onDelete={() => onRequestPageDelete?.(page, pageIndex)}
+                canCreateVideo={canCreateVideo}
+                creatingVideoJob={creatingVideoJob}
+                onCreateVideo={handleCreateVideoAction}
+                aiBusy={aiBusy}
+                aiStyle={aiStyle}
+                onAiStyleChange={setAiStyle}
+                onRewrite={callRewrite}
+                lengthGuideTarget={lengthGuideTarget}
+                onLengthGuideTargetChange={onLengthGuideTargetChange}
+                onPageNameChange={handlePageNameChange}
+              />
+            ) : (
+              <div className="flex justify-center items-center mb-6 relative">
                   {chapterTitle && (
                 <div className="page-editor-chapter-title text-xs font-semibold text-violet-600 uppercase tracking-wider mb-1">
                   {chapterTitle}
                 </div>
               )}
-            </div>
+              </div>
+            )}
+
+            {attachedPageFiles.length > 0 && <div className="mb-4 flex flex-wrap gap-2" aria-label="Attached files">{attachedPageFiles.map((file) => <span key={file.id} className="inline-flex items-center gap-1.5 rounded-lg border border-app-gray-200 bg-app-gray-50 px-2.5 py-1.5 text-xs text-app-gray-700"><FileText className="h-3.5 w-3.5 shrink-0 text-app-iris" /><span className="max-w-52 truncate" title={file.name}>{file.name}</span>{file.documentType === 'DOCX' && <span className="text-amber-700">· processing unavailable</span>}<button type="button" aria-label={`Remove ${file.name} from this page`} title="Remove from this page" disabled={removingPageFileId === file.id} onClick={() => void removePageFile(file)} className="rounded p-0.5 hover:bg-app-gray-200 disabled:opacity-50"><X className="h-3.5 w-3.5" /></button></span>)}</div>}
 
             {/* Hidden file input for uploader */}
             <input
@@ -2117,6 +2190,39 @@ const PageEditor = forwardRef(({
                   </Button>
                 </div>
 
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-app-gray-200 bg-app-gray-50 px-3 py-2">
+                  <div><p className="text-sm font-medium text-app-gray-800">Page files</p><p className="text-xs text-app-gray-500">Documents are saved with this page and in My files.</p></div>
+                  <FileUploadControl
+                    accountId={uploadAccountId}
+                    scope="page"
+                    label="Attach file"
+                    allowRemoveReady={false}
+                    disabled={readOnly || !canUploadMedia || !page?.id || page.id.startsWith('temp_')}
+                    onChange={(files) => {
+                      files.forEach((file) => {
+                        if (!file?.id || pageFileIdsRef.current.has(file.id) || !page?.id || page.id.startsWith('temp_')) return;
+                        pageFileIdsRef.current.add(file.id);
+                        const reference = { type: 'page', bookId, chapterId, pageId: page.id };
+                        void linkAccountFile({ accountId: uploadAccountId, fileId: file.id, reference })
+                          .then((response) => {
+                            const linked = response?.data || response || {};
+                            const linkedReference = linked.reference
+                              || linked.references?.find((item) => item.type === 'page' && item.pageId === page.id)
+                              || (String(linked.type || '').toLowerCase() === 'page' ? linked : {});
+                            const referenceWithId = { ...reference, ...linkedReference, id: linkedReference.id || linked.referenceId || null };
+                            queryClient.setQueryData(accountFilesQueryKey(uploadAccountId), (current = []) => [
+                              ...current.filter((item) => item.id !== file.id),
+                              { ...file, ...reference, scope: 'page', references: [...(file.references || []), referenceWithId] },
+                            ]);
+                          })
+                          .catch((error) => {
+                            pageFileIdsRef.current.delete(file.id);
+                            toast({ title: 'File uploaded, but not attached', description: error?.message || 'Retry the page attachment from My files.', variant: 'destructive' });
+                          });
+                      });
+                    }}
+                  />
+                </div>
                 {mediaPickerTab === 'upload' ? (
                   <div
                     className="media-picker-upload-dropzone p-6 border-2 border-dashed rounded-lg bg-gray-50 text-center text-sm text-app-gray-700"
@@ -2386,7 +2492,7 @@ const PageEditor = forwardRef(({
                 <div className={isTemplatePage ? '' : 'flex-grow min-h-full'}>
                   <div
                     ref={editorContainerRef}
-                    className={isTemplatePage ? 'bg-transparent relative' : `min-h-full bg-transparent relative page-writing-canvas ${!readOnly ? `page-writing-canvas-${limitStatus}` : ''}`}
+                    className={isTemplatePage ? 'bg-transparent relative' : `min-h-full bg-transparent relative page-writing-canvas ${isFlowingWritingPage ? 'page-writing-canvas-flow' : !readOnly ? `page-writing-canvas-${limitStatus}` : ''}`}
                     onKeyDownCapture={handleKeyDownCapture}
                     onMouseDownCapture={() => {
                       logContentMeasure('editor mousedown');
@@ -2567,135 +2673,7 @@ const PageEditor = forwardRef(({
                   </div>
                 </div>
               </div>
-            ) : !readOnly && isResponsiveLayout ? (
-              <div ref={toolbarRef} className="mt-8 pb-8 w-full relative z-20">
-                <div className="editor-action-bar w-full flex flex-wrap items-center justify-between gap-3 px-2 py-3 rounded-2xl bg-gray-50/50 border border-gray-100">
-                  <div className="flex items-center gap-2 flex-wrap flex-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 px-2 text-red-500 hover:text-red-600 hover:bg-red-50"
-                      onClick={() => onRequestPageDelete?.(page, pageIndex)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                    <div className="h-4 w-px bg-gray-200 mx-1" />
-
-                    <div ref={modelDropdownRef} className="relative flex items-center">
-                      <Button
-                        ref={modelDropdownTriggerRef}
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={toggleModelDropdown}
-                        className="h-8 px-2 text-xs font-medium text-gray-600"
-                      >
-                        {aiModel}
-                        <ChevronDown className="h-3 w-3 ml-1" />
-                      </Button>
-                      {showModelDropdown && (
-                        <div className={`editor-menu-popover absolute left-0 w-36 z-30 ${getDropdownPositionClasses(modelDropdownPlacement)}`}>
-                          {['gpt-4o'].map(model => (
-                            <button
-                              key={model}
-                              onClick={() => {
-                                setAiModel(model);
-                                setShowModelDropdown(false);
-                              }}
-                              className="editor-menu-item w-full text-left px-3 py-2 text-xs"
-                            >
-                              {model}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div ref={aiStyleDropdownRef} className="relative flex items-center gap-1">
-                      <Input
-                        value={aiStyle}
-                        onChange={(e) => setAiStyle(e.target.value)}
-                        placeholder="Prompt for rewrite or clip..."
-                        className="editor-ai-input h-8 w-28 sm:w-40 text-xs bg-white"
-                      />
-                      <Button
-                        ref={aiStyleDropdownTriggerRef}
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={toggleAiStyleDropdown}
-                        className="h-8 px-2"
-                      >
-                        <ChevronDown className="h-4 w-4" />
-                      </Button>
-
-                      {showAiStyleDropdown && (
-                        <div className={`editor-menu-popover absolute left-0 w-48 z-30 ${getDropdownPositionClasses(aiStyleDropdownPlacement)}`}>
-                          {['Improve clarity', 'Make it concise', 'Fix grammar', 'Expand this'].map(style => (
-                            <button
-                              key={style}
-                              onClick={() => {
-                                setAiStyle(style);
-                                setShowAiStyleDropdown(false);
-                              }}
-                              className="editor-menu-item w-full text-left px-3 py-2 text-xs"
-                            >
-                              {style}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="editor-rewrite-btn h-8 whitespace-nowrap bg-white shadow-sm border border-gray-100"
-                      onClick={() => callRewrite(aiStyle)}
-                      disabled={aiBusy || !hasAiInstruction}
-                    >
-                      <Sparkles className="h-4 w-4 mr-1 text-app-iris" />
-                      Rewrite
-                    </Button>
-                    {canCreateVideo && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 whitespace-nowrap"
-                        data-testid="book-detail-create-video"
-                        onClick={handleCreateVideoAction}
-                        disabled={creatingVideoJob || isSaving}
-                      >
-                        {creatingVideoJob ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Clapperboard className="h-4 w-4 mr-1" />}
-                        Generate Clip
-                      </Button>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="appSuccess"
-                      size="sm"
-                      className="editor-save-btn h-8 whitespace-nowrap min-w-[110px]"
-                      onClick={handleSave}
-                    >
-                      {isSaving ? 'Saving...' : 'Save'}
-                    </Button>
-                    {showNewPageAction && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 whitespace-nowrap min-w-[110px]"
-                        onClick={handleNewPageAction}
-                        disabled={isSaving || creatingVideoJob}
-                      >
-                        <Plus className="h-4 w-4 mr-1" />
-                        New Page
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : !readOnly ? (
+            ) : !readOnly && !isFlowingWritingPage ? (
               <div ref={toolbarRef} className="mt-4 pb-6 w-full relative z-20">
                 <div className="editor-action-bar editor-action-bar-docked w-full rounded-full border border-gray-200 bg-white/95 px-4 py-2 shadow-sm">
                   <div className="flex flex-wrap items-center gap-2 w-full">

@@ -17,6 +17,9 @@ emulators disabled. This includes project number `359520066111`; mixing Web App
 credentials from another Firebase project produces valid tokens that dev Firestore
 and Functions will reject as unauthenticated.
 
+Cloud Functions use the Node.js 22 runtime. Keep deployment workflows and the
+`start-firebase.sh` emulator launcher on Node.js 22 for local and CI parity.
+
 ## Local Profile
 
 Run the complete isolated stack with one command:
@@ -111,6 +114,15 @@ The GitHub job installs Functions dependencies and Playwright Chromium, starts a
 dedicated isolated emulator profile, seeds only the emulator account/book, and
 uploads Playwright diagnostics for 14 days when a run fails. No Firebase secrets
 or deployed environments are needed for this PR gate.
+
+The QA command also runs the workspace routing unit checks and the existing
+workspace-selection and Enterprise-team browser suites. The Firebase smoke tests
+mock Spring `/api/v1/me` with a normal user and one active Personal workspace,
+and return an empty onboarding-request list for the dashboard notice. Login and
+book/page persistence still use the Firebase emulators. The workspace/team suites
+use their own identity and API fixtures to cover multiple workspaces, System Admin
+access, revoked memberships, and backend errors. No Spring server or PostgreSQL
+database is required by this isolated frontend gate.
 
 ## Pre-deploy Checklist
 
